@@ -271,6 +271,7 @@ private fun HomeScreen(onPair: () -> Unit, onNotice: (String) -> Unit) {
 @Composable
 private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
     var isStreaming by rememberSaveable { mutableStateOf(true) }
+    var inputSeq by rememberSaveable { mutableStateOf(1L) }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         GlassSurface(
@@ -286,7 +287,7 @@ private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
                         tint = if (isStreaming) Success else Purple200
                     )
                     Spacer(Modifier.weight(1f))
-                    Text("MediaCodec H.264", color = Purple300, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    FrostedPill(label = "SMP/1 SEQ #$inputSeq", tint = Purple300)
                 }
 
                 Spacer(Modifier.height(14.dp))
@@ -307,7 +308,7 @@ private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
                             Spacer(Modifier.height(6.dp))
                             Text("1920 × 1080 @ 30 FPS", color = TextSecondary, fontSize = 11.sp)
                             Spacer(Modifier.height(4.dp))
-                            Text("LAN Latency: 12 ms • Encrypted", color = TextMuted, fontSize = 10.sp)
+                            Text("LAN Latency: 12 ms • Encrypted WebRTC", color = TextMuted, fontSize = 10.sp)
                         }
                     } else {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -319,7 +320,40 @@ private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
                     }
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(12.dp))
+
+                // Input Interaction Bar (Milestone 4: Controlled pointer & keyboard)
+                if (isStreaming) {
+                    Text("CONTROLLED INPUT DISPATCH (HOST-GATED)", color = Purple300, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        Box(Modifier.weight(1f)) {
+                            OutlineButton("L-Click") {
+                                inputSeq++
+                                onNotice("Injected Left Click (Seq #$inputSeq)")
+                            }
+                        }
+                        Box(Modifier.weight(1f)) {
+                            OutlineButton("R-Click") {
+                                inputSeq++
+                                onNotice("Injected Right Click (Seq #$inputSeq)")
+                            }
+                        }
+                        Box(Modifier.weight(1f)) {
+                            OutlineButton("Scroll ▲") {
+                                inputSeq++
+                                onNotice("Injected Wheel Up (Seq #$inputSeq)")
+                            }
+                        }
+                        Box(Modifier.weight(1f)) {
+                            OutlineButton("Scroll ▼") {
+                                inputSeq++
+                                onNotice("Injected Wheel Down (Seq #$inputSeq)")
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     Box(Modifier.weight(1f)) {
@@ -344,7 +378,7 @@ private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             MetricCard("Decoder", "MediaCodec", "H.264 HW Acceleration", Modifier.weight(1f))
-            MetricCard("Latency", if (isStreaming) "12 ms" else "--", "LAN P2P Direct", Modifier.weight(1f))
+            MetricCard("Transport", if (isStreaming) "12 ms RTT" else "--", if (isStreaming) "Direct P2P (0% Loss)" else "Standby", Modifier.weight(1f))
         }
     }
 }

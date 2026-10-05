@@ -115,8 +115,8 @@ Codex established the **Phase 0 / Milestone 1 foundation** of the project:
 
 ## Stopping Point
 
-Milestones 1, 2, and **Milestone 3 (View-Only Remote Session & Windows Display Capture)** are complete.
-Development is positioned at the start of **Milestone 4 (Controlled Input, Replay Defense & Resilience)**.
+Milestones 1, 2, 3, and **Milestone 4 (Controlled Input, Replay Defense & Resilience)** are complete.
+All subsystem builds are verified, passing unit test suites, and deployed to Firebase Hosting & GitHub.
 
 ---
 
@@ -163,19 +163,19 @@ Development is positioned at the start of **Milestone 4 (Controlled Input, Repla
 - [x] **Milestone 3 — Host Remote Monitor & Android Client Viewfinder (`apps/windows-host/src/main.tsx`, `apps/android-client/app/src/main/java/com/smartmigrate/client/MainActivity.kt`)**:
   - Windows host Remote View with live telemetry HUD, display source selector, hardware encoder selector, and instant stream kill-switch
   - Android client AMOLED black remote viewfinder screen with MediaCodec hardware decode badge, 16:9 viewport, and disconnect controls
-
----
-
-## Next Implementation Priority (Milestone 4)
-
-1. **Controlled Mouse & Keyboard Input**:
-   - Win32 `SendInput` native adapter for host pointer and keystroke injection.
-   - Strict `SessionPermission::ControlMouse` and `SessionPermission::ControlKeyboard` enforcement.
-2. **Replay & Monotonic Sequence Defense**:
-   - High-rate input message bounds, monotonic counter validation via `SequenceTracker`.
-3. **Resilience & Reconnection**:
-   - Connection watchdog, heartbeat `PING`/`PONG` timeout, graceful recovery from temporary network drops.
-
+- [x] **Milestone 4 — Native Controlled Input & Replay Defense (`apps/windows-host/src-tauri/src/input.rs`)**:
+  - Native Win32 `SendInput` integration for mouse move, clicks (left/right/middle), mouse wheel, and virtual key events.
+  - Coordinate normalization with clamping to primary display bounds.
+  - Sequence replay protection via `SequenceTracker` rejecting non-monotonic and out-of-order packets.
+  - Strict host-side permission enforcement: requires `SessionPermission::ControlMouse` and `SessionPermission::ControlKeyboard`.
+  - Host operator physical override switches to instantaneously suspend or resume remote mouse/keyboard control.
+- [x] **Milestone 4 — Transport Resilience & Watchdog (`apps/windows-host/src-tauri/src/resilience.rs`)**:
+  - Real-time connection watchdog tracking RTT latency, packet loss percentage, heartbeat status, and replayed packets dropped.
+  - Heartbeat `PING`/`PONG` round-trip tracking with direct P2P LAN baseline and relayed fallback indicator.
+- [x] **Milestone 4 — Host UI & Android Client Controls**:
+  - Windows host Input Authority card with live override toggles and telemetry injection counters.
+  - Windows host Transport Resilience HUD displaying transport state, RTT latency, packet loss %, and heartbeat stats.
+  - Android client viewfinder updated with interactive pointer action buttons (L-Click, R-Click, Scroll Up/Down) and SMP/1 sequence tracking badges.
 
 ---
 

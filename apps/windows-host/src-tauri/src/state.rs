@@ -1,5 +1,7 @@
 //! Shared thread-safe application state managed by Tauri.
 
+use crate::input::InputController;
+use crate::resilience::ConnectionWatchdog;
 use crate::stream::StreamSessionState;
 use migroute::identity::DeviceIdentity;
 use migroute::pairing::PairingSession;
@@ -11,6 +13,8 @@ pub struct AppState {
     pub trust_store: Mutex<TrustStore>,
     pub active_pairing: Mutex<Option<PairingSession>>,
     pub active_stream: Mutex<StreamSessionState>,
+    pub input_controller: InputController,
+    pub watchdog: ConnectionWatchdog,
 }
 
 impl AppState {
@@ -20,7 +24,10 @@ impl AppState {
             trust_store: Mutex::new(trust_store),
             active_pairing: Mutex::new(None),
             active_stream: Mutex::new(StreamSessionState::default()),
+            input_controller: InputController::new(),
+            watchdog: ConnectionWatchdog::new(),
         }
     }
 }
+
 

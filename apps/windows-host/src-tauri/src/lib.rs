@@ -1,18 +1,23 @@
 mod capture;
+mod input;
+mod resilience;
 mod state;
 mod storage;
 mod stream;
 
 use capture::{DisplaySource, EncoderCapability};
+use input::InputTelemetry;
 use migroute::identity::{DeviceIdentity, DevicePlatform};
 use migroute::pairing::PairingSession;
 use migroute::trust::TrustedDevice;
 use migroute::{DeviceId, SessionPermission};
+use resilience::ResilienceStatus;
 use serde::Serialize;
 use state::AppState;
 use std::time::{SystemTime, UNIX_EPOCH};
 use stream::{StreamSessionState, StreamTelemetry};
 use tauri::{State, Window};
+
 
 
 fn now_ms() -> u64 {
@@ -277,6 +282,82 @@ fn get_stream_telemetry(state: State<'_, AppState>) -> StreamTelemetry {
     stream::compute_telemetry(&mut active)
 }
 
+/// Injects remote mouse movement and button clicks if authorized by host.
+#[tauri::command]
+fn inject_remote_mouse(
+    state: State<'_, AppState>,
+    device_id: String,
+    x: i32,
+    y: i32,
+    left_down: bool,
+    left_up: bool,
+    right_down: bool,
+    right_up: bool,
+    middle_down: bool,
+    middle_up: bool,
+    scroll_delta: i32,
+    sequence: u64,
+) -> Result<(), String> {
+    let trust_store = state.trust_store.lock().unwrap();
+    state.input_controller.inject_mouse(
+        &trust_store,
+        &device_id,
+        x,
+        y,
+        left_down,
+        left_up,
+        right_down,
+        right_up,
+        middle_down,
+        middle_up,
+        scroll_delta,
+        sequence,
+    )
+}
+
+/// Injects remote keyboard keystroke if authorized by host.
+#[tauri::command]
+fn inject_remote_keyboard(
+    state: State<'_, AppState>,
+    device_id: String,
+    vk_code: u16,
+    key_up: bool,
+    sequence: u64,
+) -> Result<(), String> {
+    let trust_store = state.trust_store.lock().unwrap();
+    state.input_controller.inject_keyboard(
+        &trust_store,
+        &device_id,
+        vk_code,
+        key_up,
+        sequence,
+    )
+}
+
+/// Retrieves input telemetry (injection counts, authorization drops, replay rejects).
+#[tauri::command]
+fn get_input_telemetry(state: State<'_, AppState>) -> InputTelemetry {
+    state.input_controller.get_telemetry()
+}
+
+/// Host override to temporarily suspend or resume remote mouse/keyboard control.
+#[tauri::command]
+fn set_input_override(
+    state: State<'_, AppState>,
+    mouse_enabled: bool,
+    keyboard_enabled: bool,
+) -> Result<(), String> {
+    state.input_controller.set_mouse_override(mouse_enabled);
+    state.input_controller.set_keyboard_override(keyboard_enabled);
+    Ok(())
+}
+
+/// Retrieves transport resilience metrics (RTT, packet loss, heartbeat status).
+#[tauri::command]
+fn get_resilience_status(state: State<'_, AppState>) -> ResilienceStatus {
+    state.watchdog.get_status()
+}
+
 /// Minimize the main application window.
 #[tauri::command]
 fn minimize_window(window: Window) -> Result<(), String> {
@@ -324,6 +405,11 @@ pub fn run() {
             start_display_stream,
             stop_display_stream,
             get_stream_telemetry,
+            inject_remote_mouse,
+            inject_remote_keyboard,
+            get_input_telemetry,
+            set_input_override,
+            get_resilience_status,
             minimize_window,
             toggle_maximize,
             close_window,
@@ -331,4 +417,5 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("failed to run Smart Migrate Windows host");
 }
+
 

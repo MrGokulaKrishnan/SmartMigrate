@@ -556,6 +556,60 @@ h2 { margin-bottom: .65rem; font-size: 1.28rem; line-height: 1.05; }
   color: #ffffff;
 }
 
+/* ─── Milestone 4: Input Control & Resilience HUD ──────────────────────── */
+.toggle-badge-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.8rem;
+  border-radius: 6px 2px 6px 2px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(189,180,255,0.22);
+  color: #ffffff;
+  font: 600 0.72rem "Chakra Petch", sans-serif;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  width: 100%;
+}
+.toggle-badge-btn:hover {
+  background: rgba(122,102,240,0.2);
+  border-color: var(--sm-500);
+}
+.toggle-badge-btn.active {
+  background: rgba(61,220,151,0.14);
+  border-color: rgba(61,220,151,0.4);
+  color: var(--sm-success);
+}
+.toggle-badge-btn.suspended {
+  background: rgba(255,92,122,0.12);
+  border-color: rgba(255,92,122,0.35);
+  color: var(--sm-error);
+}
+.metric-mini-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.metric-mini-cell {
+  padding: 0.55rem 0.7rem;
+  border-radius: 6px 2px 6px 2px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(189,180,255,0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.metric-mini-cell span {
+  font-size: 0.6rem;
+  color: var(--sm-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.metric-mini-cell strong {
+  font: 600 0.88rem "Chakra Petch", sans-serif;
+  color: #ffffff;
+}
+
 @keyframes drift { from { transform: translate3d(-3%, -2%, 0) scale(.95); } to { transform: translate3d(5%, 3%, 0) scale(1.05); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 
