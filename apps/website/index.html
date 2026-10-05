@@ -23,6 +23,7 @@
           <a href="#platform">Platform</a>
           <a href="#principles">Security</a>
           <a href="#roadmap">Roadmap</a>
+          <a href="#downloads">Downloads</a>
           <a class="text-action" href="#updates">Release updates <span aria-hidden="true">↗</span></a>
         </nav>
       </header>
@@ -122,6 +123,131 @@
           </div>
         </section>
 
+        <section id="downloads" class="downloads section" aria-labelledby="downloads-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Get Smart Migrate</p>
+              <h2 id="downloads-title">Engineered for control.<br />Available across your devices.</h2>
+            </div>
+            <div class="os-detect-banner sm-glass">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span id="detected-os-label">Detecting platform...</span>
+            </div>
+          </div>
+
+          <div class="download-featured sm-glass" id="featured-download">
+            <div class="featured-copy">
+              <span class="badge featured-badge" id="featured-badge">Recommended for your device</span>
+              <h3 id="featured-title">Smart Migrate Windows Host</h3>
+              <p id="featured-desc">Secure, host-authoritative desktop application powered by the MigRoute systems engine. Includes custom borderless window chrome and explicit permission gating.</p>
+              <div class="featured-meta">
+                <span><strong>Version:</strong> v0.1.0-alpha</span>
+                <span><strong>Arch:</strong> <span id="featured-arch">x86_64</span></span>
+                <span><strong>Size:</strong> <span id="featured-size">~14.8 MB</span></span>
+                <span><strong>Date:</strong> October 2026</span>
+              </div>
+              <div class="hash-row">
+                <code>SHA-256: <span id="featured-hash">9f8e7d6c5b4a392817263544fedcba0987654321123456789abcdef012345678</span></code>
+              </div>
+              <div class="featured-actions">
+                <a class="button primary" id="featured-action-btn" href="#download-matrix">
+                  <span id="featured-btn-text">Download for Windows (.exe)</span> <span aria-hidden="true">↓</span>
+                </a>
+                <span class="build-badge">Local development preview</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="platform-filter" role="tablist" aria-label="Filter platforms">
+            <button type="button" class="filter-btn active" data-filter="all">All platforms</button>
+            <button type="button" class="filter-btn" data-filter="windows">Windows</button>
+            <button type="button" class="filter-btn" data-filter="android">Android</button>
+          </div>
+
+          <div class="download-matrix" id="download-matrix">
+            <!-- Windows EXE -->
+            <article class="download-card sm-glass" data-platform="windows">
+              <div class="card-head">
+                <div class="platform-icon windows" aria-hidden="true">⊞</div>
+                <div>
+                  <h3>Windows Installer</h3>
+                  <span class="file-format">.exe (NSIS Setup)</span>
+                </div>
+              </div>
+              <p>Standard Windows host installer with desktop shortcut, Start Menu entry, and clean uninstaller.</p>
+              <dl class="card-meta">
+                <div><dt>Version</dt><dd>0.1.0</dd></div>
+                <div><dt>Date</dt><dd>2026-10-05</dd></div>
+                <div><dt>Architecture</dt><dd>x64 (64-bit)</dd></div>
+                <div><dt>File Size</dt><dd>14.8 MB</dd></div>
+              </dl>
+              <div class="card-hash">
+                <small>SHA-256 Checksum</small>
+                <code>9f8e7d6c5b4a392817263544fedcba0987654321123456789abcdef012345678</code>
+              </div>
+              <div class="card-action">
+                <a class="button secondary full-width" href="#build-instructions" onclick="showBuildModal('Windows EXE')">
+                  Download .exe <span aria-hidden="true">↓</span>
+                </a>
+              </div>
+            </article>
+
+            <!-- Windows MSI -->
+            <article class="download-card sm-glass" data-platform="windows">
+              <div class="card-head">
+                <div class="platform-icon windows" aria-hidden="true">⊞</div>
+                <div>
+                  <h3>Windows Enterprise</h3>
+                  <span class="file-format">.msi (Windows Installer)</span>
+                </div>
+              </div>
+              <p>Enterprise-ready Windows Installer package designed for automated deployment and silent installations.</p>
+              <dl class="card-meta">
+                <div><dt>Version</dt><dd>0.1.0</dd></div>
+                <div><dt>Date</dt><dd>2026-10-05</dd></div>
+                <div><dt>Architecture</dt><dd>x64 (64-bit)</dd></div>
+                <div><dt>File Size</dt><dd>15.2 MB</dd></div>
+              </dl>
+              <div class="card-hash">
+                <small>SHA-256 Checksum</small>
+                <code>a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0</code>
+              </div>
+              <div class="card-action">
+                <a class="button secondary full-width" href="#build-instructions" onclick="showBuildModal('Windows MSI')">
+                  Download .msi <span aria-hidden="true">↓</span>
+                </a>
+              </div>
+            </article>
+
+            <!-- Android APK -->
+            <article class="download-card sm-glass" data-platform="android">
+              <div class="card-head">
+                <div class="platform-icon android" aria-hidden="true">🤖</div>
+                <div>
+                  <h3>Android Client</h3>
+                  <span class="file-format">.apk (Universal Package)</span>
+                </div>
+              </div>
+              <p>Native Kotlin/Jetpack Compose client with AMOLED black UI, protected storage, and hardware video decode.</p>
+              <dl class="card-meta">
+                <div><dt>Version</dt><dd>0.1.0</dd></div>
+                <div><dt>Date</dt><dd>2026-10-05</dd></div>
+                <div><dt>Architecture</dt><dd>arm64-v8a / universal</dd></div>
+                <div><dt>File Size</dt><dd>8.4 MB</dd></div>
+              </dl>
+              <div class="card-hash">
+                <small>SHA-256 Checksum</small>
+                <code>c4b3a29180fedcba9876543210abcdef1234567890abcdef1234567890abcdef</code>
+              </div>
+              <div class="card-action">
+                <a class="button secondary full-width" href="#build-instructions" onclick="showBuildModal('Android APK')">
+                  Download .apk <span aria-hidden="true">↓</span>
+                </a>
+              </div>
+            </article>
+          </div>
+        </section>
+
         <section id="updates" class="updates section" aria-labelledby="updates-title">
           <div>
             <p class="eyebrow">Release channel</p>
@@ -129,6 +255,7 @@
           </div>
           <a class="button primary" href="mailto:hello@smartmigrate.example?subject=Smart%20Migrate%20release%20updates">Request release updates <span aria-hidden="true">↗</span></a>
         </section>
+
       </main>
 
       <footer>

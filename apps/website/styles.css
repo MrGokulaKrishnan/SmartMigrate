@@ -95,6 +95,39 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 footer .brand { color: var(--sm-text-1); }
 footer p { margin: 0; }
 .footer-mark { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 5px; color: white; background: var(--sm-gradient-brand); font-size: .65rem; }
+
+/* Downloads Section */
+.os-detect-banner { display: inline-flex; align-items: center; gap: .6rem; padding: .55rem .95rem; border-radius: 99px; font-size: .78rem; color: var(--sm-text-2); justify-self: end; }
+.download-featured { margin-bottom: 2.5rem; padding: 2.2rem; border-radius: 14px 4px 14px 4px; border-color: var(--sm-glass-border-active); background: linear-gradient(135deg, rgba(53,42,104,.85), rgba(13,11,31,.75)); }
+.featured-badge { display: inline-block; padding: .3rem .6rem; border-radius: 99px; background: rgba(122,102,240,.25); border: 1px solid var(--sm-300); color: var(--sm-200); font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .8rem; }
+.featured-copy h3 { font-size: 1.8rem; margin: .4rem 0 .7rem; }
+.featured-copy p { color: var(--sm-text-2); font-size: .92rem; line-height: 1.6; max-width: 780px; }
+.featured-meta { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 1.2rem 0; font-size: .8rem; color: var(--sm-text-2); }
+.featured-meta strong { color: var(--sm-text-1); font-weight: 600; }
+.hash-row { margin: 1rem 0 1.5rem; }
+.hash-row code, .card-hash code { display: block; padding: .5rem .75rem; background: rgba(0,0,0,.5); border: 1px solid rgba(189,180,255,.14); border-radius: 6px; font-family: monospace; font-size: .73rem; color: var(--sm-200); word-break: break-all; }
+.featured-actions { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; }
+.build-badge { font-size: .72rem; color: var(--sm-text-3); }
+
+.platform-filter { display: flex; gap: .6rem; margin-bottom: 2rem; }
+.filter-btn { padding: .5rem 1rem; border: 1px solid var(--sm-glass-border); border-radius: 8px 3px 8px 3px; background: rgba(255,255,255,.03); color: var(--sm-text-2); cursor: pointer; font-size: .8rem; font-weight: 600; transition: all .18s ease; }
+.filter-btn:hover { color: var(--sm-text-1); background: rgba(255,255,255,.07); }
+.filter-btn.active { border-color: var(--sm-glass-border-active); background: var(--sm-gradient-brand); color: #fff; box-shadow: 0 4px 18px rgba(79,55,195,.3); }
+
+.download-matrix { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; }
+.download-card { padding: 1.8rem; border-radius: 14px 4px 14px 4px; display: flex; flex-direction: column; justify-content: space-between; }
+.card-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+.platform-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 10px 3px 10px 3px; font-size: 1.3rem; background: rgba(79,55,195,.18); border: 1px solid var(--sm-line-strong); color: var(--sm-200); }
+.card-head h3 { margin: 0; font-size: 1.2rem; }
+.file-format { font-size: .72rem; color: var(--sm-text-3); font-family: monospace; }
+.download-card p { font-size: .82rem; color: var(--sm-text-2); line-height: 1.6; margin-bottom: 1.2rem; }
+.card-meta { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin: 0 0 1.2rem; padding: .8rem; background: rgba(0,0,0,.3); border-radius: 8px; font-size: .75rem; }
+.card-meta dt { color: var(--sm-text-3); margin-bottom: .2rem; }
+.card-meta dd { margin: 0; color: var(--sm-text-1); font-weight: 600; }
+.card-hash { margin-bottom: 1.4rem; }
+.card-hash small { display: block; color: var(--sm-text-3); font-size: .68rem; margin-bottom: .3rem; }
+.full-width { width: 100%; justify-content: center; }
+
 @keyframes sweep { 0%, 55% { transform: rotate(27deg) translateX(-100%); } 75%, 100% { transform: rotate(27deg) translateX(100%); } }
 @keyframes ambient-drift { from { transform: translate3d(-3%, -2%, 0) scale(.96); } to { transform: translate3d(5%, 3%, 0) scale(1.06); } }
 @keyframes orb-float { from { transform: translate3d(-10px, -8px, 0) scale(.97); } to { transform: translate3d(12px, 8px, 0) scale(1.04); } }

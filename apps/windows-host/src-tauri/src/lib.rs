@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::{Manager, Window};
+use tauri::Window;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -53,10 +53,19 @@ function App() {
   const handleMaximize = () => invoke("toggle_maximize").catch(() => {});
   const handleClose = () => invoke("close_window").catch(() => {});
 
+  const [showIntro, setShowIntro] = useState(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return false;
+    }
+    return true;
+  });
+
   return (
     <main className="app-frame">
+      {showIntro && <StartupIntro onComplete={() => setShowIntro(false)} />}
       <div className="ambient ambient-one" aria-hidden="true" />
       <div className="ambient ambient-two" aria-hidden="true" />
+
 
       <header
         className="titlebar glass-nav"
@@ -191,4 +200,71 @@ function UnavailablePanel({ destination, onUnavailable }: { destination: Destina
   );
 }
 
+function StartupIntro({ onComplete }: { onComplete: () => void }) {
+  const [phase, setPhase] = useState<"black" | "glow" | "emblem" | "text" | "dissolve">("black");
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      onComplete();
+      return;
+    }
+
+    const t1 = setTimeout(() => setPhase("glow"), 300);
+    const t2 = setTimeout(() => setPhase("emblem"), 800);
+    const t3 = setTimeout(() => setPhase("text"), 1400);
+    const t4 = setTimeout(() => setPhase("dissolve"), 2000);
+    const t5 = setTimeout(() => onComplete(), 2400);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+      clearTimeout(t5);
+    };
+  }, [onComplete]);
+
+  return (
+    <div
+      className={`startup-intro ${phase === "dissolve" ? "dissolve" : ""}`}
+      onClick={onComplete}
+      role="presentation"
+    >
+      <div className="intro-stars" aria-hidden="true" />
+      <div className={`intro-glow ${phase !== "black" ? "visible" : ""}`} aria-hidden="true" />
+
+      <div className="intro-stage">
+        <div className={`intro-emblem ${phase === "emblem" || phase === "text" || phase === "dissolve" ? "visible" : ""}`}>
+          <div className="intro-emblem-mark">
+            <span>SM</span>
+            <div className="intro-arrows" aria-hidden="true">
+              <span className="arrow-left">‹</span>
+              <span className="arrow-right">›</span>
+            </div>
+          </div>
+        </div>
+
+        <div className={`intro-typography ${phase === "text" || phase === "dissolve" ? "visible" : ""}`}>
+          <h2>SMART MIGRATE</h2>
+          <div className="intro-sweep" aria-hidden="true" />
+          <p>Powered by MigRoute</p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="intro-skip"
+        onClick={(e) => {
+          e.stopPropagation();
+          onComplete();
+        }}
+        aria-label="Skip startup animation"
+      >
+        Skip ↗
+      </button>
+    </div>
+  );
+}
+
 createRoot(document.getElementById("root")!).render(<App />);
+
