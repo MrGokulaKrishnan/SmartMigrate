@@ -8,3 +8,7 @@ license = "UNLICENSED"
 [lib]
 name = "migroute"
 path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+

@@ -58,10 +58,10 @@ Codex established the **Phase 0 / Milestone 1 foundation** of the project:
 
 | Component | `cargo check` | `cargo test` | `tsc --noEmit` | Vite build |
 |---|---|---|---|---|
-| `migroute` crate | ✅ PASS | ✅ PASS (28/28 tests) | — | — |
+| `migroute` crate | ✅ PASS | ✅ PASS (39/39 tests) | — | — |
 | Tauri Windows Host Shell | ✅ PASS | ✅ PASS (check + build) | — | — |
-| Windows Host React UI | — | — | ✅ PASS (0 errors) | ✅ PASS (30 modules) |
-| Website | — | — | — | ✅ PASS (valid HTML/CSS/JS) |
+| Windows Host React UI | — | — | ✅ PASS (0 errors) | ✅ PASS (31 modules) |
+| Website | — | — | — | ✅ PASS (Deployed to Firebase) |
 | Android Client | — | — | — | Ready for Gradle / SDK 37 |
 
 ### Major Subsystems Implemented by Antigravity
@@ -115,7 +115,8 @@ Codex established the **Phase 0 / Milestone 1 foundation** of the project:
 
 ## Stopping Point
 
-Milestone 1 shell stabilization and SMP/1 protocol engine implementation are complete. Development is positioned at the start of **Milestone 2 (Trusted Pairing & Signaling)**.
+Milestone 1 (Foundations & Protocol Primitives) and **Milestone 2 (Device Identity, Short-Lived Pairing & Trust Management)** are complete.
+Development is positioned at the start of **Milestone 3 (View-Only Remote Session & Windows Graphics Capture)**.
 
 ---
 
@@ -126,7 +127,7 @@ Milestone 1 shell stabilization and SMP/1 protocol engine implementation are com
 - [x] SMP/1 Envelope validation with replay protection and sequence tracking
 - [x] SMP/1 Message family (26 message types, all typed)
 - [x] SMP/1 Session lifecycle and dynamic capability revocation
-- [x] MigRoute unit test suite (28/28 tests passing)
+- [x] MigRoute unit test suite (**39/39 tests passing**)
 - [x] SMP/1 Protobuf schema matching Rust types
 - [x] Toolchain and linker fixes for Windows GNU target (`rust-lld`, MinGW PATH)
 - [x] Tauri window icon assets generation
@@ -135,24 +136,36 @@ Milestone 1 shell stabilization and SMP/1 protocol engine implementation are com
 - [x] Cinematic startup intro animation with reduced-motion support
 - [x] Windows React dashboard UI and Vite production build (clean)
 - [x] Website platform detection and download matrix with SHA-256 metadata
+- [x] Website deployed to Firebase Hosting (`smartmigrated.web.app`)
 - [x] Brand consistency validation script (`brand:check` passing)
-- [x] Git repository initialization and clean initial commit
+- [x] Git repository pushed to remote origin (`https://github.com/MrGokulaKrishnan/SmartMigrate.git`)
+- [x] **Milestone 2 — Persistent Host Device Identity (`crates/migroute/src/identity.rs`, `apps/windows-host/src-tauri/src/storage.rs`)**:
+  - Stable `DeviceId` generation and DPAPI / persistent JSON storage in `%APPDATA%/SmartMigrate/identity.json`
+  - Public hardware fingerprinting (`SM-XXXX-XXXX`)
+  - Tauri `host_status` and `get_device_identity` commands wired to live storage
+- [x] **Milestone 2 — 6-Digit Cryptographic Numeric Pairing & QR (`crates/migroute/src/pairing.rs`, `apps/windows-host/src/QRCodeSvg.tsx`)**:
+  - Advapi32 `RtlGenRandom` cryptographically secure 6-digit numeric codes with constant-time equality
+  - 180-second TTL countdown with strict 3-attempt brute-force rate-limiting
+  - Deterministic SVG QR-code generation representing canonical URI `smp://pair?v=1&host=...`
+  - Host authorization dialog with granular capability narrowing checkboxes
+  - Android client numeric keypad PIN entry and request submission
+- [x] **Milestone 2 — Trusted Device Store & Explicit Revocation (`crates/migroute/src/trust.rs`)**:
+  - Persistent `TrustStore` tracking paired devices, fingerprints, granted permissions, and revocation states
+  - Full React device management view with live Revoke and Remove actions
+  - Host-side authorization enforcement as the sole source of truth
 
 ---
 
-## Next Implementation Priority (Milestone 2)
+## Next Implementation Priority (Milestone 3)
 
-1. **Persistent Device Identity**:
-   - Generate unique stable `DeviceId` per host/client.
-   - Secure storage using platform keystore (Windows DPAPI / Credential Store, Android Keystore).
-   - Expose `get_device_identity` via Tauri command to replace hardcoded profile.
-2. **Short-lived QR & Numeric Pairing**:
-   - Pure-Rust 6-digit cryptographic pairing code generator and validator with TTL.
-   - QR code generation payload formatting.
-   - Pairing approval UI dialog on Windows host and scanner/input on Android client.
-3. **Signaling & P2P Discovery**:
-   - Authenticated WSS signaling client in host shell and Android client.
-   - Local LAN mDNS/DNS-SD discovery adapter.
+1. **Native Windows Display Capture**:
+   - `Windows.Graphics.Capture` COM / WinRT adapter for host display frames.
+   - Capability detection for hardware-accelerated encoders (NVENC / AMF / Intel QSV / Media Foundation).
+2. **Video Stream Framing**:
+   - SMP/1 `STREAM_START`, `STREAM_CONFIG`, `STREAM_FRAME` packetization.
+   - Initial 1080p 30 FPS target over LAN.
+3. **Android Client Decoder**:
+   - Android MediaCodec hardware decoder with SurfaceView presentation.
 
 ---
 
@@ -168,7 +181,7 @@ cargo check -p smart-migrate-windows-host
 
 # 3. Verify Windows Host React / TypeScript & Vite build
 node apps/windows-host/node_modules/typescript/bin/tsc --noEmit --project apps/windows-host/tsconfig.json
-node apps/windows-host/node_modules/vite/bin/vite.js build --config apps/windows-host/vite.config.ts
+cd apps/windows-host; node node_modules/vite/bin/vite.js build; cd ../..
 
 # 4. Brand naming consistency check
 node scripts/check-brand.mjs

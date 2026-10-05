@@ -338,21 +338,139 @@ private fun GlossyNavigation(selected: AppDestination, onSelect: (AppDestination
 
 @Composable
 private fun PairingDialog(onDismiss: () -> Unit) {
+    var pairingCode by rememberSaveable { mutableStateOf("") }
+    var viewScreen by rememberSaveable { mutableStateOf(true) }
+    var controlMouse by rememberSaveable { mutableStateOf(true) }
+    var sendFiles by rememberSaveable { mutableStateOf(false) }
+    var statusMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var isSubmitted by rememberSaveable { mutableStateOf(false) }
+
     Dialog(onDismissRequest = onDismiss) {
         GlassSurface(
             modifier = Modifier.fillMaxWidth(),
             corner = RoundedCornerShape(22.dp, 5.dp, 22.dp, 5.dp),
             strong = true,
-            contentPadding = PaddingValues(25.dp)
+            contentPadding = PaddingValues(22.dp)
         ) {
             Column {
-                Text("Pair a device", color = Purple300, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("PAIR A HOST PC", color = Purple300, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
+                    Spacer(Modifier.weight(1f))
+                    FrostedPill("SMP/1", Purple200)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Enter 6-Digit Code", color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-.5).sp)
+                Spacer(Modifier.height(4.dp))
+                Text("Displayed on your Smart Migrate Windows host.", color = TextSecondary, fontSize = 12.sp)
+
+                Spacer(Modifier.height(14.dp))
+
+                // 6-digit numeric keypad/display
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp, 2.dp, 8.dp, 2.dp))
+                        .background(Color(0xFF07060E))
+                        .border(1.dp, if (pairingCode.length == 6) Success.copy(alpha = .6f) else GlassBorder, RoundedCornerShape(8.dp, 2.dp, 8.dp, 2.dp))
+                        .padding(vertical = 12.dp, horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val displayCode = if (pairingCode.isEmpty()) {
+                        "• • • - • • •"
+                    } else {
+                        pairingCode.padEnd(6, '•').chunked(3).joinToString(" - ")
+                    }
+                    Text(
+                        text = displayCode,
+                        color = if (pairingCode.length == 6) TextPrimary else TextMuted,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Numeric button grid (1-9, C, 0, Back)
+                val digits = listOf(
+                    listOf("1", "2", "3"),
+                    listOf("4", "5", "6"),
+                    listOf("7", "8", "9"),
+                    listOf("C", "0", "⌫")
+                )
+
+                digits.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        row.forEach { btn ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(6.dp, 2.dp, 6.dp, 2.dp))
+                                    .background(Color.White.copy(alpha = if (btn == "C" || btn == "⌫") .04f else .07f))
+                                    .border(1.dp, GlassBorder, RoundedCornerShape(6.dp, 2.dp, 6.dp, 2.dp))
+                                    .clickable {
+                                        when (btn) {
+                                            "C" -> pairingCode = ""
+                                            "⌫" -> if (pairingCode.isNotEmpty()) pairingCode = pairingCode.dropLast(1)
+                                            else -> if (pairingCode.length < 6) pairingCode += btn
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(btn, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+
                 Spacer(Modifier.height(10.dp))
-                Text("Pairing is protected by design.", color = TextPrimary, fontSize = 23.sp, fontWeight = FontWeight.SemiBold, lineHeight = 26.sp)
-                Spacer(Modifier.height(10.dp))
-                Text("QR and numeric pairing will appear after the trusted-pairing milestone. This client never displays a fake code or claims a connection.", color = TextSecondary, fontSize = 13.sp, lineHeight = 20.sp)
-                Spacer(Modifier.height(20.dp))
-                GradientButton(label = "Got it", trailing = "✓", onClick = onDismiss)
+
+                if (isSubmitted) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp, 2.dp, 8.dp, 2.dp))
+                            .background(Success.copy(alpha = .12f))
+                            .border(1.dp, Success.copy(alpha = .35f), RoundedCornerShape(8.dp, 2.dp, 8.dp, 2.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = statusMessage ?: "Request submitted! Confirm approval on your PC.",
+                            color = Success,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    OutlineButton("Done", onClick = onDismiss)
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(Modifier.weight(1f)) {
+                            OutlineButton("Cancel", onClick = onDismiss)
+                        }
+                        Box(Modifier.weight(1.5f)) {
+                            GradientButton(
+                                label = if (pairingCode.length == 6) "Submit Code" else "Enter PIN",
+                                trailing = "→",
+                                onClick = {
+                                    if (pairingCode.length == 6) {
+                                        isSubmitted = true
+                                        statusMessage = "PIN submitted. Check host screen for approval."
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     }

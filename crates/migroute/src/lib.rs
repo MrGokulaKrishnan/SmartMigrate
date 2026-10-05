@@ -12,14 +12,21 @@
 //! - [`message`] — strongly-typed SMP/1 message family
 
 pub mod envelope;
+pub mod identity;
 pub mod message;
+pub mod pairing;
 pub mod session;
+pub mod trust;
 
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
 
 // Re-export primary types at the crate root for ergonomics.
+pub use identity::{DeviceIdentity, DevicePlatform, DeviceRole, IdentityError};
+pub use pairing::{NumericPairingCode, PairingSession, PairingVerificationError};
 pub use session::{Session, SessionError, SessionState};
+pub use trust::{TrustStore, TrustStoreError, TrustedDevice};
 
 pub const ENGINE_NAME: &str = "MigRoute";
 pub const PROTOCOL_VERSION: u16 = 1;
@@ -33,7 +40,8 @@ pub const PROTOCOL_VERSION: u16 = 1;
 ///
 /// These constraints ensure the ID is safe across all wire formats (JSON, protobuf,
 /// URL path segments, log entries) without escaping.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct DeviceId(String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,7 +102,8 @@ impl fmt::Display for DeviceId {
 /// Nothing is implicitly granted.  Each permission must be explicitly requested
 /// during pairing and independently approved by the host.  The host may narrow
 /// (but never widen) the set of granted permissions at decision time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SessionPermission {
     ViewScreen,
     ControlMouse,
@@ -121,7 +130,8 @@ impl fmt::Display for SessionPermission {
 
 // ─── PairingRequest ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PairingState {
     Requested,
     AwaitingHostApproval,
@@ -130,7 +140,7 @@ pub enum PairingState {
     Expired,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PairingRequest {
     pub requester: DeviceId,
     pub host: DeviceId,

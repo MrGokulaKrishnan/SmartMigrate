@@ -16,3 +16,5 @@ target/
 *.pem
 *.key
 .pnpm-store/
+.firebase/
+
