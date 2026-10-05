@@ -137,6 +137,7 @@ All subsystem builds are verified, passing unit test suites, and deployed to Fir
 - [x] Windows React dashboard UI and Vite production build (clean)
 - [x] Website platform detection and download matrix with SHA-256 metadata
 - [x] Website deployed to Firebase Hosting (`smartmigrated.web.app`)
+- [x] Website redesigned with AMOLED Black (#000000) dark theme, professional typography (Plus Jakarta Sans, Chakra Petch, JetBrains Mono), clean vector SVG icons (zero emojis), and bespoke Smart Migrate SVG favicon.
 - [x] Brand consistency validation script (`brand:check` passing)
 - [x] Git repository pushed to remote origin (`https://github.com/MrGokulaKrishnan/SmartMigrate.git`)
 - [x] **Milestone 2 — Persistent Host Device Identity (`crates/migroute/src/identity.rs`, `apps/windows-host/src-tauri/src/storage.rs`)**:

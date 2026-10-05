@@ -3,11 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Smart Migrate — secure, explicit-consent cross-device connectivity." />
-    <meta name="theme-color" content="#05050a" />
+    <meta name="description" content="Smart Migrate — secure, explicit-consent cross-device connectivity powered by MigRoute." />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark" />
     <title>Smart Migrate — Connect. Control. Migrate.</title>
-    <link rel="stylesheet" href="../../shared/design-tokens/tokens.css" />
-    <link rel="stylesheet" href="../../shared/design-tokens/liquid-glass.css" />
+
+    <!-- Unique Favicon -->
+    <link rel="icon" type="image/svg+xml" href="public/favicon.svg" />
+    <link rel="alternate icon" href="favicon.svg" />
+    <link rel="apple-touch-icon" href="public/favicon.svg" />
+
+    <!-- Style Tokens & Liquid Glass -->
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="liquid-glass.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -24,7 +32,13 @@
           <a href="#principles">Security</a>
           <a href="#roadmap">Roadmap</a>
           <a href="#downloads">Downloads</a>
-          <a class="text-action" href="#updates">Release updates <span aria-hidden="true">↗</span></a>
+          <a class="text-action" href="#updates">
+            <span>Release updates</span>
+            <svg class="icon-arrow-ne" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="2.5" y1="9.5" x2="9.5" y2="2.5"></line>
+              <polyline points="4 2.5 9.5 2.5 9.5 8"></polyline>
+            </svg>
+          </a>
         </nav>
       </header>
 
@@ -35,7 +49,13 @@
             <h1 id="hero-title">Connect on your terms.<br /><em>Move with confidence.</em></h1>
             <p class="lede">Smart Migrate is building a security-first way to pair trusted devices for remote assistance, screen streaming, and future resumable transfers.</p>
             <div class="hero-actions">
-              <a class="button primary" href="#roadmap">Explore the roadmap <span aria-hidden="true">↓</span></a>
+              <a class="button primary" href="#roadmap">
+                <span>Explore the roadmap</span>
+                <svg class="icon-arrow-down" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="7" y1="2" x2="7" y2="12"></line>
+                  <polyline points="3.5 8.5 7 12 10.5 8.5"></polyline>
+                </svg>
+              </a>
               <a class="button secondary" href="#principles">How we protect access</a>
             </div>
             <dl class="trust-line" aria-label="Platform principles">
@@ -63,7 +83,13 @@
           <div class="route-grid">
             <article class="route-card card-device">
               <div class="route-number">01</div>
-              <div class="device-icon desktop" aria-hidden="true"><span></span></div>
+              <div class="device-icon desktop" aria-hidden="true">
+                <svg class="route-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+                  <line x1="8" y1="21" x2="16" y2="21"></line>
+                  <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+              </div>
               <h3>Windows host</h3>
               <p>The PC remains in control. It decides whether a device, session, and requested capability are approved.</p>
               <span class="tag">Native boundary</span>
@@ -79,7 +105,12 @@
             <div class="route-line" aria-hidden="true"><span></span></div>
             <article class="route-card card-device">
               <div class="route-number">03</div>
-              <div class="device-icon phone" aria-hidden="true"><span></span></div>
+              <div class="device-icon phone" aria-hidden="true">
+                <svg class="route-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="5" y="2" width="14" height="20" rx="3"></rect>
+                  <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                </svg>
+              </div>
               <h3>Trusted client</h3>
               <p>An approved Windows or Android device gets only the access that the host explicitly grants.</p>
               <span class="tag">Explicit consent</span>
@@ -151,7 +182,11 @@
               </div>
               <div class="featured-actions">
                 <a class="button primary" id="featured-action-btn" href="#download-matrix">
-                  <span id="featured-btn-text">Download for Windows (.exe)</span> <span aria-hidden="true">↓</span>
+                  <span id="featured-btn-text">Download for Windows (.exe)</span>
+                  <svg class="icon-arrow-down" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="7" y1="2" x2="7" y2="12"></line>
+                    <polyline points="3.5 8.5 7 12 10.5 8.5"></polyline>
+                  </svg>
                 </a>
                 <span class="build-badge">Local development preview</span>
               </div>
@@ -168,7 +203,11 @@
             <!-- Windows EXE -->
             <article class="download-card sm-glass" data-platform="windows">
               <div class="card-head">
-                <div class="platform-icon windows" aria-hidden="true">⊞</div>
+                <div class="platform-icon windows" aria-hidden="true">
+                  <svg class="platform-vector" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2 3.55L10.08 2.45V11.23H2V3.55ZM11.45 2.25L22 0.8V11.23H11.45V2.25ZM2 12.63H10.08V21.45L2 20.35V12.63ZM11.45 12.63H22V23.1L11.45 21.65V12.63Z"></path>
+                  </svg>
+                </div>
                 <div>
                   <h3>Windows Installer</h3>
                   <span class="file-format">.exe (NSIS Setup)</span>
@@ -187,7 +226,11 @@
               </div>
               <div class="card-action">
                 <a class="button secondary full-width" href="#build-instructions" onclick="showBuildModal('Windows EXE')">
-                  Download .exe <span aria-hidden="true">↓</span>
+                  <span>Download .exe</span>
+                  <svg class="icon-arrow-down" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="7" y1="2" x2="7" y2="12"></line>
+                    <polyline points="3.5 8.5 7 12 10.5 8.5"></polyline>
+                  </svg>
                 </a>
               </div>
             </article>
@@ -195,7 +238,11 @@
             <!-- Windows MSI -->
             <article class="download-card sm-glass" data-platform="windows">
               <div class="card-head">
-                <div class="platform-icon windows" aria-hidden="true">⊞</div>
+                <div class="platform-icon windows" aria-hidden="true">
+                  <svg class="platform-vector" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2 3.55L10.08 2.45V11.23H2V3.55ZM11.45 2.25L22 0.8V11.23H11.45V2.25ZM2 12.63H10.08V21.45L2 20.35V12.63ZM11.45 12.63H22V23.1L11.45 21.65V12.63Z"></path>
+                  </svg>
+                </div>
                 <div>
                   <h3>Windows Enterprise</h3>
                   <span class="file-format">.msi (Windows Installer)</span>
@@ -214,7 +261,11 @@
               </div>
               <div class="card-action">
                 <a class="button secondary full-width" href="#build-instructions" onclick="showBuildModal('Windows MSI')">
-                  Download .msi <span aria-hidden="true">↓</span>
+                  <span>Download .msi</span>
+                  <svg class="icon-arrow-down" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="7" y1="2" x2="7" y2="12"></line>
+                    <polyline points="3.5 8.5 7 12 10.5 8.5"></polyline>
+                  </svg>
                 </a>
               </div>
             </article>
@@ -222,7 +273,11 @@
             <!-- Android APK -->
             <article class="download-card sm-glass" data-platform="android">
               <div class="card-head">
-                <div class="platform-icon android" aria-hidden="true">🤖</div>
+                <div class="platform-icon android" aria-hidden="true">
+                  <svg class="platform-vector" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.6 9.48l1.84-3.18a.5.5 0 0 0-.18-.68.5.5 0 0 0-.69.18L16.7 8.98A11.3 11.3 0 0 0 12 8c-1.74 0-3.37.37-4.7 1L5.43 5.8a.5.5 0 0 0-.69-.18.5.5 0 0 0-.18.68l1.84 3.18C3.58 11.02 1.7 13.78 1.5 17h21c-.2-3.22-2.08-5.98-4.9-7.52zM7 13.5a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"></path>
+                  </svg>
+                </div>
                 <div>
                   <h3>Android Client</h3>
                   <span class="file-format">.apk (Universal Package)</span>
@@ -241,7 +296,11 @@
               </div>
               <div class="card-action">
                 <a class="button secondary full-width" href="#build-instructions" onclick="showBuildModal('Android APK')">
-                  Download .apk <span aria-hidden="true">↓</span>
+                  <span>Download .apk</span>
+                  <svg class="icon-arrow-down" width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="7" y1="2" x2="7" y2="12"></line>
+                    <polyline points="3.5 8.5 7 12 10.5 8.5"></polyline>
+                  </svg>
                 </a>
               </div>
             </article>
@@ -253,13 +312,22 @@
             <p class="eyebrow">Release channel</p>
             <h2 id="updates-title">Follow the build—not a promise.</h2>
           </div>
-          <a class="button primary" href="mailto:hello@smartmigrate.example?subject=Smart%20Migrate%20release%20updates">Request release updates <span aria-hidden="true">↗</span></a>
+          <a class="button primary" href="mailto:hello@smartmigrate.example?subject=Smart%20Migrate%20release%20updates">
+            <span>Request release updates</span>
+            <svg class="icon-arrow-ne" width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="2.5" y1="9.5" x2="9.5" y2="2.5"></line>
+              <polyline points="4 2.5 9.5 2.5 9.5 8"></polyline>
+            </svg>
+          </a>
         </section>
 
       </main>
 
       <footer>
-        <a class="brand" href="#top"><span class="footer-mark">SM</span><span>Smart Migrate</span></a>
+        <a class="brand" href="#top">
+          <span class="footer-mark">SM</span>
+          <span>Smart Migrate</span>
+        </a>
         <p>Connect. Control. Migrate.</p>
         <p>© <span id="year"></span> Smart Migrate</p>
       </footer>

@@ -1,0 +1,45 @@
+:root {
+  color-scheme: dark;
+  --sm-black: #000000;
+  --sm-surface-0: #000000;
+  --sm-surface-1: #050508;
+  --sm-surface-2: #0a0914;
+  --sm-surface-3: #120e24;
+  --sm-line: #1c1736;
+  --sm-line-strong: #4f3eb5;
+
+  --sm-bevel: #7665b5;
+  --sm-200: #c4baff;
+  --sm-300: #9e8eff;
+  --sm-400: #7d69f6;
+  --sm-500: #553cd4;
+  --sm-600: #3f27b8;
+  --sm-700: #3922a6;
+  --sm-800: #341f92;
+  --sm-900: #291873;
+
+  --sm-text-1: #ffffff;
+  --sm-text-2: #c5bfdc;
+  --sm-text-3: #827b9e;
+  --sm-success: #3ddc97;
+  --sm-warning: #ffb84d;
+  --sm-danger: #ff5c7a;
+  --sm-info: #5cc8ff;
+
+  --sm-gradient-brand: linear-gradient(145deg, #7d69f6 0%, #4a34c2 45%, #2e1a7e 100%);
+  --sm-gradient-glow: linear-gradient(135deg, #9e8eff 0%, #553cd4 100%);
+  --sm-gradient-panel: linear-gradient(180deg, #0b0914 0%, #000000 100%);
+  --sm-edge-light: inset 1px 1px 0 rgba(255, 255, 255, 0.12);
+  --sm-radius: 8px;
+
+  /* AMOLED Liquid-glass foundation */
+  --sm-glass-fill: linear-gradient(145deg, rgba(16, 12, 32, 0.65) 0%, rgba(3, 2, 8, 0.82) 100%);
+  --sm-glass-fill-strong: linear-gradient(145deg, rgba(24, 18, 50, 0.82) 0%, rgba(5, 4, 12, 0.94) 100%);
+  --sm-glass-highlight: linear-gradient(112deg, rgba(255, 255, 255, 0.16) 0%, rgba(189, 180, 255, 0.05) 32%, transparent 64%);
+  --sm-glass-border: rgba(189, 180, 255, 0.14);
+  --sm-glass-border-active: rgba(158, 142, 255, 0.48);
+  --sm-glass-shadow: 0 24px 64px rgba(0, 0, 0, 0.88), 0 0 36px rgba(125, 105, 246, 0.09);
+  --sm-glass-blur: 20px;
+  --sm-glass-blur-strong: 32px;
+  --sm-glass-saturation: 155%;
+}

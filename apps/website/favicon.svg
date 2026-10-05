@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0e0a1e" />
+      <stop offset="100%" stop-color="#000000" />
+    </linearGradient>
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9b8cff" />
+      <stop offset="50%" stop-color="#7a66f0" />
+      <stop offset="100%" stop-color="#3ddc97" />
+    </linearGradient>
+    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c4b5fd" />
+      <stop offset="45%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#3ddc97" />
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7a66f0" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#3ddc97" stop-opacity="0" />
+    </linearGradient>
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- AMOLED Base Container -->
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#bgGrad)" stroke="url(#borderGrad)" stroke-width="1.8" />
+
+  <!-- Ambient Glow -->
+  <circle cx="32" cy="32" r="18" fill="url(#glowGrad)" />
+
+  <!-- Unique Smart Migrate Chevron & Path Mark -->
+  <!-- Left Host Node -->
+  <circle cx="17" cy="32" r="3.2" fill="#9b8cff" filter="url(#neonGlow)" />
+  <circle cx="17" cy="32" r="1.5" fill="#ffffff" />
+
+  <!-- Right Target Client Node -->
+  <circle cx="47" cy="32" r="3.2" fill="#3ddc97" filter="url(#neonGlow)" />
+  <circle cx="47" cy="32" r="1.5" fill="#ffffff" />
+
+  <!-- Migration Trajectory Route & Chevron (S-M Flow) -->
+  <path d="M 21 32 C 26 23, 30 23, 34 32 C 38 41, 42 41, 47 32" 
+        fill="none" 
+        stroke="url(#brandGrad)" 
+        stroke-width="3" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"
+        filter="url(#neonGlow)" />
+
+  <!-- Central Dynamic Directional Chevrons -->
+  <path d="M 28 27 L 33 32 L 28 37" 
+        fill="none" 
+        stroke="#ffffff" 
+        stroke-width="2.2" 
+        stroke-linecap="round" 
+        stroke-linejoin="round" />
+
+  <path d="M 34 27 L 39 32 L 34 37" 
+        fill="none" 
+        stroke="#3ddc97" 
+        stroke-width="2.2" 
+        stroke-linecap="round" 
+        stroke-linejoin="round" />
+</svg>
