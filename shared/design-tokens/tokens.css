@@ -1,0 +1,45 @@
+:root {
+  --sm-black: #000000;
+  --sm-surface-0: #05050a;
+  --sm-surface-1: #0b0a14;
+  --sm-surface-2: #12101f;
+  --sm-surface-3: #1a172b;
+  --sm-line: #2a2548;
+  --sm-line-strong: #6e61c4;
+
+  --sm-bevel: #7665b5;
+  --sm-200: #bdb4ff;
+  --sm-300: #9b8cff;
+  --sm-400: #7a66f0;
+  --sm-500: #4f37c3;
+  --sm-600: #3c24ae;
+  --sm-700: #38229e;
+  --sm-800: #352085;
+  --sm-900: #301e6d;
+
+  --sm-text-1: #f4f2ff;
+  --sm-text-2: #b8b3d6;
+  --sm-text-3: #8a84b0;
+  --sm-success: #3ddc97;
+  --sm-warning: #ffb84d;
+  --sm-danger: #ff5c7a;
+  --sm-info: #5cc8ff;
+
+  --sm-gradient-brand: linear-gradient(165deg, #4f37c3 0%, #3c24ae 30%, #352085 70%, #301e6d 100%);
+  --sm-gradient-glow: linear-gradient(135deg, #7a66f0 0%, #4f37c3 100%);
+  --sm-gradient-panel: linear-gradient(180deg, #12101f 0%, #0b0a14 100%);
+  --sm-edge-light: inset 1px 1px 0 rgba(118, 101, 181, 0.55);
+  --sm-radius: 8px;
+
+  /* Liquid-glass foundation. These retain the dark violet identity while
+     allowing the application and website to share translucent surfaces. */
+  --sm-glass-fill: linear-gradient(135deg, rgba(37, 31, 71, 0.68), rgba(11, 10, 24, 0.42));
+  --sm-glass-fill-strong: linear-gradient(135deg, rgba(53, 42, 104, 0.78), rgba(13, 11, 31, 0.66));
+  --sm-glass-highlight: linear-gradient(112deg, rgba(255, 255, 255, 0.21) 0%, rgba(189, 180, 255, 0.06) 28%, rgba(255, 255, 255, 0) 58%);
+  --sm-glass-border: rgba(189, 180, 255, 0.22);
+  --sm-glass-border-active: rgba(155, 140, 255, 0.55);
+  --sm-glass-shadow: 0 22px 60px rgba(0, 0, 0, 0.32), 0 0 42px rgba(79, 55, 195, 0.12);
+  --sm-glass-blur: 18px;
+  --sm-glass-blur-strong: 28px;
+  --sm-glass-saturation: 145%;
+}

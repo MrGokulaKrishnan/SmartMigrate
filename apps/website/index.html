@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Smart Migrate — secure, explicit-consent cross-device connectivity." />
+    <meta name="theme-color" content="#05050a" />
+    <title>Smart Migrate — Connect. Control. Migrate.</title>
+    <link rel="stylesheet" href="../../shared/design-tokens/tokens.css" />
+    <link rel="stylesheet" href="../../shared/design-tokens/liquid-glass.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div class="site-shell">
+      <header class="topbar sm-glass-nav" aria-label="Primary navigation">
+        <a class="brand" href="#top" aria-label="Smart Migrate home">
+          <img src="public/media/smart-migrate-logo.jpg" alt="Smart Migrate SM logo" />
+          <span>Smart Migrate</span>
+        </a>
+        <button class="menu-button" aria-controls="navigation" aria-expanded="false">Menu</button>
+        <nav id="navigation" class="navigation" aria-label="Main navigation">
+          <a href="#platform">Platform</a>
+          <a href="#principles">Security</a>
+          <a href="#roadmap">Roadmap</a>
+          <a class="text-action" href="#updates">Release updates <span aria-hidden="true">↗</span></a>
+        </nav>
+      </header>
+
+      <main id="main">
+        <section id="top" class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Architecture foundation</p>
+            <h1 id="hero-title">Connect on your terms.<br /><em>Move with confidence.</em></h1>
+            <p class="lede">Smart Migrate is building a security-first way to pair trusted devices for remote assistance, screen streaming, and future resumable transfers.</p>
+            <div class="hero-actions">
+              <a class="button primary" href="#roadmap">Explore the roadmap <span aria-hidden="true">↓</span></a>
+              <a class="button secondary" href="#principles">How we protect access</a>
+            </div>
+            <dl class="trust-line" aria-label="Platform principles">
+              <div><dt>01</dt><dd>Host-approved access</dd></div>
+              <div><dt>02</dt><dd>Granular permissions</dd></div>
+              <div><dt>03</dt><dd>Native security boundaries</dd></div>
+            </dl>
+          </div>
+          <div class="hero-visual" aria-label="Smart Migrate product identity">
+            <div class="orb orb-one"></div>
+            <div class="orb orb-two"></div>
+            <div class="logo-stage sm-glass">
+              <div class="light-sweep" aria-hidden="true"></div>
+              <img src="public/media/smart-migrate-logo.jpg" alt="" />
+            </div>
+            <div class="engine-chip"><span class="pulse" aria-hidden="true"></span> Powered by <strong>MigRoute</strong></div>
+          </div>
+        </section>
+
+        <section id="platform" class="platform section" aria-labelledby="platform-title">
+          <div class="section-heading">
+            <p class="eyebrow">A deliberate route</p>
+            <h2 id="platform-title">One product. Clear responsibility at every step.</h2>
+          </div>
+          <div class="route-grid">
+            <article class="route-card card-device">
+              <div class="route-number">01</div>
+              <div class="device-icon desktop" aria-hidden="true"><span></span></div>
+              <h3>Windows host</h3>
+              <p>The PC remains in control. It decides whether a device, session, and requested capability are approved.</p>
+              <span class="tag">Native boundary</span>
+            </article>
+            <div class="route-line" aria-hidden="true"><span></span></div>
+            <article class="route-card card-engine">
+              <div class="route-number">02</div>
+              <div class="engine-mark" aria-hidden="true">MR</div>
+              <h3>MigRoute engine</h3>
+              <p>Typed pairing state, protocol validation, permission narrowing, and transport-facing policy.</p>
+              <span class="tag active">Authorization first</span>
+            </article>
+            <div class="route-line" aria-hidden="true"><span></span></div>
+            <article class="route-card card-device">
+              <div class="route-number">03</div>
+              <div class="device-icon phone" aria-hidden="true"><span></span></div>
+              <h3>Trusted client</h3>
+              <p>An approved Windows or Android device gets only the access that the host explicitly grants.</p>
+              <span class="tag">Explicit consent</span>
+            </article>
+          </div>
+        </section>
+
+        <section id="principles" class="principles section" aria-labelledby="principles-title">
+          <div class="section-heading compact">
+            <p class="eyebrow">Trust is the feature</p>
+            <h2 id="principles-title">Remote access should never be ambiguous.</h2>
+          </div>
+          <div class="principle-list">
+            <article>
+              <span>01</span>
+              <div><h3>Nothing is silently granted</h3><p>View, mouse, keyboard, files, clipboard, and audio are independently requested and host-approved.</p></div>
+            </article>
+            <article>
+              <span>02</span>
+              <div><h3>Pairing has an expiry</h3><p>Future QR and numeric pairing are designed as short-lived, single-use approvals—not permanent access links.</p></div>
+            </article>
+            <article>
+              <span>03</span>
+              <div><h3>Unfinished features stay unavailable</h3><p>The foundation does not simulate streaming, control, cryptography, or transfer capability before native adapters and security tests exist.</p></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="roadmap" class="roadmap section" aria-labelledby="roadmap-title">
+          <div class="roadmap-panel">
+            <div>
+              <p class="eyebrow">Delivery path</p>
+              <h2 id="roadmap-title">Built in stages. Reviewed at every boundary.</h2>
+            </div>
+            <ol>
+              <li class="complete"><span>Foundation</span><strong>Brand, protocol, MigRoute policy primitives</strong></li>
+              <li><span>Trusted pairing</span><strong>Device identity, short-lived approval, signaling</strong></li>
+              <li><span>View-only session</span><strong>Native capture, video pipeline, Android decode</strong></li>
+              <li><span>Controlled input</span><strong>Explicit permissions, recovery, TURN fallback</strong></li>
+            </ol>
+          </div>
+        </section>
+
+        <section id="updates" class="updates section" aria-labelledby="updates-title">
+          <div>
+            <p class="eyebrow">Release channel</p>
+            <h2 id="updates-title">Follow the build—not a promise.</h2>
+          </div>
+          <a class="button primary" href="mailto:hello@smartmigrate.example?subject=Smart%20Migrate%20release%20updates">Request release updates <span aria-hidden="true">↗</span></a>
+        </section>
+      </main>
+
+      <footer>
+        <a class="brand" href="#top"><span class="footer-mark">SM</span><span>Smart Migrate</span></a>
+        <p>Connect. Control. Migrate.</p>
+        <p>© <span id="year"></span> Smart Migrate</p>
+      </footer>
+    </div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

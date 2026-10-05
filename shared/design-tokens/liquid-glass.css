@@ -1,0 +1,36 @@
+/* Shared liquid-glass primitives for the Smart Migrate website and Tauri UI.
+   Keep text on the opaque-enough fill variants below for readability. */
+.sm-glass {
+  position: relative;
+  border: 1px solid var(--sm-glass-border);
+  background: var(--sm-glass-fill);
+  box-shadow: var(--sm-edge-light), var(--sm-glass-shadow);
+  -webkit-backdrop-filter: blur(var(--sm-glass-blur)) saturate(var(--sm-glass-saturation));
+  backdrop-filter: blur(var(--sm-glass-blur)) saturate(var(--sm-glass-saturation));
+}
+
+.sm-glass::before {
+  position: absolute;
+  inset: 1px 1px auto;
+  height: 46%;
+  border-radius: inherit;
+  background: var(--sm-glass-highlight);
+  content: "";
+  pointer-events: none;
+}
+
+.sm-glass-nav {
+  position: relative;
+  border: 1px solid var(--sm-glass-border);
+  background: linear-gradient(105deg, rgba(22, 17, 50, 0.84), rgba(13, 10, 29, 0.58));
+  box-shadow: var(--sm-edge-light), 0 16px 44px rgba(0, 0, 0, 0.3), 0 0 28px rgba(79, 55, 195, 0.1);
+  -webkit-backdrop-filter: blur(var(--sm-glass-blur-strong)) saturate(160%);
+  backdrop-filter: blur(var(--sm-glass-blur-strong)) saturate(160%);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .sm-glass,
+  .sm-glass-nav {
+    background: var(--sm-surface-2);
+  }
+}

@@ -1,0 +1,231 @@
+syntax = "proto3";
+
+package smartmigrate.migroute.v1;
+
+// Smart Migrate Protocol (SMP/1). The protocol contract is versioned
+// independently from any transport implementation.
+message Envelope {
+  uint32 protocol_version = 1;
+  string message_type = 2;
+  string session_id = 3;
+  string request_id = 4;
+  uint64 sequence = 5;
+  int64 issued_at_unix_ms = 6;
+  int64 expires_at_unix_ms = 7;
+  bytes payload = 8;
+}
+
+enum Permission {
+  PERMISSION_UNSPECIFIED = 0;
+  PERMISSION_VIEW_SCREEN = 1;
+  PERMISSION_CONTROL_MOUSE = 2;
+  PERMISSION_CONTROL_KEYBOARD = 3;
+  PERMISSION_SEND_FILES = 4;
+  PERMISSION_RECEIVE_FILES = 5;
+  PERMISSION_CLIPBOARD = 6;
+  PERMISSION_AUDIO = 7;
+}
+
+// Device Announcement & Capabilities
+message DeviceHello {
+  string device_id = 1;
+  string device_name = 2;
+  string platform = 3;
+  repeated uint32 supported_versions = 4;
+}
+
+message DeviceCapabilities {
+  string device_id = 1;
+  repeated Permission available_permissions = 2;
+  uint32 max_video_width = 3;
+  uint32 max_video_height = 4;
+  bool hardware_encode = 5;
+  bool hardware_decode = 6;
+}
+
+// Pairing
+message PairRequest {
+  string requester_device_id = 1;
+  string host_device_id = 2;
+  repeated Permission requested_permissions = 3;
+  string verification_code = 4;
+}
+
+message PairAccept {
+  string request_id = 1;
+  repeated Permission granted_permissions = 2;
+}
+
+message PairReject {
+  string request_id = 1;
+  string reason = 2;
+}
+
+// Session Management
+message SessionCreate {
+  string session_id = 1;
+  string requester_device_id = 2;
+  string host_device_id = 3;
+  repeated Permission requested_permissions = 4;
+}
+
+message SessionAccept {
+  string session_id = 1;
+  repeated Permission granted_permissions = 2;
+}
+
+message SessionReject {
+  string session_id = 1;
+  string reason = 2;
+}
+
+enum SessionEndReason {
+  SESSION_END_UNSPECIFIED = 0;
+  SESSION_END_USER_REQUESTED = 1;
+  SESSION_END_HOST_REVOKED = 2;
+  SESSION_END_PERMISSION_REVOKED = 3;
+  SESSION_END_TIMEOUT = 4;
+  SESSION_END_NETWORK_ERROR = 5;
+}
+
+message SessionEnd {
+  string session_id = 1;
+  SessionEndReason reason = 2;
+}
+
+// File Transfer
+message TransferStart {
+  string transfer_id = 1;
+  string file_name = 2;
+  uint64 total_bytes = 3;
+  uint64 total_chunks = 4;
+  string sha256 = 5;
+}
+
+message TransferChunk {
+  string transfer_id = 1;
+  uint64 chunk_index = 2;
+  bytes data = 3;
+  string chunk_sha256 = 4;
+}
+
+message TransferAck {
+  string transfer_id = 1;
+  uint64 chunk_index = 2;
+}
+
+message TransferRetry {
+  string transfer_id = 1;
+  uint64 chunk_index = 2;
+}
+
+message TransferPause {
+  string transfer_id = 1;
+}
+
+message TransferResume {
+  string transfer_id = 1;
+  uint64 resume_from_chunk = 2;
+}
+
+message TransferComplete {
+  string transfer_id = 1;
+}
+
+message TransferCancel {
+  string transfer_id = 1;
+  string reason = 2;
+}
+
+// Remote Input
+message MouseButtons {
+  bool left = 1;
+  bool right = 2;
+  bool middle = 3;
+}
+
+message InputMouse {
+  string session_id = 1;
+  int32 x = 2;
+  int32 y = 3;
+  MouseButtons buttons = 4;
+  int32 scroll_delta = 5;
+}
+
+enum KeyEventType {
+  KEY_EVENT_UNSPECIFIED = 0;
+  KEY_EVENT_PRESS = 1;
+  KEY_EVENT_RELEASE = 2;
+}
+
+message KeyModifiers {
+  bool shift = 1;
+  bool ctrl = 2;
+  bool alt = 3;
+  bool meta = 4;
+}
+
+message InputKeyboard {
+  string session_id = 1;
+  uint32 hid_usage = 2;
+  KeyEventType event = 3;
+  KeyModifiers modifiers = 4;
+}
+
+// Screen Streaming
+enum VideoCodec {
+  VIDEO_CODEC_UNSPECIFIED = 0;
+  VIDEO_CODEC_H264 = 1;
+  VIDEO_CODEC_H265 = 2;
+  VIDEO_CODEC_AV1 = 3;
+}
+
+message StreamConfig {
+  uint32 width = 1;
+  uint32 height = 2;
+  uint32 fps_num = 3;
+  uint32 fps_den = 4;
+  VideoCodec codec = 5;
+  uint32 bitrate_bps = 6;
+}
+
+message StreamStart {
+  string session_id = 1;
+  StreamConfig config = 2;
+}
+
+message StreamStop {
+  string session_id = 1;
+  string reason = 2;
+}
+
+// Clipboard
+message ClipboardUpdate {
+  string session_id = 1;
+  string text = 2;
+}
+
+// Health & Error
+message Ping {
+  uint64 token = 1;
+}
+
+message Pong {
+  uint64 token = 1;
+}
+
+enum ErrorCode {
+  ERROR_UNSPECIFIED = 0;
+  ERROR_UNKNOWN_MESSAGE_TYPE = 1;
+  ERROR_UNAUTHORIZED = 2;
+  ERROR_INVALID_PAYLOAD = 3;
+  ERROR_SESSION_NOT_FOUND = 4;
+  ERROR_RATE_LIMITED = 5;
+  ERROR_INTERNAL = 6;
+}
+
+message SmpError {
+  string in_response_to = 1;
+  ErrorCode code = 2;
+  string description = 3;
+}

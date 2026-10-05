@@ -1,0 +1,10 @@
+# Smart Migrate — Cargo workspace configuration
+#
+# Uses Rust's bundled lld linker (rust-lld) for the x86_64-pc-windows-gnu target.
+# This avoids requiring a working MinGW gcc link step while the MinGW
+# toolchain's ld.exe is incompatible with Rust 1.98+ glob-sysroot args.
+#
+# IMPORTANT: This file must not contain secrets, API keys, or credentials.
+
+[target.x86_64-pc-windows-gnu]
+linker = "rust-lld"

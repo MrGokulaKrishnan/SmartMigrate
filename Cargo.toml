@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/migroute", "apps/windows-host/src-tauri"]
+resolver = "2"

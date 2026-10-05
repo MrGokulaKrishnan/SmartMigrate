@@ -1,0 +1,10 @@
+[package]
+name = "migroute"
+version = "0.1.0"
+edition = "2021"
+description = "Typed authorization and routing primitives for the Smart Migrate engine"
+license = "UNLICENSED"
+
+[lib]
+name = "migroute"
+path = "src/lib.rs"
