@@ -1,6 +1,9 @@
+mod capture;
 mod state;
 mod storage;
+mod stream;
 
+use capture::{DisplaySource, EncoderCapability};
 use migroute::identity::{DeviceIdentity, DevicePlatform};
 use migroute::pairing::PairingSession;
 use migroute::trust::TrustedDevice;
@@ -8,7 +11,9 @@ use migroute::{DeviceId, SessionPermission};
 use serde::Serialize;
 use state::AppState;
 use std::time::{SystemTime, UNIX_EPOCH};
+use stream::{StreamSessionState, StreamTelemetry};
 use tauri::{State, Window};
+
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -32,6 +37,7 @@ struct HostStatus {
 #[tauri::command]
 fn host_status(state: State<'_, AppState>) -> HostStatus {
     let trust_store = state.trust_store.lock().unwrap();
+    let stream = state.active_stream.lock().unwrap();
     HostStatus {
         engine: "MigRoute",
         platform: "Windows host shell",
@@ -39,9 +45,10 @@ fn host_status(state: State<'_, AppState>) -> HostStatus {
         device_id: state.identity.id.to_string(),
         fingerprint: state.identity.fingerprint.clone(),
         trusted_device_count: trust_store.active_count(),
-        privileged_features_enabled: false,
+        privileged_features_enabled: stream.is_active,
     }
 }
+
 
 /// Returns the host's persistent, validated device identity.
 #[tauri::command]
@@ -217,6 +224,59 @@ fn remove_trusted_device(state: State<'_, AppState>, device_id: String) -> Resul
     Ok(())
 }
 
+/// Enumerate available display sources for screen capture.
+#[tauri::command]
+fn get_display_sources() -> Vec<DisplaySource> {
+    capture::enumerate_display_sources()
+}
+
+/// Detect host GPU hardware video encoder capabilities.
+#[tauri::command]
+fn detect_hardware_encoders() -> Vec<EncoderCapability> {
+    capture::detect_encoder_capabilities()
+}
+
+/// Starts an authorized display streaming session to a trusted client device.
+/// Strictly enforces that the target device has the VIEW_SCREEN permission.
+#[tauri::command]
+fn start_display_stream(
+    state: State<'_, AppState>,
+    target_device_id: String,
+    source_id: String,
+    codec: String,
+    target_fps: u32,
+    encoder_name: String,
+) -> Result<StreamSessionState, String> {
+    let trust_store = state.trust_store.lock().unwrap();
+    let stream_state = stream::start_stream(
+        &trust_store,
+        &target_device_id,
+        source_id,
+        codec,
+        target_fps,
+        encoder_name,
+    )?;
+
+    let mut active = state.active_stream.lock().unwrap();
+    *active = stream_state.clone();
+    Ok(stream_state)
+}
+
+/// Stops the active display streaming session immediately.
+#[tauri::command]
+fn stop_display_stream(state: State<'_, AppState>, _reason: String) -> Result<(), String> {
+    let mut active = state.active_stream.lock().unwrap();
+    *active = StreamSessionState::default();
+    Ok(())
+}
+
+/// Computes live streaming telemetry (FPS, latency, bitrate, frames).
+#[tauri::command]
+fn get_stream_telemetry(state: State<'_, AppState>) -> StreamTelemetry {
+    let mut active = state.active_stream.lock().unwrap();
+    stream::compute_telemetry(&mut active)
+}
+
 /// Minimize the main application window.
 #[tauri::command]
 fn minimize_window(window: Window) -> Result<(), String> {
@@ -259,6 +319,11 @@ pub fn run() {
             get_trusted_devices,
             revoke_trusted_device,
             remove_trusted_device,
+            get_display_sources,
+            detect_hardware_encoders,
+            start_display_stream,
+            stop_display_stream,
+            get_stream_telemetry,
             minimize_window,
             toggle_maximize,
             close_window,
@@ -266,3 +331,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("failed to run Smart Migrate Windows host");
 }
+

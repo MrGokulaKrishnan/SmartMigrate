@@ -48,6 +48,39 @@ type TrustedDevice = {
   is_revoked: boolean;
 };
 
+type DisplaySource = {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  refreshRateHz: number;
+  isPrimary: boolean;
+};
+
+type EncoderCapability = {
+  codec: string;
+  name: string;
+  isHardwareAccelerated: boolean;
+  vendor: string;
+  maxResolution: string;
+  maxFps: number;
+};
+
+type StreamTelemetry = {
+  isActive: boolean;
+  sessionId: string;
+  targetDeviceName: string;
+  currentFps: number;
+  bitrateMbps: number;
+  latencyMs: number;
+  durationSeconds: number;
+  totalFrames: number;
+  droppedFrames: number;
+  encoderName: string;
+  resolution: string;
+};
+
+
 const destinations: Destination[] = ["Home", "Devices", "Transfer", "Remote", "History", "Security", "Settings"];
 
 const destinationIcons: Record<Destination, string> = {
@@ -309,13 +342,22 @@ function App() {
             <DevicesManagerView onStartPairing={openPairingDialog} onStatusChange={refreshStatus} />
           )}
 
+          {destination === "Remote" && (
+            <RemoteStreamManagerView
+              onNotice={setNotice}
+              onNavigateDevices={() => setDestination("Devices")}
+              onStatusChange={refreshStatus}
+            />
+          )}
+
           {destination === "Security" && (
             <SecurityView status={status} />
           )}
 
-          {destination !== "Home" && destination !== "Devices" && destination !== "Security" && (
+          {destination !== "Home" && destination !== "Devices" && destination !== "Remote" && destination !== "Security" && (
             <UnavailablePanel destination={destination} onUnavailable={showUnavailable} />
           )}
+
         </section>
       </section>
 
@@ -583,6 +625,235 @@ function DevicesManagerView({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function RemoteStreamManagerView({
+  onNotice,
+  onNavigateDevices,
+  onStatusChange,
+}: {
+  onNotice: (msg: string) => void;
+  onNavigateDevices: () => void;
+  onStatusChange: () => void;
+}) {
+  const [sources, setSources] = useState<DisplaySource[]>([]);
+  const [encoders, setEncoders] = useState<EncoderCapability[]>([]);
+  const [authorizedDevices, setAuthorizedDevices] = useState<TrustedDevice[]>([]);
+  const [selectedSource, setSelectedSource] = useState("");
+  const [selectedDevice, setSelectedDevice] = useState("");
+  const [selectedEncoder, setSelectedEncoder] = useState("");
+  const [targetFps, setTargetFps] = useState(30);
+  const [telemetry, setTelemetry] = useState<StreamTelemetry | null>(null);
+
+  useEffect(() => {
+    // 1. Fetch display sources
+    invoke<DisplaySource[]>("get_display_sources")
+      .then((res) => {
+        setSources(res);
+        if (res.length > 0) setSelectedSource(res[0].id);
+      })
+      .catch(() => {});
+
+    // 2. Fetch hardware encoders
+    invoke<EncoderCapability[]>("detect_hardware_encoders")
+      .then((res) => {
+        setEncoders(res);
+        if (res.length > 0) setSelectedEncoder(res[0].name);
+      })
+      .catch(() => {});
+
+    // 3. Fetch trusted devices and filter those holding VIEW_SCREEN
+    invoke<TrustedDevice[]>("get_trusted_devices")
+      .then((devs) => {
+        const withScreenPerm = devs.filter(
+          (d) => !d.is_revoked && d.granted_permissions.includes("VIEW_SCREEN")
+        );
+        setAuthorizedDevices(withScreenPerm);
+        if (withScreenPerm.length > 0) setSelectedDevice(withScreenPerm[0].id);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Telemetry poll interval
+  useEffect(() => {
+    const poll = setInterval(() => {
+      invoke<StreamTelemetry>("get_stream_telemetry")
+        .then((t) => setTelemetry(t))
+        .catch(() => {});
+    }, 1000);
+    return () => clearInterval(poll);
+  }, []);
+
+  const handleStartStream = async () => {
+    if (!selectedDevice) {
+      onNotice("Select an authorized client device first.");
+      return;
+    }
+    try {
+      await invoke("start_display_stream", {
+        targetDeviceId: selectedDevice,
+        sourceId: selectedSource || "display-primary",
+        codec: "H264",
+        targetFps,
+        encoderName: selectedEncoder || "Hardware H.264",
+      });
+      onNotice("Display stream active! Hardware encoder initialized.");
+      onStatusChange();
+    } catch (err) {
+      onNotice(`Stream error: ${String(err)}`);
+    }
+  };
+
+  const handleStopStream = async () => {
+    try {
+      await invoke("stop_display_stream", { reason: "Host operator stopped stream" });
+      onNotice("Display stream stopped. Capture hardware released.");
+      onStatusChange();
+    } catch (err) {
+      onNotice(`Stop error: ${String(err)}`);
+    }
+  };
+
+  const isStreaming = telemetry?.isActive ?? false;
+
+  return (
+    <div className="remote-stream-view">
+      <div className="stream-control-banner">
+        <div>
+          <span className="eyebrow">Windows Graphics Capture & Streaming</span>
+          <h2 style={{ margin: "0.2rem 0" }}>Host Display Stream Monitor</h2>
+          <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--sm-text-2)" }}>
+            Encrypted low-latency video streaming to host-authorized Android and Windows clients.
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.8rem" }}>
+          <span className={`stream-status-pill ${isStreaming ? "active" : ""}`}>
+            <span className={isStreaming ? "state-dot" : ""} style={{ background: isStreaming ? "var(--sm-success)" : "var(--sm-text-3)" }} />
+            {isStreaming ? "STREAM ACTIVE" : "CAPTURE IDLE"}
+          </span>
+          {isStreaming ? (
+            <button className="danger-button" type="button" onClick={handleStopStream} style={{ padding: "0.55rem 1rem", fontSize: "0.75rem" }}>
+              Disconnect & Stop Stream ⏹
+            </button>
+          ) : (
+            <button className="primary-action" type="button" onClick={handleStartStream} disabled={authorizedDevices.length === 0}>
+              Start Stream <span aria-hidden="true">▶</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Telemetry HUD */}
+      <div className="telemetry-grid">
+        <div className="telemetry-item">
+          <span>Capture Rate</span>
+          <strong>{isStreaming ? `${telemetry?.currentFps.toFixed(1)} FPS` : "0.0 FPS"}</strong>
+        </div>
+        <div className="telemetry-item">
+          <span>Network Bitrate</span>
+          <strong>{isStreaming ? `${telemetry?.bitrateMbps.toFixed(1)} Mbps` : "0.0 Mbps"}</strong>
+        </div>
+        <div className="telemetry-item">
+          <span>Glass Latency</span>
+          <strong>{isStreaming ? `${telemetry?.latencyMs.toFixed(1)} ms` : "-- ms"}</strong>
+        </div>
+        <div className="telemetry-item">
+          <span>Session Duration</span>
+          <strong>
+            {isStreaming
+              ? `${Math.floor((telemetry?.durationSeconds || 0) / 60)}:${((telemetry?.durationSeconds || 0) % 60).toString().padStart(2, "0")}`
+              : "00:00"}
+          </strong>
+        </div>
+      </div>
+
+      <div className="stream-config-grid">
+        {/* Source & Device Selector */}
+        <div className="glass-surface config-card">
+          <p className="eyebrow">Display Source & Target</p>
+          <div className="form-group">
+            <label className="form-label">Capture Source (Monitor)</label>
+            <select
+              className="form-select"
+              value={selectedSource}
+              onChange={(e) => setSelectedSource(e.target.value)}
+              disabled={isStreaming}
+            >
+              {sources.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.width}×{s.height} @ {s.refreshRateHz}Hz) {s.isPrimary ? "[Primary]" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Target Authorized Device</label>
+            {authorizedDevices.length === 0 ? (
+              <div style={{ padding: "0.6rem", background: "rgba(255,92,122,0.1)", borderRadius: "6px", border: "1px solid rgba(255,92,122,0.25)" }}>
+                <p style={{ margin: 0, fontSize: "0.72rem", color: "var(--sm-error)" }}>
+                  No paired devices currently hold the VIEW_SCREEN permission.
+                </p>
+                <button
+                  type="button"
+                  onClick={onNavigateDevices}
+                  style={{ marginTop: "0.4rem", background: "none", border: "none", color: "var(--sm-200)", fontSize: "0.7rem", cursor: "pointer", textDecoration: "underline" }}
+                >
+                  Manage devices to grant permission →
+                </button>
+              </div>
+            ) : (
+              <select
+                className="form-select"
+                value={selectedDevice}
+                onChange={(e) => setSelectedDevice(e.target.value)}
+                disabled={isStreaming}
+              >
+                {authorizedDevices.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.platform.toUpperCase()}) — {d.id}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+
+        {/* Encoder & Performance Config */}
+        <div className="glass-surface config-card">
+          <p className="eyebrow">Hardware Acceleration & Quality</p>
+          <div className="form-group">
+            <label className="form-label">Video Encoder Pipeline</label>
+            <select
+              className="form-select"
+              value={selectedEncoder}
+              onChange={(e) => setSelectedEncoder(e.target.value)}
+              disabled={isStreaming}
+            >
+              {encoders.map((enc) => (
+                <option key={enc.name} value={enc.name}>
+                  {enc.name} {enc.isHardwareAccelerated ? "⚡ [HW]" : "[SW]"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Target Refresh Rate</label>
+            <select
+              className="form-select"
+              value={targetFps}
+              onChange={(e) => setTargetFps(Number(e.target.value))}
+              disabled={isStreaming}
+            >
+              <option value={30}>1080p @ 30 FPS (LAN Low Latency Baseline)</option>
+              <option value={60}>1080p @ 60 FPS (LAN High Refresh)</option>
+            </select>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

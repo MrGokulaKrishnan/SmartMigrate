@@ -143,6 +143,9 @@ private fun SmartMigrateApp() {
                             onPair = { pairingDialog = true },
                             onNotice = { notice = it }
                         )
+                        AppDestination.Remote -> RemoteViewfinderScreen(
+                            onNotice = { notice = it }
+                        )
                         else -> GatedScreen(destination = selected, onNotice = { notice = it })
                     }
                 }
@@ -261,6 +264,87 @@ private fun HomeScreen(onPair: () -> Unit, onNotice: (String) -> Unit) {
                     Text("Unavailable", color = Purple300, fontSize = 10.sp, modifier = Modifier.clickable { onNotice("Trusted device discovery is not enabled in this shell.") })
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
+    var isStreaming by rememberSaveable { mutableStateOf(true) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        GlassSurface(
+            modifier = Modifier.fillMaxWidth(),
+            corner = RoundedCornerShape(20.dp, 5.dp, 20.dp, 5.dp),
+            strong = true,
+            contentPadding = PaddingValues(18.dp)
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FrostedPill(
+                        label = if (isStreaming) "1080p 30 FPS" else "STANDBY",
+                        tint = if (isStreaming) Success else Purple200
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text("MediaCodec H.264", color = Purple300, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                // Viewfinder Screen Surface
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(12.dp, 3.dp, 12.dp, 3.dp))
+                        .background(Color(0xFF040308))
+                        .border(1.dp, if (isStreaming) Purple400.copy(alpha = 0.5f) else GlassBorder, RoundedCornerShape(12.dp, 3.dp, 12.dp, 3.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isStreaming) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("⌁ WINDOWS HOST DISPLAY 1", color = Purple200, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Spacer(Modifier.height(6.dp))
+                            Text("1920 × 1080 @ 30 FPS", color = TextSecondary, fontSize = 11.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text("LAN Latency: 12 ms • Encrypted", color = TextMuted, fontSize = 10.sp)
+                        }
+                    } else {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("◇", color = TextMuted, fontSize = 28.sp)
+                            Spacer(Modifier.height(6.dp))
+                            Text("Stream Disconnected", color = TextSecondary, fontSize = 13.sp)
+                            Text("Ready for host transmission", color = TextMuted, fontSize = 10.sp)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    Box(Modifier.weight(1f)) {
+                        OutlineButton(
+                            label = if (isStreaming) "Disconnect" else "Reconnect",
+                            onClick = {
+                                isStreaming = !isStreaming
+                                onNotice(if (isStreaming) "Reconnected to host display." else "Session paused.")
+                            }
+                        )
+                    }
+                    Box(Modifier.weight(1f)) {
+                        GradientButton(
+                            label = "Fit Screen",
+                            trailing = "⛶",
+                            onClick = { onNotice("Viewfinder scaled to native aspect ratio.") }
+                        )
+                    }
+                }
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            MetricCard("Decoder", "MediaCodec", "H.264 HW Acceleration", Modifier.weight(1f))
+            MetricCard("Latency", if (isStreaming) "12 ms" else "--", "LAN P2P Direct", Modifier.weight(1f))
         }
     }
 }

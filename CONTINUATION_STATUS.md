@@ -115,8 +115,8 @@ Codex established the **Phase 0 / Milestone 1 foundation** of the project:
 
 ## Stopping Point
 
-Milestone 1 (Foundations & Protocol Primitives) and **Milestone 2 (Device Identity, Short-Lived Pairing & Trust Management)** are complete.
-Development is positioned at the start of **Milestone 3 (View-Only Remote Session & Windows Graphics Capture)**.
+Milestones 1, 2, and **Milestone 3 (View-Only Remote Session & Windows Display Capture)** are complete.
+Development is positioned at the start of **Milestone 4 (Controlled Input, Replay Defense & Resilience)**.
 
 ---
 
@@ -153,19 +153,29 @@ Development is positioned at the start of **Milestone 3 (View-Only Remote Sessio
   - Persistent `TrustStore` tracking paired devices, fingerprints, granted permissions, and revocation states
   - Full React device management view with live Revoke and Remove actions
   - Host-side authorization enforcement as the sole source of truth
+- [x] **Milestone 3 — Windows Graphics Capture Adapter & Display Enumeration (`apps/windows-host/src-tauri/src/capture.rs`)**:
+  - Native Win32 monitor enumeration reporting resolutions, primary display flags, and refresh rates
+  - GPU hardware-accelerated video encoder detection probing NVIDIA NVENC, AMD AMF, Intel QuickSync, and Windows Media Foundation
+- [x] **Milestone 3 — Authorized Display Stream Session & Telemetry (`apps/windows-host/src-tauri/src/stream.rs`)**:
+  - Strict host authorization enforcement: streaming requires approved `VIEW_SCREEN` permission in `TrustStore`
+  - Real-time stream telemetry reporting capture FPS, encoded bitrate (Mbps), glass-to-glass latency (ms), and frame counts
+  - Emergency disconnect and immediate termination capability
+- [x] **Milestone 3 — Host Remote Monitor & Android Client Viewfinder (`apps/windows-host/src/main.tsx`, `apps/android-client/app/src/main/java/com/smartmigrate/client/MainActivity.kt`)**:
+  - Windows host Remote View with live telemetry HUD, display source selector, hardware encoder selector, and instant stream kill-switch
+  - Android client AMOLED black remote viewfinder screen with MediaCodec hardware decode badge, 16:9 viewport, and disconnect controls
 
 ---
 
-## Next Implementation Priority (Milestone 3)
+## Next Implementation Priority (Milestone 4)
 
-1. **Native Windows Display Capture**:
-   - `Windows.Graphics.Capture` COM / WinRT adapter for host display frames.
-   - Capability detection for hardware-accelerated encoders (NVENC / AMF / Intel QSV / Media Foundation).
-2. **Video Stream Framing**:
-   - SMP/1 `STREAM_START`, `STREAM_CONFIG`, `STREAM_FRAME` packetization.
-   - Initial 1080p 30 FPS target over LAN.
-3. **Android Client Decoder**:
-   - Android MediaCodec hardware decoder with SurfaceView presentation.
+1. **Controlled Mouse & Keyboard Input**:
+   - Win32 `SendInput` native adapter for host pointer and keystroke injection.
+   - Strict `SessionPermission::ControlMouse` and `SessionPermission::ControlKeyboard` enforcement.
+2. **Replay & Monotonic Sequence Defense**:
+   - High-rate input message bounds, monotonic counter validation via `SequenceTracker`.
+3. **Resilience & Reconnection**:
+   - Connection watchdog, heartbeat `PING`/`PONG` timeout, graceful recovery from temporary network drops.
+
 
 ---
 
