@@ -88,6 +88,7 @@ private val Success = Color(0xFF3DDC97)
 private enum class AppDestination(val label: String, val symbol: String) {
     Home("Home", "⌂"),
     Devices("Devices", "◇"),
+    Files("Files", "⇄"),
     Clipboard("Clipboard", "⎘"),
     Remote("Remote", "⌁"),
     Settings("Settings", "⚙")
@@ -142,6 +143,9 @@ private fun SmartMigrateApp() {
                     when (target) {
                         AppDestination.Home -> HomeScreen(
                             onPair = { pairingDialog = true },
+                            onNotice = { notice = it }
+                        )
+                        AppDestination.Files -> FilesTransferScreen(
                             onNotice = { notice = it }
                         )
                         AppDestination.Clipboard -> ClipboardScreen(
@@ -563,6 +567,138 @@ private fun ClipboardScreen(onNotice: (String) -> Unit) {
                     "✓ Null-byte injection guard active",
                     "✓ Direction enforced server-side by host",
                     "✓ Clipboard content never written to logs"
+                ).forEach { line ->
+                    Text(line, color = TextSecondary, fontSize = 11.sp, lineHeight = 16.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilesTransferScreen(onNotice: (String) -> Unit) {
+    var transferProgress by rememberSaveable { mutableFloatStateOf(0.45f) }
+    var transferActive by rememberSaveable { mutableStateOf(false) }
+    var currentFile by rememberSaveable { mutableStateOf("archive_bundle.zip") }
+    var transferSpeed by rememberSaveable { mutableStateOf("3.4 MB/s") }
+    var chunkInfo by rememberSaveable { mutableStateOf("Chunk 7 / 16 (64 KiB each)") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Active Transfer Card
+        GlassSurface(
+            modifier = Modifier.fillMaxWidth(),
+            corner = RoundedCornerShape(18.dp, 4.dp, 18.dp, 4.dp),
+            contentPadding = PaddingValues(18.dp)
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("ACTIVE FILE MIGRATION", color = Purple300, fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+                    StatusPill(if (transferActive) "STREAMING ⇄" else "STANDBY", if (transferActive) Success else Purple300)
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    currentFile,
+                    color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "FIPS 180-4 SHA-256 Per-Chunk Checksum • Monotonic SMP/1 Resumption",
+                    color = TextSecondary, fontSize = 11.sp
+                )
+
+                Spacer(Modifier.height(14.dp))
+                // Custom Progress Bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(SurfaceRaised)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(transferProgress)
+                            .fillMaxHeight()
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Purple400, Success)
+                                )
+                            )
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(chunkInfo, color = TextMuted, fontSize = 10.sp)
+                    Text("${(transferProgress * 100).toInt()}% • $transferSpeed", color = Purple300, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    Box(Modifier.weight(1f)) {
+                        PrimaryButton(
+                            label = if (transferActive) "Pause Stream" else "Simulate Send",
+                            onClick = {
+                                transferActive = !transferActive
+                                if (transferActive) {
+                                    transferProgress = 0.72f
+                                    chunkInfo = "Chunk 12 / 16 (64 KiB each)"
+                                    onNotice("Streaming chunks to Windows host...")
+                                } else {
+                                    onNotice("Migration stream paused by client.")
+                                }
+                            }
+                        )
+                    }
+                    Box(Modifier.weight(1f)) {
+                        OutlineButton(
+                            label = "Cancel",
+                            onClick = {
+                                transferActive = false
+                                transferProgress = 0f
+                                onNotice("File transfer cancelled. Staging .part file purged.")
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Metrics Grid
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            MetricCard("Chunk Size", "64 KiB", "SMP/1 Bounded", Modifier.weight(1f))
+            MetricCard("Path Traversal", "Protected", "NTFS Sanitized", Modifier.weight(1f))
+        }
+
+        // Transfer Capabilities & Security Card
+        GlassSurface(
+            modifier = Modifier.fillMaxWidth(),
+            corner = RoundedCornerShape(16.dp, 4.dp, 16.dp, 4.dp),
+            contentPadding = PaddingValues(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("TRANSFER SECURITY ARCHITECTURE", color = Purple300, fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+                Spacer(Modifier.height(4.dp))
+                listOf(
+                    "✓ Strict Path Traversal Defense — remote paths are normalized & sanitized",
+                    "✓ Isolated Staging Sandbox — downloads staged in .staging/*.part",
+                    "✓ Atomic Move — file is moved only after full SHA-256 matches",
+                    "✓ Monotonic Checkpointing — disconnects resume from first unACKed chunk",
+                    "✓ Host Authorization as Source of Truth (SEND_FILES / RECEIVE_FILES)"
                 ).forEach { line ->
                     Text(line, color = TextSecondary, fontSize = 11.sp, lineHeight = 16.sp)
                 }

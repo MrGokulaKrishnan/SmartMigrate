@@ -5,6 +5,7 @@ mod resilience;
 mod state;
 mod storage;
 mod stream;
+mod transfer;
 
 use capture::{DisplaySource, EncoderCapability};
 use clipboard::ClipboardStatus;
@@ -17,9 +18,15 @@ use resilience::ResilienceStatus;
 use serde::Serialize;
 use state::AppState;
 use std::collections::BTreeSet;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use stream::{StreamSessionState, StreamTelemetry};
 use tauri::{State, Window};
+use transfer::{
+    FinalizeResultDto, OutgoingChunkDto, TransferManager, TransferProgressDto, TransferSessionDto,
+};
 
 
 
@@ -475,6 +482,150 @@ fn deactivate_clipboard_sync(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+// ─── File Transfer / Migration Commands ──────────────────────────────────────
+
+/// Prepares an outgoing file migration to a trusted remote peer.
+#[tauri::command]
+fn prepare_outgoing_transfer(
+    state: State<'_, AppState>,
+    device_id: String,
+    file_path: String,
+) -> Result<TransferSessionDto, String> {
+    let trust_store = state.trust_store.lock().unwrap();
+    let target_dev_id = DeviceId::try_from(device_id.as_str()).map_err(|e| e.to_string())?;
+    let device = trust_store
+        .get_device(&target_dev_id)
+        .ok_or_else(|| "device not found in trust store".to_string())?;
+    if device.is_revoked {
+        return Err("device authorization is revoked".to_string());
+    }
+    if !device.has_permission(SessionPermission::SendFiles) {
+        return Err("device lacks SEND_FILES capability".to_string());
+    }
+    let transfer_id = format!("tx-{}", now_ms());
+    let path = PathBuf::from(&file_path);
+    state.transfer.register_outgoing(transfer_id, path)
+}
+
+/// Reads a specific chunk for an outgoing file migration.
+#[tauri::command]
+fn read_outgoing_chunk(
+    state: State<'_, AppState>,
+    transfer_id: String,
+    chunk_index: u64,
+) -> Result<OutgoingChunkDto, String> {
+    state.transfer.read_outgoing_chunk(&transfer_id, chunk_index)
+}
+
+/// Host operator authorizes an incoming file offer from a trusted peer.
+#[tauri::command]
+fn accept_incoming_transfer(
+    state: State<'_, AppState>,
+    device_id: String,
+    transfer_id: String,
+    file_name: String,
+    total_bytes: u64,
+    chunk_size: u32,
+    total_chunks: u64,
+    expected_sha256: String,
+) -> Result<TransferSessionDto, String> {
+    let trust_store = state.trust_store.lock().unwrap();
+    let target_dev_id = DeviceId::try_from(device_id.as_str()).map_err(|e| e.to_string())?;
+    let device = trust_store
+        .get_device(&target_dev_id)
+        .ok_or_else(|| "device not found in trust store".to_string())?;
+    if device.is_revoked {
+        return Err("device authorization is revoked".to_string());
+    }
+    if !device.has_permission(SessionPermission::ReceiveFiles) {
+        return Err("device lacks RECEIVE_FILES capability".to_string());
+    }
+    state.transfer.register_incoming(
+        transfer_id,
+        file_name,
+        total_bytes,
+        chunk_size,
+        total_chunks,
+        expected_sha256,
+    )
+}
+
+/// Ingests, validates SHA-256, and writes an incoming chunk to the staging file.
+#[tauri::command]
+fn write_incoming_chunk(
+    state: State<'_, AppState>,
+    transfer_id: String,
+    chunk_index: u64,
+    chunk_sha256: String,
+    data_base64: String,
+) -> Result<TransferProgressDto, String> {
+    state.transfer.write_incoming_chunk(&transfer_id, chunk_index, &chunk_sha256, &data_base64)
+}
+
+/// Finalizes an incoming transfer by verifying the overall file SHA-256 and moving from staging.
+#[tauri::command]
+fn finalize_incoming_transfer(
+    state: State<'_, AppState>,
+    transfer_id: String,
+) -> Result<FinalizeResultDto, String> {
+    state.transfer.finalize_incoming(&transfer_id)
+}
+
+/// Pauses an active transfer.
+#[tauri::command]
+fn pause_transfer(state: State<'_, AppState>, transfer_id: String) -> Result<(), String> {
+    state.transfer.pause(&transfer_id)
+}
+
+/// Resumes a paused transfer from a specific chunk index.
+#[tauri::command]
+fn resume_transfer(
+    state: State<'_, AppState>,
+    transfer_id: String,
+    from_chunk: u64,
+) -> Result<u64, String> {
+    state.transfer.resume(&transfer_id, from_chunk)
+}
+
+/// Cancels a transfer and deletes any partial staging data.
+#[tauri::command]
+fn cancel_transfer(state: State<'_, AppState>, transfer_id: String) -> Result<(), String> {
+    state.transfer.cancel(&transfer_id)
+}
+
+/// Lists all active and recent transfers.
+#[tauri::command]
+fn list_transfers(state: State<'_, AppState>) -> Vec<TransferSessionDto> {
+    state.transfer.list_transfers()
+}
+
+/// Opens the verified Downloads/SmartMigrate folder in Windows Explorer.
+#[tauri::command]
+fn open_transfers_folder() -> Result<String, String> {
+    let dir = TransferManager::get_download_dir();
+    let dir_str = dir.to_string_lossy().to_string();
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+    }
+    Ok(dir_str)
+}
+
+/// Creates a sample test migration file in Downloads/SmartMigrate/Samples for testing.
+#[tauri::command]
+fn create_sample_migration_file(name: String, size_kb: u32) -> Result<String, String> {
+    let dir = TransferManager::get_download_dir().join("Samples");
+    let _ = std::fs::create_dir_all(&dir);
+    let sanitized = migroute::sanitize_file_name(&name).map_err(|e| e.to_string())?;
+    let path = dir.join(&sanitized);
+    let mut file = File::create(&path).map_err(|e| e.to_string())?;
+    let chunk = vec![b'S'; 1024];
+    for _ in 0..size_kb {
+        let _ = file.write_all(&chunk);
+    }
+    Ok(path.to_string_lossy().to_string())
+}
+
 /// Minimize the main application window.
 #[tauri::command]
 fn minimize_window(window: Window) -> Result<(), String> {
@@ -534,6 +685,17 @@ pub fn run() {
             receive_remote_clipboard,
             get_clipboard_status,
             deactivate_clipboard_sync,
+            prepare_outgoing_transfer,
+            read_outgoing_chunk,
+            accept_incoming_transfer,
+            write_incoming_chunk,
+            finalize_incoming_transfer,
+            pause_transfer,
+            resume_transfer,
+            cancel_transfer,
+            list_transfers,
+            open_transfers_folder,
+            create_sample_migration_file,
             minimize_window,
             toggle_maximize,
             close_window,

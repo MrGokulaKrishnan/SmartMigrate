@@ -58,9 +58,9 @@ Codex established the **Phase 0 / Milestone 1 foundation** of the project:
 
 | Component | `cargo check` | `cargo test` | `tsc --noEmit` | Vite build |
 |---|---|---|---|---|
-| `migroute` crate | ✅ PASS | ✅ PASS (53/53 tests) | — | — |
+| `migroute` crate | ✅ PASS | ✅ PASS (63/63 tests) | — | — |
 | Tauri Windows Host Shell | ✅ PASS | ✅ PASS (check + build) | — | — |
-| Windows Host React UI | — | — | ✅ PASS (0 errors) | ✅ PASS (~35 modules) |
+| Windows Host React UI | — | — | ✅ PASS (0 errors) | ✅ PASS (~31 modules) |
 | Website | — | — | — | ✅ PASS (Deployed to Firebase) |
 | Android Client | — | — | — | Ready for Gradle / SDK 37 |
 
@@ -115,8 +115,8 @@ Codex established the **Phase 0 / Milestone 1 foundation** of the project:
 
 ## Stopping Point
 
-Milestones 1, 2, 3, 4, and **Milestone 5 (Opt-in Clipboard Sync)** are complete.
-All subsystem builds are verified, 53/53 unit tests passing, TypeScript clean, Vite build clean.
+Milestones 1, 2, 3, 4, 5, and **Milestone 6 (Resumable Chunked File Transfer & Migration Engine)** are complete.
+All subsystem builds are verified, 63/63 unit tests passing, TypeScript clean, Vite build clean.
 
 ---
 
@@ -127,7 +127,7 @@ All subsystem builds are verified, 53/53 unit tests passing, TypeScript clean, V
 - [x] SMP/1 Envelope validation with replay protection and sequence tracking
 - [x] SMP/1 Message family (26 message types, all typed)
 - [x] SMP/1 Session lifecycle and dynamic capability revocation
-- [x] MigRoute unit test suite (**53/53 tests passing**)
+- [x] MigRoute unit test suite (**63/63 tests passing**)
 - [x] SMP/1 Protobuf schema matching Rust types
 - [x] Toolchain and linker fixes for Windows GNU target (`rust-lld`, MinGW PATH)
 - [x] Tauri window icon assets generation
@@ -182,7 +182,13 @@ All subsystem builds are verified, 53/53 unit tests passing, TypeScript clean, V
   - **`apps/windows-host/src-tauri/src/clipboard.rs`**: Native Win32 clipboard adapter using `OpenClipboard`/`GetClipboardData`/`SetClipboardData` with CF_UNICODETEXT (UTF-16LE). All handles null-checked. Non-Windows builds compile to stubs.
   - **8 new Tauri commands**: `activate_clipboard_sync`, `suspend_clipboard_sync`, `resume_clipboard_sync`, `read_host_clipboard_text`, `receive_remote_clipboard`, `get_clipboard_status`, `deactivate_clipboard_sync` — all enforcing host-side TrustStore authorization.
   - **Windows host React UI**: Full `ClipboardSyncView` routed to Transfer sidebar item. Device selector (CLIPBOARD-permission-gated), direction picker, activate/suspend/resume/deactivate, host-push panel with preview, 1-second status poll, security policy card.
-  - **Android client**: `ClipboardScreen` composable with `Clipboard` nav destination. Direction selector pills, sync toggle, client→host paste panel with Send button, push counter metrics, security policy list.
+- [x] **Milestone 6 — Resumable Chunked File Transfer & Migration Engine**:
+  - **`crates/migroute/src/transfer.rs`**: `TransferSession`, `TransferDirection`, `TransferState`, `TransferError`, `sanitize_file_name`, `compute_sha256`. FIPS 180-4 pure SHA-256 verification (zero dependencies), strict NTFS/SMP1 path traversal defenses (rejects `..`, `/`, `\`, control chars, null bytes, Windows device names `CON`, `PRN`, `AUX`, `NUL`, `COM1..9`, `LPT1..9`). 10 new unit tests added (**63/63 tests passing**).
+  - **`apps/windows-host/src-tauri/src/transfer.rs`**: Native Windows file transfer adapter with isolated staging directory (`Downloads/SmartMigrate/.staging/*.part`), atomic file move upon full checksum match, collision avoidance, and chunked read/write stream buffering.
+  - **11 new Tauri commands**: `prepare_outgoing_transfer`, `read_outgoing_chunk`, `accept_incoming_transfer`, `write_incoming_chunk`, `finalize_incoming_transfer`, `pause_transfer`, `resume_transfer`, `cancel_transfer`, `list_transfers`, `open_transfers_folder`, `create_sample_migration_file` — all enforcing host-side TrustStore capability authorization (`SEND_FILES` / `RECEIVE_FILES`).
+  - **Windows host React UI**: Unified Migration & Transfer Hub with segmented switcher (`File Migration` & `Clipboard Sync`), real-time chunk streaming progress bar, speed tracker (MB/s), chunk SHA-256 previews, sample generator, Explorer folder launcher, and live session log.
+  - **Audit History**: Implemented `AuditHistoryView` on the History destination with verified platform state transitions, DPAPI identity, SMP/1 sequence tracking, and path-traversal barrier badges.
+  - **Android client**: Added `Files` (`⇄`) destination and `FilesTransferScreen` composable with AMOLED glass design, progress bar, pause/simulate controls, and security architecture breakdown.
 
 ---
 

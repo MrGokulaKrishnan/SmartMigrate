@@ -4,6 +4,7 @@ use crate::clipboard::ClipboardState;
 use crate::input::InputController;
 use crate::resilience::ConnectionWatchdog;
 use crate::stream::StreamSessionState;
+use crate::transfer::TransferManager;
 use migroute::identity::DeviceIdentity;
 use migroute::pairing::PairingSession;
 use migroute::trust::TrustStore;
@@ -17,6 +18,7 @@ pub struct AppState {
     pub input_controller: InputController,
     pub watchdog: ConnectionWatchdog,
     pub clipboard: ClipboardState,
+    pub transfer: TransferManager,
 }
 
 impl AppState {
@@ -29,6 +31,7 @@ impl AppState {
             input_controller: InputController::new(),
             watchdog: ConnectionWatchdog::new(),
             clipboard: ClipboardState::new(),
+            transfer: TransferManager::new(),
         }
     }
 }

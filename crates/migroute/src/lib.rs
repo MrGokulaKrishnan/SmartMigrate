@@ -18,6 +18,7 @@ pub mod identity;
 pub mod message;
 pub mod pairing;
 pub mod session;
+pub mod transfer;
 pub mod trust;
 
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,10 @@ pub use clipboard::{
 };
 pub use pairing::{NumericPairingCode, PairingSession, PairingVerificationError};
 pub use session::{Session, SessionError, SessionState};
+pub use transfer::{
+    compute_sha256, sanitize_file_name, TransferDirection, TransferError, TransferSession,
+    TransferState, DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE, MAX_FILE_SIZE,
+};
 pub use trust::{TrustStore, TrustStoreError, TrustedDevice};
 
 pub const ENGINE_NAME: &str = "MigRoute";
