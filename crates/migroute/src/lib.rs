@@ -10,7 +10,9 @@
 //! - [`envelope`] — SMP/1 envelope validation (version, expiry, replay, session binding)
 //! - [`session`] — session lifecycle state machine
 //! - [`message`] — strongly-typed SMP/1 message family
+//! - [`clipboard`] — clipboard sync policy engine (grant state, direction, size validation)
 
+pub mod clipboard;
 pub mod envelope;
 pub mod identity;
 pub mod message;
@@ -24,6 +26,10 @@ use std::fmt;
 
 // Re-export primary types at the crate root for ergonomics.
 pub use identity::{DeviceIdentity, DevicePlatform, DeviceRole, IdentityError};
+pub use clipboard::{
+    validate_clipboard_update, ClipboardDirection, ClipboardError, ClipboardGrant,
+    MAX_CLIPBOARD_BYTES,
+};
 pub use pairing::{NumericPairingCode, PairingSession, PairingVerificationError};
 pub use session::{Session, SessionError, SessionState};
 pub use trust::{TrustStore, TrustStoreError, TrustedDevice};

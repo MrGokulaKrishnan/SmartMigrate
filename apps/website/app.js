@@ -58,6 +58,7 @@ const featuredSize = document.querySelector("#featured-size");
 const featuredHash = document.querySelector("#featured-hash");
 const featuredBtnText = document.querySelector("#featured-btn-text");
 const featuredBadge = document.querySelector("#featured-badge");
+const featuredActionBtn = document.querySelector("#featured-action-btn");
 
 if (detectedLabel) {
   detectedLabel.textContent = `Detected: ${currentPlatform.name} (${currentPlatform.arch})`;
@@ -69,30 +70,34 @@ if (currentPlatform.id === "android") {
     featuredDesc.textContent = "Native Jetpack Compose client with AMOLED black UI, protected storage, hardware video decode, and touch control mapping.";
   }
   if (featuredArch) featuredArch.textContent = "arm64-v8a / universal";
-  if (featuredSize) featuredSize.textContent = "~8.4 MB";
-  if (featuredHash) {
-    featuredHash.textContent = "c4b3a29180fedcba9876543210abcdef1234567890abcdef1234567890abcdef";
-  }
   if (featuredBtnText) featuredBtnText.textContent = "Download for Android (.apk)";
+  if (featuredActionBtn) {
+    featuredActionBtn.setAttribute("href", "downloads/android/SmartMigrate.apk");
+    featuredActionBtn.setAttribute("download", "SmartMigrate.apk");
+  }
 } else if (currentPlatform.id === "windows") {
   if (featuredTitle) featuredTitle.textContent = "Smart Migrate Windows Host";
   if (featuredDesc) {
     featuredDesc.textContent = "Secure, host-authoritative desktop application powered by the MigRoute systems engine. Includes custom borderless window chrome and explicit permission gating.";
   }
   if (featuredArch) featuredArch.textContent = "x86_64";
-  if (featuredSize) featuredSize.textContent = "~14.8 MB";
-  if (featuredHash) {
-    featuredHash.textContent = "9f8e7d6c5b4a392817263544fedcba0987654321123456789abcdef012345678";
-  }
   if (featuredBtnText) featuredBtnText.textContent = "Download for Windows (.exe)";
+  if (featuredActionBtn) {
+    featuredActionBtn.setAttribute("href", "downloads/windows/SmartMigrate-Setup-x64.exe");
+    featuredActionBtn.setAttribute("download", "SmartMigrate-Setup-x64.exe");
+  }
 } else {
-  // Unknown or macOS/Linux
+  // macOS / Linux / Unknown
   if (featuredTitle) featuredTitle.textContent = "Smart Migrate Cross-Device Platform";
   if (featuredDesc) {
-    featuredDesc.textContent = "Select your target platform below to download the official Smart Migrate build package.";
+    featuredDesc.textContent = "Select your target platform below to download the official Smart Migrate release package.";
   }
   if (featuredBadge) featuredBadge.textContent = "Choose your platform";
   if (featuredBtnText) featuredBtnText.textContent = "View All Downloads";
+  if (featuredActionBtn) {
+    featuredActionBtn.setAttribute("href", "#download-matrix");
+    featuredActionBtn.removeAttribute("download");
+  }
 }
 
 // Platform Filter
@@ -116,8 +121,49 @@ filterButtons.forEach((btn) => {
   });
 });
 
-// Modal dialog for build instructions / honest download state
-window.showBuildModal = function (platformName) {
-  const message = `${platformName} package is part of the local repository build.\n\nTo build this binary from source:\n- Windows: pnpm build:tauri (or cargo build --release in src-tauri)\n- Android: ./gradlew assembleDebug\n\nRelease verification hashes and cryptographic signatures will be published with Milestone 2 signed release artifacts.`;
-  alert(message);
-};
+// Hydrate hashes and file sizes from release.json
+async function hydrateReleaseData() {
+  try {
+    const res = await fetch("release.json");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.artifacts) return;
+
+    const winExe = data.artifacts["windows-exe"];
+    const winMsi = data.artifacts["windows-msi"];
+    const androidApk = data.artifacts["android-apk"];
+
+    if (winExe) {
+      const elSize = document.querySelector("#win-exe-size");
+      const elHash = document.querySelector("#win-exe-hash");
+      if (elSize) elSize.textContent = winExe.size_human || elSize.textContent;
+      if (elHash) elHash.textContent = winExe.sha256 || elHash.textContent;
+      if (currentPlatform.id === "windows") {
+        if (featuredSize) featuredSize.textContent = winExe.size_human || featuredSize.textContent;
+        if (featuredHash) featuredHash.textContent = winExe.sha256 || featuredHash.textContent;
+      }
+    }
+
+    if (winMsi) {
+      const elSize = document.querySelector("#win-msi-size");
+      const elHash = document.querySelector("#win-msi-hash");
+      if (elSize) elSize.textContent = winMsi.size_human || elSize.textContent;
+      if (elHash) elHash.textContent = winMsi.sha256 || elHash.textContent;
+    }
+
+    if (androidApk) {
+      const elSize = document.querySelector("#android-apk-size");
+      const elHash = document.querySelector("#android-apk-hash");
+      if (elSize) elSize.textContent = androidApk.size_human || elSize.textContent;
+      if (elHash) elHash.textContent = androidApk.sha256 || elHash.textContent;
+      if (currentPlatform.id === "android") {
+        if (featuredSize) featuredSize.textContent = androidApk.size_human || featuredSize.textContent;
+        if (featuredHash) featuredHash.textContent = androidApk.sha256 || featuredHash.textContent;
+      }
+    }
+  } catch (err) {
+    console.debug("Offline or local release metadata hydration skipped:", err);
+  }
+}
+
+hydrateReleaseData();

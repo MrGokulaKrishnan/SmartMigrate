@@ -1,4 +1,5 @@
 mod capture;
+mod clipboard;
 mod input;
 mod resilience;
 mod state;
@@ -6,14 +7,16 @@ mod storage;
 mod stream;
 
 use capture::{DisplaySource, EncoderCapability};
+use clipboard::ClipboardStatus;
 use input::InputTelemetry;
 use migroute::identity::{DeviceIdentity, DevicePlatform};
 use migroute::pairing::PairingSession;
 use migroute::trust::TrustedDevice;
-use migroute::{DeviceId, SessionPermission};
+use migroute::{ClipboardDirection, DeviceId, SessionPermission};
 use resilience::ResilienceStatus;
 use serde::Serialize;
 use state::AppState;
+use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 use stream::{StreamSessionState, StreamTelemetry};
 use tauri::{State, Window};
@@ -358,6 +361,120 @@ fn get_resilience_status(state: State<'_, AppState>) -> ResilienceStatus {
     state.watchdog.get_status()
 }
 
+// ─── Clipboard commands ───────────────────────────────────────────────────────
+
+/// Activates clipboard sync for a session with the specified direction.
+///
+/// Direction values: "host_to_client", "client_to_host", "bidirectional".
+/// Requires the target device to have `SessionPermission::Clipboard` granted.
+#[tauri::command]
+fn activate_clipboard_sync(
+    state: State<'_, AppState>,
+    device_id: String,
+    session_id: String,
+    direction: String,
+) -> Result<ClipboardStatus, String> {
+    let trust_store = state.trust_store.lock().unwrap();
+    let id = DeviceId::try_from(device_id.as_str()).map_err(|e| e.to_string())?;
+    let device = trust_store
+        .get_device(&id)
+        .ok_or_else(|| "device not in trust store".to_string())?;
+    if device.is_revoked {
+        return Err("device is revoked".to_string());
+    }
+    let perms: BTreeSet<SessionPermission> = device
+        .granted_permissions
+        .iter()
+        .cloned()
+        .collect();
+    if !perms.contains(&SessionPermission::Clipboard) {
+        return Err("device does not have Clipboard permission".to_string());
+    }
+    let dir = match direction.as_str() {
+        "host_to_client" => ClipboardDirection::HostToClient,
+        "client_to_host" => ClipboardDirection::ClientToHost,
+        "bidirectional" => ClipboardDirection::Bidirectional,
+        other => return Err(format!("unknown clipboard direction: {other}")),
+    };
+    state.clipboard.activate(session_id, dir);
+    Ok(clipboard::get_clipboard_status(&state.clipboard))
+}
+
+/// Suspends clipboard sync for the active session without revoking the grant.
+#[tauri::command]
+fn suspend_clipboard_sync(state: State<'_, AppState>) -> Result<(), String> {
+    state.clipboard.suspend();
+    Ok(())
+}
+
+/// Resumes a previously suspended clipboard sync.
+#[tauri::command]
+fn resume_clipboard_sync(state: State<'_, AppState>) -> Result<(), String> {
+    state.clipboard.resume();
+    Ok(())
+}
+
+/// Reads the current Windows host clipboard text and returns it to the UI.
+///
+/// The returned string is sent only to the local Tauri frontend — it is never
+/// logged. Returns `None` when the clipboard is empty or not text.
+#[tauri::command]
+fn read_host_clipboard_text(state: State<'_, AppState>) -> Option<String> {
+    let lock = state.clipboard.grant.lock().unwrap();
+    // Only return clipboard content when sync is active.
+    if lock.as_ref().map_or(false, |g| g.can_host_push()) {
+        drop(lock);
+        clipboard::read_host_clipboard()
+    } else {
+        None
+    }
+}
+
+/// Receives clipboard text from the remote client and writes it to the host clipboard.
+///
+/// Enforces the MigRoute clipboard policy (permission, direction, size, null-byte guard).
+/// **The text content is never written to logs.**
+#[tauri::command]
+fn receive_remote_clipboard(
+    state: State<'_, AppState>,
+    device_id: String,
+    text: String,
+) -> Result<(), String> {
+    let trust_store = state.trust_store.lock().unwrap();
+    let id = DeviceId::try_from(device_id.as_str()).map_err(|e| e.to_string())?;
+    let device = trust_store
+        .get_device(&id)
+        .ok_or_else(|| "device not in trust store".to_string())?;
+    if device.is_revoked {
+        return Err("device is revoked".to_string());
+    }
+    let perms: BTreeSet<SessionPermission> = device
+        .granted_permissions
+        .iter()
+        .cloned()
+        .collect();
+    let mut grant_lock = state.clipboard.grant.lock().unwrap();
+    let grant = grant_lock
+        .as_mut()
+        .ok_or_else(|| "no active clipboard grant".to_string())?;
+    clipboard::write_host_clipboard(&text, grant, &perms)?;
+    grant.client_push_count += 1;
+    Ok(())
+}
+
+/// Returns the current clipboard sync status (active, direction, counters).
+#[tauri::command]
+fn get_clipboard_status(state: State<'_, AppState>) -> ClipboardStatus {
+    clipboard::get_clipboard_status(&state.clipboard)
+}
+
+/// Deactivates and clears the clipboard grant (call on session end).
+#[tauri::command]
+fn deactivate_clipboard_sync(state: State<'_, AppState>) -> Result<(), String> {
+    state.clipboard.clear();
+    Ok(())
+}
+
 /// Minimize the main application window.
 #[tauri::command]
 fn minimize_window(window: Window) -> Result<(), String> {
@@ -410,6 +527,13 @@ pub fn run() {
             get_input_telemetry,
             set_input_override,
             get_resilience_status,
+            activate_clipboard_sync,
+            suspend_clipboard_sync,
+            resume_clipboard_sync,
+            read_host_clipboard_text,
+            receive_remote_clipboard,
+            get_clipboard_status,
+            deactivate_clipboard_sync,
             minimize_window,
             toggle_maximize,
             close_window,

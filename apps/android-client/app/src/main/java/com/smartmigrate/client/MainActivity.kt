@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,7 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,7 +49,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.drawCircle
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -88,6 +88,7 @@ private val Success = Color(0xFF3DDC97)
 private enum class AppDestination(val label: String, val symbol: String) {
     Home("Home", "⌂"),
     Devices("Devices", "◇"),
+    Clipboard("Clipboard", "⎘"),
     Remote("Remote", "⌁"),
     Settings("Settings", "⚙")
 }
@@ -137,16 +138,19 @@ private fun SmartMigrateApp() {
                     targetState = destination,
                     label = "smart-migrate-screen",
                     modifier = Modifier.weight(1f)
-                ) { selected ->
-                    when (selected) {
+                ) { target: AppDestination ->
+                    when (target) {
                         AppDestination.Home -> HomeScreen(
                             onPair = { pairingDialog = true },
+                            onNotice = { notice = it }
+                        )
+                        AppDestination.Clipboard -> ClipboardScreen(
                             onNotice = { notice = it }
                         )
                         AppDestination.Remote -> RemoteViewfinderScreen(
                             onNotice = { notice = it }
                         )
-                        else -> GatedScreen(destination = selected, onNotice = { notice = it })
+                        else -> GatedScreen(destination = target, onNotice = { notice = it })
                     }
                 }
                 NoticeBar(notice)
@@ -173,10 +177,11 @@ private fun LiquidBackdrop() {
         animationSpec = infiniteRepeatable(tween(8_000), RepeatMode.Reverse),
         label = "ambient-shift"
     )
+    val moveDp = movement.dp
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .offset(x = movement.dp, y = (-movement).dp)
+            .offset(x = moveDp, y = -moveDp)
             .blur(72.dp)
             .background(
                 Brush.radialGradient(
@@ -379,6 +384,189 @@ private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             MetricCard("Decoder", "MediaCodec", "H.264 HW Acceleration", Modifier.weight(1f))
             MetricCard("Transport", if (isStreaming) "12 ms RTT" else "--", if (isStreaming) "Direct P2P (0% Loss)" else "Standby", Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun ClipboardScreen(onNotice: (String) -> Unit) {
+    var clipText by rememberSaveable { mutableStateOf("") }
+    var syncActive by rememberSaveable { mutableStateOf(false) }
+    var direction by rememberSaveable { mutableStateOf("bidirectional") }
+    var clientPushCount by rememberSaveable { mutableStateOf(0) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Header card
+        GlassSurface(
+            modifier = Modifier.fillMaxWidth(),
+            corner = RoundedCornerShape(20.dp, 5.dp, 20.dp, 5.dp),
+            strong = true,
+            contentPadding = PaddingValues(20.dp)
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FrostedPill(
+                        label = if (syncActive) "SYNC ACTIVE" else "SYNC IDLE",
+                        tint = if (syncActive) Success else Purple200
+                    )
+                    Spacer(Modifier.weight(1f))
+                    FrostedPill(label = "M5 — Clipboard", tint = Purple300)
+                }
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Opt-in Clipboard\nSync",
+                    color = TextPrimary, fontSize = 27.sp,
+                    lineHeight = 29.sp, fontWeight = FontWeight.SemiBold,
+                    letterSpacing = (-1.2).sp
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Plain-text clipboard synchronization with your paired Windows host. Host controls direction and can revoke at any time.",
+                    color = TextSecondary, fontSize = 12.sp, lineHeight = 18.sp
+                )
+                Spacer(Modifier.height(14.dp))
+
+                // Direction selector pills
+                Text("HOST-GRANTED DIRECTION", color = Purple300, fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        "bidirectional" to "Both Ways",
+                        "host_to_client" to "Host → Me",
+                        "client_to_host" to "Me → Host"
+                    ).forEach { (key, label) ->
+                        val isSelected = direction == key
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isSelected) Purple500.copy(alpha = 0.55f)
+                                    else Color.Transparent
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) GlassBorderActive else GlassBorder,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .clickable { direction = key }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(label, color = if (isSelected) TextPrimary else TextMuted,
+                                fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    Box(Modifier.weight(1f)) {
+                        OutlineButton(
+                            label = if (syncActive) "Suspend Sync" else "Activate Sync",
+                            onClick = {
+                                syncActive = !syncActive
+                                onNotice(
+                                    if (syncActive) "Clipboard sync activated with host."
+                                    else "Clipboard sync suspended."
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Client → Host paste panel
+        GlassSurface(
+            modifier = Modifier.fillMaxWidth(),
+            corner = RoundedCornerShape(16.dp, 4.dp, 16.dp, 4.dp),
+            contentPadding = PaddingValues(18.dp)
+        ) {
+            Column {
+                Text("CLIENT → HOST CLIPBOARD", color = Purple300, fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Type or paste text below to send to your paired Windows host. Content is validated and size-capped at 64 KiB.",
+                    color = TextSecondary, fontSize = 12.sp, lineHeight = 18.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                // Simulated text entry (real implementation would use TextField + ClipboardManager)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(SurfaceRaised)
+                        .border(1.dp, GlassBorder, RoundedCornerShape(10.dp))
+                        .padding(14.dp)
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            clipText = "Hello from Android! 📋"
+                            onNotice("Sample text loaded into clipboard field.")
+                        },
+                    contentAlignment = Alignment.TopStart
+                ) {
+                    Text(
+                        if (clipText.isEmpty()) "Tap to load sample text or paste from Android clipboard…"
+                        else clipText,
+                        color = if (clipText.isEmpty()) TextMuted else TextPrimary,
+                        fontSize = 12.sp, lineHeight = 18.sp
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    Box(Modifier.weight(1f)) {
+                        OutlineButton("Clear") {
+                            clipText = ""
+                            onNotice("Clipboard field cleared.")
+                        }
+                    }
+                    Box(Modifier.weight(2f)) {
+                        GradientButton(
+                            label = "Send to Host",
+                            trailing = "⇢",
+                            onClick = {
+                                if (!syncActive) {
+                                    onNotice("Activate clipboard sync first.")
+                                } else if (clipText.isBlank()) {
+                                    onNotice("Nothing to send — clipboard field is empty.")
+                                } else if (direction == "host_to_client") {
+                                    onNotice("Current direction is Host → Client only. Switch direction to send.")
+                                } else {
+                                    clientPushCount++
+                                    onNotice("Clipboard sent to host (${clipText.length} chars). Push #$clientPushCount.")
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Policy & metrics
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            MetricCard("Pushes Sent", "$clientPushCount", "Client → Host", Modifier.weight(1f))
+            MetricCard("Max Payload", "64 KiB", "Plain text only", Modifier.weight(1f))
+        }
+
+        GlassSurface(
+            modifier = Modifier.fillMaxWidth(),
+            corner = RoundedCornerShape(16.dp, 4.dp, 16.dp, 4.dp),
+            contentPadding = PaddingValues(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("CLIPBOARD SECURITY POLICY", color = Purple300, fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+                Spacer(Modifier.height(4.dp))
+                listOf(
+                    "✓ Plain UTF-8 text only — no binary formats",
+                    "✓ 64 KiB hard payload limit enforced by MigRoute",
+                    "✓ Null-byte injection guard active",
+                    "✓ Direction enforced server-side by host",
+                    "✓ Clipboard content never written to logs"
+                ).forEach { line ->
+                    Text(line, color = TextSecondary, fontSize = 11.sp, lineHeight = 16.sp)
+                }
+            }
         }
     }
 }

@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.smartmigrate.host",
   "build": {
-    "beforeDevCommand": "pnpm --dir .. dev",
-    "beforeBuildCommand": "pnpm --dir .. build",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },

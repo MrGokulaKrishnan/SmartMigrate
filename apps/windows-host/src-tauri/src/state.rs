@@ -1,5 +1,6 @@
 //! Shared thread-safe application state managed by Tauri.
 
+use crate::clipboard::ClipboardState;
 use crate::input::InputController;
 use crate::resilience::ConnectionWatchdog;
 use crate::stream::StreamSessionState;
@@ -15,6 +16,7 @@ pub struct AppState {
     pub active_stream: Mutex<StreamSessionState>,
     pub input_controller: InputController,
     pub watchdog: ConnectionWatchdog,
+    pub clipboard: ClipboardState,
 }
 
 impl AppState {
@@ -26,6 +28,7 @@ impl AppState {
             active_stream: Mutex::new(StreamSessionState::default()),
             input_controller: InputController::new(),
             watchdog: ConnectionWatchdog::new(),
+            clipboard: ClipboardState::new(),
         }
     }
 }

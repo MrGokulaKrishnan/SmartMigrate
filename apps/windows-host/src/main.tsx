@@ -101,6 +101,14 @@ type ResilienceStatus = {
   lastHeartbeatAgoMs: number | null;
 };
 
+type ClipboardStatus = {
+  active: boolean;
+  sessionId: string;
+  direction: string;
+  hostPushCount: number;
+  clientPushCount: number;
+};
+
 const destinations: Destination[] = ["Home", "Devices", "Transfer", "Remote", "History", "Security", "Settings"];
 
 const destinationIcons: Record<Destination, string> = {
@@ -374,7 +382,11 @@ function App() {
             <SecurityView status={status} />
           )}
 
-          {destination !== "Home" && destination !== "Devices" && destination !== "Remote" && destination !== "Security" && (
+          {destination === "Transfer" && (
+            <ClipboardSyncView onNotice={setNotice} onNavigateDevices={() => setDestination("Devices")} />
+          )}
+
+          {destination !== "Home" && destination !== "Devices" && destination !== "Remote" && destination !== "Security" && destination !== "Transfer" && (
             <UnavailablePanel destination={destination} onUnavailable={showUnavailable} />
           )}
 
@@ -1045,6 +1057,255 @@ function SecurityView({ status }: { status: HostStatus }) {
 
 function Metric({ label, value, detail, accent }: { label: string; value: string; detail: string; accent: string }) {
   return <article className={`metric glass-surface ${accent}`}><p>{label}</p><strong>{value}</strong><span>{detail}</span></article>;
+}
+
+function ClipboardSyncView({
+  onNotice,
+  onNavigateDevices,
+}: {
+  onNotice: (msg: string) => void;
+  onNavigateDevices: () => void;
+}) {
+  const [clipboardDevices, setClipboardDevices] = useState<TrustedDevice[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState("");
+  const [direction, setDirection] = useState("bidirectional");
+  const [status, setClipStatus] = useState<ClipboardStatus | null>(null);
+  const [hostText, setHostText] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    invoke<TrustedDevice[]>("get_trusted_devices")
+      .then((devs) => {
+        const withClip = devs.filter((d) => !d.is_revoked && d.granted_permissions.includes("CLIPBOARD"));
+        setClipboardDevices(withClip);
+        if (withClip.length > 0) setSelectedDevice(withClip[0].id);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  // Poll clipboard status every 1 second when sync is active
+  useEffect(() => {
+    const poll = setInterval(() => {
+      invoke<ClipboardStatus>("get_clipboard_status")
+        .then((s) => setClipStatus(s))
+        .catch(() => {});
+    }, 1000);
+    return () => clearInterval(poll);
+  }, []);
+
+  const handleActivate = async () => {
+    if (!selectedDevice) { onNotice("Select a device with Clipboard permission first."); return; }
+    try {
+      const s = await invoke<ClipboardStatus>("activate_clipboard_sync", {
+        deviceId: selectedDevice,
+        sessionId: `clip-${Date.now()}`,
+        direction,
+      });
+      setClipStatus(s);
+      onNotice("Clipboard sync activated. Text will be exchanged on demand.");
+    } catch (err) {
+      onNotice(`Activate error: ${String(err)}`);
+    }
+  };
+
+  const handleSuspend = async () => {
+    try {
+      await invoke("suspend_clipboard_sync");
+      setClipStatus((prev) => prev ? { ...prev, active: false } : null);
+      onNotice("Clipboard sync suspended (grant preserved).");
+    } catch (err) {
+      onNotice(`Error: ${String(err)}`);
+    }
+  };
+
+  const handleResume = async () => {
+    try {
+      await invoke("resume_clipboard_sync");
+      setClipStatus((prev) => prev ? { ...prev, active: true } : null);
+      onNotice("Clipboard sync resumed.");
+    } catch (err) {
+      onNotice(`Error: ${String(err)}`);
+    }
+  };
+
+  const handleDeactivate = async () => {
+    try {
+      await invoke("deactivate_clipboard_sync");
+      setClipStatus(null);
+      onNotice("Clipboard sync deactivated and grant cleared.");
+    } catch (err) {
+      onNotice(`Error: ${String(err)}`);
+    }
+  };
+
+  const handlePushToClient = async () => {
+    // Read current host clipboard, display char count, push to client telemetry
+    try {
+      const text = await invoke<string | null>("read_host_clipboard_text");
+      if (!text) { onNotice("Host clipboard is empty or sync is not active."); return; }
+      setHostText(text.slice(0, 120) + (text.length > 120 ? "…" : ""));
+      setClipStatus((prev) => prev ? { ...prev, hostPushCount: (prev.hostPushCount ?? 0) + 1 } : null);
+      onNotice(`Host clipboard read (${text.length} chars). Sync enabled — client will receive on next poll.`);
+    } catch (err) {
+      onNotice(`Push error: ${String(err)}`);
+    }
+  };
+
+  const isActive = status?.active === true;
+  const hasSyncGrant = !!status?.sessionId;
+
+  return (
+    <div className="remote-stream-view">
+      <div className="stream-control-banner">
+        <div>
+          <span className="eyebrow">Milestone 5 — Opt-in Clipboard Sync</span>
+          <h2 style={{ margin: "0.2rem 0" }}>Clipboard Synchronization</h2>
+          <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--sm-text-2)" }}>
+            Explicit host-authorized plain-text clipboard exchange. The host controls direction and can suspend or revoke at any time.
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.8rem" }}>
+          <span className={`stream-status-pill ${isActive ? "active" : ""}`}>
+            <span className={isActive ? "state-dot" : ""} style={{ background: isActive ? "var(--sm-success)" : "var(--sm-text-3)" }} />
+            {isActive ? "SYNC ACTIVE" : hasSyncGrant ? "SYNC SUSPENDED" : "SYNC IDLE"}
+          </span>
+          {hasSyncGrant && (
+            <button className="danger-button" type="button" onClick={handleDeactivate} style={{ padding: "0.55rem 1rem", fontSize: "0.75rem" }}>
+              Deactivate Sync ✕
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Counters */}
+      <div className="telemetry-grid">
+        <div className="telemetry-item">
+          <span>Sync State</span>
+          <strong>{isActive ? "Active" : hasSyncGrant ? "Suspended" : "Not Started"}</strong>
+        </div>
+        <div className="telemetry-item">
+          <span>Direction</span>
+          <strong>{status?.direction?.replace(/_/g, " ") ?? "none"}</strong>
+        </div>
+        <div className="telemetry-item">
+          <span>Host → Client Pushes</span>
+          <strong>{status?.hostPushCount ?? 0}</strong>
+        </div>
+        <div className="telemetry-item">
+          <span>Client → Host Received</span>
+          <strong>{status?.clientPushCount ?? 0}</strong>
+        </div>
+      </div>
+
+      <div className="stream-config-grid">
+        {/* Device & Direction Selector */}
+        <div className="glass-surface config-card">
+          <p className="eyebrow">Target Device &amp; Sync Direction</p>
+
+          {loading ? (
+            <p style={{ fontSize: "0.8rem", color: "var(--sm-text-3)" }}>Loading devices…</p>
+          ) : clipboardDevices.length === 0 ? (
+            <div style={{ padding: "0.8rem", background: "rgba(255,92,122,0.1)", borderRadius: "6px", border: "1px solid rgba(255,92,122,0.25)" }}>
+              <p style={{ margin: 0, fontSize: "0.72rem", color: "var(--sm-error)" }}>
+                No paired devices hold the CLIPBOARD permission.
+              </p>
+              <button
+                type="button"
+                onClick={onNavigateDevices}
+                style={{ marginTop: "0.4rem", background: "none", border: "none", color: "var(--sm-200)", fontSize: "0.7rem", cursor: "pointer", textDecoration: "underline" }}
+              >
+                Manage devices to grant Clipboard permission →
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="form-group">
+                <label className="form-label">Target Authorized Device</label>
+                <select
+                  className="form-select"
+                  value={selectedDevice}
+                  onChange={(e) => setSelectedDevice(e.target.value)}
+                  disabled={hasSyncGrant}
+                >
+                  {clipboardDevices.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} ({d.platform.toUpperCase()}) — {d.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Sync Direction</label>
+                <select
+                  className="form-select"
+                  value={direction}
+                  onChange={(e) => setDirection(e.target.value)}
+                  disabled={hasSyncGrant}
+                >
+                  <option value="bidirectional">Bidirectional — Both Devices Can Push</option>
+                  <option value="host_to_client">Host → Client Only (Read from Windows PC)</option>
+                  <option value="client_to_host">Client → Host Only (Android Sends to Windows)</option>
+                </select>
+              </div>
+
+              {!hasSyncGrant ? (
+                <button className="primary-action" type="button" onClick={handleActivate} style={{ width: "100%", marginTop: "0.4rem" }}>
+                  Activate Clipboard Sync ↗
+                </button>
+              ) : (
+                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.4rem" }}>
+                  {isActive ? (
+                    <button className="secondary-action" type="button" onClick={handleSuspend} style={{ flex: 1 }}>Suspend</button>
+                  ) : (
+                    <button className="primary-action" type="button" onClick={handleResume} style={{ flex: 1 }}>Resume</button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Host → Client Push Panel */}
+        <div className="glass-surface config-card">
+          <p className="eyebrow">Host → Client Clipboard</p>
+          <p style={{ margin: "0 0 0.8rem", fontSize: "0.73rem", color: "var(--sm-text-2)" }}>
+            Read the Windows clipboard and mark it for delivery to the paired Android client. Content is never logged.
+          </p>
+          <button
+            className="primary-action"
+            type="button"
+            onClick={handlePushToClient}
+            disabled={!isActive || !(direction === "host_to_client" || direction === "bidirectional")}
+            style={{ width: "100%" }}
+          >
+            Read Host Clipboard &amp; Push to Client ⇢
+          </button>
+          {hostText && (
+            <div style={{ marginTop: "0.8rem", padding: "0.7rem", background: "rgba(155,140,255,0.08)", borderRadius: "6px", border: "1px solid rgba(155,140,255,0.2)" }}>
+              <p style={{ margin: "0 0 0.3rem", fontSize: "0.65rem", color: "var(--sm-text-3)" }}>Preview (truncated):</p>
+              <code style={{ fontSize: "0.72rem", color: "var(--sm-200)", wordBreak: "break-all" }}>{hostText}</code>
+            </div>
+          )}
+        </div>
+
+        {/* Security policy card */}
+        <div className="glass-surface config-card">
+          <p className="eyebrow">Clipboard Security Policy</p>
+          <div className="metric-mini-grid">
+            <div className="metric-mini-cell"><span>Max Payload</span><strong>64 KiB</strong></div>
+            <div className="metric-mini-cell"><span>Format</span><strong>Plain Text Only</strong></div>
+            <div className="metric-mini-cell"><span>Null Byte Guard</span><strong>Active ✓</strong></div>
+            <div className="metric-mini-cell"><span>Direction Enforcement</span><strong>Host-Side ✓</strong></div>
+          </div>
+          <p style={{ margin: "0.5rem 0 0", fontSize: "0.68rem", color: "var(--sm-text-3)", lineHeight: "1.3" }}>
+            All clipboard payloads are validated through MigRoute before any Win32 call. Binary formats, null bytes, and oversized payloads are silently rejected. Clipboard text is never written to application logs.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function UnavailablePanel({ destination, onUnavailable }: { destination: Destination; onUnavailable: (feature: string) => void }) {

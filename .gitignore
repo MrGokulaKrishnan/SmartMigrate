@@ -17,4 +17,5 @@ target/
 *.key
 .pnpm-store/
 .firebase/
-
+.gradle/
+local.properties

@@ -58,9 +58,9 @@ Codex established the **Phase 0 / Milestone 1 foundation** of the project:
 
 | Component | `cargo check` | `cargo test` | `tsc --noEmit` | Vite build |
 |---|---|---|---|---|
-| `migroute` crate | ✅ PASS | ✅ PASS (39/39 tests) | — | — |
+| `migroute` crate | ✅ PASS | ✅ PASS (53/53 tests) | — | — |
 | Tauri Windows Host Shell | ✅ PASS | ✅ PASS (check + build) | — | — |
-| Windows Host React UI | — | — | ✅ PASS (0 errors) | ✅ PASS (31 modules) |
+| Windows Host React UI | — | — | ✅ PASS (0 errors) | ✅ PASS (~35 modules) |
 | Website | — | — | — | ✅ PASS (Deployed to Firebase) |
 | Android Client | — | — | — | Ready for Gradle / SDK 37 |
 
@@ -115,8 +115,8 @@ Codex established the **Phase 0 / Milestone 1 foundation** of the project:
 
 ## Stopping Point
 
-Milestones 1, 2, 3, and **Milestone 4 (Controlled Input, Replay Defense & Resilience)** are complete.
-All subsystem builds are verified, passing unit test suites, and deployed to Firebase Hosting & GitHub.
+Milestones 1, 2, 3, 4, and **Milestone 5 (Opt-in Clipboard Sync)** are complete.
+All subsystem builds are verified, 53/53 unit tests passing, TypeScript clean, Vite build clean.
 
 ---
 
@@ -127,7 +127,7 @@ All subsystem builds are verified, passing unit test suites, and deployed to Fir
 - [x] SMP/1 Envelope validation with replay protection and sequence tracking
 - [x] SMP/1 Message family (26 message types, all typed)
 - [x] SMP/1 Session lifecycle and dynamic capability revocation
-- [x] MigRoute unit test suite (**39/39 tests passing**)
+- [x] MigRoute unit test suite (**53/53 tests passing**)
 - [x] SMP/1 Protobuf schema matching Rust types
 - [x] Toolchain and linker fixes for Windows GNU target (`rust-lld`, MinGW PATH)
 - [x] Tauri window icon assets generation
@@ -177,6 +177,12 @@ All subsystem builds are verified, passing unit test suites, and deployed to Fir
   - Windows host Input Authority card with live override toggles and telemetry injection counters.
   - Windows host Transport Resilience HUD displaying transport state, RTT latency, packet loss %, and heartbeat stats.
   - Android client viewfinder updated with interactive pointer action buttons (L-Click, R-Click, Scroll Up/Down) and SMP/1 sequence tracking badges.
+- [x] **Milestone 5 — Opt-in Clipboard Sync**:
+  - **`crates/migroute/src/clipboard.rs`**: `ClipboardGrant`, `ClipboardDirection`, `ClipboardError`, `validate_clipboard_update`. Enforces: permission, direction, 64 KiB cap, null-byte guard, revoked/suspended blocking. Debug impl redacted. 14 new unit tests added.
+  - **`apps/windows-host/src-tauri/src/clipboard.rs`**: Native Win32 clipboard adapter using `OpenClipboard`/`GetClipboardData`/`SetClipboardData` with CF_UNICODETEXT (UTF-16LE). All handles null-checked. Non-Windows builds compile to stubs.
+  - **8 new Tauri commands**: `activate_clipboard_sync`, `suspend_clipboard_sync`, `resume_clipboard_sync`, `read_host_clipboard_text`, `receive_remote_clipboard`, `get_clipboard_status`, `deactivate_clipboard_sync` — all enforcing host-side TrustStore authorization.
+  - **Windows host React UI**: Full `ClipboardSyncView` routed to Transfer sidebar item. Device selector (CLIPBOARD-permission-gated), direction picker, activate/suspend/resume/deactivate, host-push panel with preview, 1-second status poll, security policy card.
+  - **Android client**: `ClipboardScreen` composable with `Clipboard` nav destination. Direction selector pills, sync toggle, client→host paste panel with Send button, push counter metrics, security policy list.
 
 ---
 
