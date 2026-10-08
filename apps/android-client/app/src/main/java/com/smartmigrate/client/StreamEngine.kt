@@ -76,7 +76,7 @@ class StreamEngine {
     /**
      * Connects to the host streaming server at the specified host IP/port.
      */
-    fun startStreaming(hostAddress: String = "10.0.2.2", port: Int = 7890) {
+    fun startStreaming(hostAddress: String = "10.0.2.2", port: Int = 7890, authToken: String? = null) {
         stopStreaming()
 
         streamJob = scope.launch {
@@ -89,7 +89,11 @@ class StreamEngine {
             var reconnectAttempts = 0
             while (isActive) {
                 try {
-                    val streamUrl = "http://$hostAddress:$port/live"
+                    val streamUrl = if (!authToken.isNullOrBlank()) {
+                        "http://$hostAddress:$port/live?token=${java.net.URLEncoder.encode(authToken, "UTF-8")}"
+                    } else {
+                        "http://$hostAddress:$port/live"
+                    }
                     val url = URL(streamUrl)
                     val conn = (url.openConnection() as HttpURLConnection).apply {
                         connectTimeout = 4000
@@ -97,6 +101,9 @@ class StreamEngine {
                         requestMethod = "GET"
                         setRequestProperty("Accept", "multipart/x-mixed-replace")
                         setRequestProperty("User-Agent", "SmartMigrate-Android/0.1.0")
+                        if (!authToken.isNullOrBlank()) {
+                            setRequestProperty("Authorization", "Bearer $authToken")
+                        }
                         doInput = true
                     }
 

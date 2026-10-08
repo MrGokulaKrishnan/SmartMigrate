@@ -295,6 +295,7 @@ private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
     val latestBitmap by streamEngine.latestBitmap
     val diagnostics by streamEngine.diagnostics
     var hostAddress by rememberSaveable { mutableStateOf("10.0.2.2") }
+    var streamToken by rememberSaveable { mutableStateOf("") }
     var inputSeq by rememberSaveable { mutableStateOf(1L) }
 
     DisposableEffect(streamEngine) {
@@ -368,6 +369,39 @@ private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(":7890", color = TextMuted, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Stream Session Token Input Bar
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp, 3.dp, 10.dp, 3.dp))
+                        .background(Color(0xFF07060E))
+                        .border(1.dp, GlassBorder, RoundedCornerShape(10.dp, 3.dp, 10.dp, 3.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text("TOKEN:", color = Purple300, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.weight(1f)) {
+                        if (streamToken.isEmpty() && !isConnected && !isConnecting) {
+                            Text("Optional session token", color = TextMuted, fontSize = 12.sp)
+                        }
+                        BasicTextField(
+                            value = streamToken,
+                            onValueChange = { streamToken = it },
+                            textStyle = TextStyle(
+                                color = TextPrimary,
+                                fontSize = 13.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            cursorBrush = SolidColor(Purple300),
+                            singleLine = true,
+                            enabled = !isConnected && !isConnecting
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -485,7 +519,8 @@ private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
                                 trailing = "⇢",
                                 onClick = {
                                     val target = hostAddress.trim().ifEmpty { "10.0.2.2" }
-                                    streamEngine.startStreaming(target, 7890)
+                                    val token = streamToken.trim().ifEmpty { null }
+                                    streamEngine.startStreaming(target, 7890, token)
                                     onNotice("Connecting to $target:7890/live...")
                                 }
                             )

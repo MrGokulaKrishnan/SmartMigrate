@@ -43,6 +43,7 @@ pub struct StreamSessionState {
     pub capture_latency_ms: f32,
     pub encoder_name: String,
     pub stream_url: String,
+    pub auth_token: String,
 }
 
 impl Default for StreamSessionState {
@@ -64,6 +65,7 @@ impl Default for StreamSessionState {
             capture_latency_ms: 0.0,
             encoder_name: "Not active".to_string(),
             stream_url: String::new(),
+            auth_token: String::new(),
         }
     }
 }
@@ -148,7 +150,8 @@ pub fn start_stream(
     let fps = if target_fps == 0 { 30 } else { target_fps.clamp(15, 60) };
     let now = now_ms();
     let session_id = format!("sm-stream-{}", &now.to_string()[7..]);
-    let stream_url = format!("http://127.0.0.1:{}/live", STREAMING_PORT);
+    let auth_token = crate::storage::generate_crypto_token();
+    let stream_url = format!("http://127.0.0.1:{}/live?token={}", STREAMING_PORT, auth_token);
 
     // Initial capture probe to obtain real display geometry
     let initial_frame = capture_primary_display().map_err(|e| format!("Display probe failed: {e}"))?;
@@ -182,11 +185,12 @@ pub fn start_stream(
     // Start background streaming thread
     let stop_clone = Arc::clone(&stop_signal);
     let metrics_clone = Arc::clone(&metrics);
+    let token_clone = auth_token.clone();
 
     std::thread::Builder::new()
         .name("sm-stream-server".to_string())
         .spawn(move || {
-            run_streaming_server(stop_clone, metrics_clone, fps);
+            run_streaming_server(stop_clone, metrics_clone, fps, token_clone);
         })
         .map_err(|e| format!("Failed to spawn streaming thread: {e}"))?;
 
@@ -214,6 +218,7 @@ pub fn start_stream(
         capture_latency_ms: 4.5,
         encoder_name,
         stream_url,
+        auth_token,
     };
 
     Ok(state)
@@ -288,6 +293,7 @@ fn run_streaming_server(
     stop_signal: Arc<AtomicBool>,
     metrics: Arc<Mutex<LiveStreamMetrics>>,
     target_fps: u32,
+    auth_token: String,
 ) {
     let bind_addr = format!("0.0.0.0:{}", STREAMING_PORT);
     let listener = match TcpListener::bind(&bind_addr) {
@@ -315,23 +321,43 @@ fn run_streaming_server(
     while !stop_signal.load(Ordering::Relaxed) {
         let loop_start = Instant::now();
 
-        // 1. Accept new incoming clients
+        // 1. Accept new incoming clients with token authentication
         match listener.accept() {
             Ok((mut socket, _addr)) => {
                 let _ = socket.set_nodelay(true);
-                let _ = socket.set_nonblocking(true);
+                let _ = socket.set_read_timeout(Some(Duration::from_millis(600)));
 
                 // Read request header to check if client requested HTTP MJPEG or SMPV
-                let mut header_buf = [0u8; 1024];
+                let mut header_buf = [0u8; 2048];
                 let mut is_http = false;
+                let mut is_authorized = false;
                 if let Ok(bytes_read) = socket.read(&mut header_buf) {
                     let req_str = String::from_utf8_lossy(&header_buf[..bytes_read]);
                     if req_str.starts_with("GET") {
                         is_http = true;
+                        let token_query = format!("token={}", auth_token);
+                        let token_bearer = format!("Bearer {}", auth_token);
+                        if req_str.contains(&token_query) || req_str.contains(&token_bearer) {
+                            is_authorized = true;
+                        }
                     }
                 }
 
                 if is_http {
+                    if !is_authorized {
+                        let reject_resp = "HTTP/1.1 401 Unauthorized\r\n\
+                            Content-Type: text/plain; charset=utf-8\r\n\
+                            Connection: close\r\n\
+                            WWW-Authenticate: Bearer realm=\"SmartMigrate\"\r\n\r\n\
+                            Unauthorized: Valid stream session token required\r\n";
+                        let _ = socket.write_all(reject_resp.as_bytes());
+                        let _ = socket.flush();
+                        let _ = socket.shutdown(std::net::Shutdown::Both);
+                        let mut m = metrics.lock().unwrap();
+                        m.dropped_frames += 1;
+                        continue;
+                    }
+
                     // Send HTTP multipart response header
                     let http_header = "HTTP/1.1 200 OK\r\n\
                         Content-Type: multipart/x-mixed-replace; boundary=--smartmigrate\r\n\
@@ -340,8 +366,10 @@ fn run_streaming_server(
                         Expires: 0\r\n\
                         Access-Control-Allow-Origin: *\r\n\r\n";
                     let _ = socket.write_all(http_header.as_bytes());
+                    let _ = socket.flush();
                 }
 
+                let _ = socket.set_nonblocking(true);
                 clients.push(socket);
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -460,27 +488,40 @@ mod tests {
             assert!(state.is_active);
             assert_eq!(state.codec, "mjpeg");
             assert_eq!(state.target_fps, 30);
+            assert!(!state.auth_token.is_empty(), "Stream state must contain an auth_token");
 
-            // Connect over TCP to streaming port
-            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", STREAMING_PORT))
+            // 1. Unauthenticated request must be rejected with HTTP 401 Unauthorized
+            let mut unauth_stream = TcpStream::connect(format!("127.0.0.1:{}", STREAMING_PORT))
                 .expect("Should connect to streaming server");
-            stream.set_read_timeout(Some(std::time::Duration::from_secs(3))).unwrap();
+            unauth_stream.set_read_timeout(Some(std::time::Duration::from_secs(3))).unwrap();
 
-            // Send HTTP GET request
-            let req = "GET /live HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: multipart/x-mixed-replace\r\n\r\n";
-            stream.write_all(req.as_bytes()).unwrap();
+            let unauth_req = "GET /live HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: multipart/x-mixed-replace\r\n\r\n";
+            unauth_stream.write_all(unauth_req.as_bytes()).unwrap();
 
-            // Read response
-            let mut buf = [0u8; 1024];
-            let n = stream.read(&mut buf).expect("Should receive HTTP response");
-            assert!(n > 0);
-            let resp_str = String::from_utf8_lossy(&buf[..n]);
-            assert!(resp_str.contains("HTTP/1.1 200 OK"));
-            assert!(resp_str.contains("multipart/x-mixed-replace"));
+            let mut unauth_buf = [0u8; 1024];
+            let n_unauth = unauth_stream.read(&mut unauth_buf).expect("Should receive HTTP response");
+            assert!(n_unauth > 0);
+            let unauth_resp = String::from_utf8_lossy(&unauth_buf[..n_unauth]);
+            assert!(unauth_resp.contains("HTTP/1.1 401 Unauthorized"), "Expected 401 Unauthorized, got: {}", unauth_resp);
+
+            // 2. Authenticated request with token query param must succeed with HTTP 200 OK
+            let mut auth_stream = TcpStream::connect(format!("127.0.0.1:{}", STREAMING_PORT))
+                .expect("Should connect to streaming server");
+            auth_stream.set_read_timeout(Some(std::time::Duration::from_secs(3))).unwrap();
+
+            let auth_req = format!("GET /live?token={} HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: multipart/x-mixed-replace\r\n\r\n", state.auth_token);
+            auth_stream.write_all(auth_req.as_bytes()).unwrap();
+
+            let mut auth_buf = [0u8; 1024];
+            let n_auth = auth_stream.read(&mut auth_buf).expect("Should receive HTTP response");
+            assert!(n_auth > 0);
+            let auth_resp = String::from_utf8_lossy(&auth_buf[..n_auth]);
+            assert!(auth_resp.contains("HTTP/1.1 200 OK"), "Expected 200 OK, got: {}", auth_resp);
+            assert!(auth_resp.contains("multipart/x-mixed-replace"));
 
             stop_stream("test completed").unwrap();
         } else {
-            println!("Stream test skipped due to non-interactive environment: {:?}", start_res.err());
+            eprintln!("Stream test skipped due to non-interactive environment: {:?}", start_res.err());
         }
     }
 }
