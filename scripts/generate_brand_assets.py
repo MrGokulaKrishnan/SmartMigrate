@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 """
-Smart Migrate — Production Multi-Platform Brand Asset Generator
-Generates pixel-perfect, properly scaled, high-contrast AMOLED icons,
-Windows ICO (multi-res), Android Adaptive & Legacy Mipmap icons,
-and Website SVG/ICO favicons from the official Smart Migrate emblem.
+Smart Migrate — Production Multi-Platform Brand Asset Pipeline
+Generates pixel-perfect, properly scaled (80-85% canvas occupancy),
+AMOLED high-contrast brand assets, Windows multi-resolution ICOs,
+custom NSIS/WiX installer bitmaps, Android Adaptive & Legacy icons,
+and Web SVG/ICO favicons.
 """
 
 import os
 import sys
-from PIL import Image, ImageDraw, ImageEnhance
+from PIL import Image, ImageDraw, ImageEnhance, ImageFont
 
 SOURCE_IMAGE = r"C:\Users\gokul\.gemini\antigravity\brain\6d9de22b-0130-49b7-80f3-9c8a3e7009af\.user_uploaded\media_1791438687860_43db8c08.jpg"
 ROOT_DIR = r"C:\Smart Migrate"
 
-def get_tight_logo_master(source_path: str) -> Image.Image:
+def get_emblem_master(source_path: str, target_occupancy: float = 0.82) -> Image.Image:
     """
-    Crops the source image tightly to the active emblem bounds with minimal safe margin,
-    centering it perfectly and boosting saturation/contrast for small-screen clarity.
+    Extracts the emblem from the source artwork and places it centered on an AMOLED canvas
+    such that the emblem occupies exactly target_occupancy (80-85%) of the canvas.
+    Applies high-fidelity contrast and saturation enhancements for small icon clarity.
     """
     img = Image.open(source_path).convert("RGBA")
     gray = img.convert("L")
@@ -27,231 +29,256 @@ def get_tight_logo_master(source_path: str) -> Image.Image:
 
     cx = (bbox[0] + bbox[2]) / 2.0
     cy = (bbox[1] + bbox[3]) / 2.0
-    side = max(bbox[2] - bbox[0], bbox[3] - bbox[1])
-    
-    # 6% margin so glow falloff is preserved while emblem occupies ~88% of canvas
-    margin = int(side * 0.06)
-    total_side = side + 2 * margin
+    emblem_w = bbox[2] - bbox[0]
+    emblem_h = bbox[3] - bbox[1]
+    emblem_side = max(emblem_w, emblem_h)
 
-    x1 = int(cx - total_side / 2.0)
-    y1 = int(cy - total_side / 2.0)
-    x2 = int(cx + total_side / 2.0)
-    y2 = int(cy + total_side / 2.0)
+    # Compute canvas size for exact occupancy percentage
+    canvas_side = int(emblem_side / target_occupancy)
+    margin = (canvas_side - emblem_side) // 2
 
-    cropped = Image.new("RGBA", (total_side, total_side), (4, 3, 8, 255))
+    x1 = int(cx - canvas_side / 2.0)
+    y1 = int(cy - canvas_side / 2.0)
+    x2 = x1 + canvas_side
+    y2 = y1 + canvas_side
+
+    # Create canvas with AMOLED black #040308
+    canvas = Image.new("RGBA", (canvas_side, canvas_side), (4, 3, 8, 255))
     src_x1 = max(0, x1)
     src_y1 = max(0, y1)
     src_x2 = min(img.width, x2)
     src_y2 = min(img.height, y2)
 
     sub = img.crop((src_x1, src_y1, src_x2, src_y2))
-    cropped.paste(sub, (src_x1 - x1, src_y1 - y1))
+    canvas.paste(sub, (src_x1 - x1, src_y1 - y1))
 
-    # Enhance contrast and color vibrancy for crystal-clear taskbar/launcher visibility
-    enhancer_contrast = ImageEnhance.Contrast(cropped)
-    cropped = enhancer_contrast.enhance(1.18)
-    enhancer_color = ImageEnhance.Color(cropped)
-    cropped = enhancer_color.enhance(1.15)
-    
-    # Resize master to a clean 1024x1024 square
-    return cropped.resize((1024, 1024), Image.Resampling.LANCZOS)
+    # Enhance contrast and color vibrancy for crystal-clear small-screen visibility
+    enhancer_contrast = ImageEnhance.Contrast(canvas)
+    enhanced = enhancer_contrast.enhance(1.18)
+    enhancer_color = ImageEnhance.Color(enhanced)
+    enhanced = enhancer_color.enhance(1.15)
 
-def create_round_icon(image: Image.Image, size: int) -> Image.Image:
-    """Creates a circular icon with antialiased edge masking."""
-    scale = 4
-    resized = image.resize((size * scale, size * scale), Image.Resampling.LANCZOS).convert("RGBA")
-    mask = Image.new("L", (size * scale, size * scale), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.ellipse((0, 0, size * scale, size * scale), fill=255)
-    
-    round_img = Image.new("RGBA", (size * scale, size * scale), (0, 0, 0, 0))
-    round_img.paste(resized, (0, 0), mask=mask)
-    return round_img.resize((size, size), Image.Resampling.LANCZOS)
+    return enhanced.resize((1024, 1024), Image.Resampling.LANCZOS)
 
-def create_rounded_rect_icon(image: Image.Image, size: int, corner_radius: int = None) -> Image.Image:
-    """Creates a squirclish / rounded rectangle icon."""
-    if corner_radius is None:
-        corner_radius = max(4, int(size * 0.22))
-    
-    scale = 4
-    resized = image.resize((size * scale, size * scale), Image.Resampling.LANCZOS).convert("RGBA")
-    mask = Image.new("L", (size * scale, size * scale), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.rounded_rectangle((0, 0, size * scale, size * scale), radius=corner_radius * scale, fill=255)
-    
-    rect_img = Image.new("RGBA", (size * scale, size * scale), (0, 0, 0, 0))
-    rect_img.paste(resized, (0, 0), mask=mask)
-    return rect_img.resize((size, size), Image.Resampling.LANCZOS)
-
-def create_adaptive_foreground(image: Image.Image, canvas_size: int) -> Image.Image:
+def create_squircle_icon(master: Image.Image, size: int, corner_ratio: float = 0.20) -> Image.Image:
     """
-    Creates an Android Adaptive Icon foreground (108dp canvas).
-    The emblem is scaled to occupy ~74% of the canvas so that within the 72dp
-    safe viewport circle/squircle, the logo fills the visible space boldly.
+    Creates a rounded rectangle / squircle icon with antialiased borders and subtle border highlight.
     """
-    fg = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
-    target_emblem_size = int(canvas_size * 0.74)
-    emblem_resized = image.resize((target_emblem_size, target_emblem_size), Image.Resampling.LANCZOS)
-    offset = (canvas_size - target_emblem_size) // 2
-    fg.paste(emblem_resized, (offset, offset))
-    return fg
+    scale = 4
+    high_res_size = size * scale
+    resized = master.resize((high_res_size, high_res_size), Image.Resampling.LANCZOS)
+
+    mask = Image.new("L", (high_res_size, high_res_size), 0)
+    draw_mask = ImageDraw.Draw(mask)
+    radius = int(high_res_size * corner_ratio)
+    draw_mask.rounded_rectangle((0, 0, high_res_size, high_res_size), radius=radius, fill=255)
+
+    out = Image.new("RGBA", (high_res_size, high_res_size), (0, 0, 0, 0))
+    out.paste(resized, (0, 0), mask=mask)
+
+    # Subtle glowing border
+    draw_border = ImageDraw.Draw(out)
+    border_width = max(1, int(1.5 * scale))
+    draw_border.rounded_rectangle(
+        (border_width // 2, border_width // 2, high_res_size - border_width // 2, high_res_size - border_width // 2),
+        radius=radius,
+        outline=(55, 40, 106, 200),
+        width=border_width
+    )
+
+    return out.resize((size, size), Image.Resampling.LANCZOS)
+
+def create_circular_icon(master: Image.Image, size: int) -> Image.Image:
+    """Creates a circular icon with antialiased mask."""
+    scale = 4
+    high_res_size = size * scale
+    resized = master.resize((high_res_size, high_res_size), Image.Resampling.LANCZOS)
+
+    mask = Image.new("L", (high_res_size, high_res_size), 0)
+    draw_mask = ImageDraw.Draw(mask)
+    draw_mask.ellipse((0, 0, high_res_size, high_res_size), fill=255)
+
+    out = Image.new("RGBA", (high_res_size, high_res_size), (0, 0, 0, 0))
+    out.paste(resized, (0, 0), mask=mask)
+    return out.resize((size, size), Image.Resampling.LANCZOS)
+
+def create_installer_sidebar(master: Image.Image) -> Image.Image:
+    """
+    Generates the 164x314 24-bit RGB bitmap for NSIS Welcome and Finish pages.
+    AMOLED dark gradient background, glowing emblem (96x96),
+    and crisp Segoe UI branding typography.
+    """
+    width, height = 164, 314
+    sidebar = Image.new("RGB", (width, height), (4, 3, 8))
+    draw = ImageDraw.Draw(sidebar)
+
+    # Vertical gradient from top #040308 -> #160D2D -> #080512
+    for y in range(height):
+        t = y / float(height)
+        if t < 0.4:
+            f = t / 0.4
+            r = int(4 + (24 - 4) * f)
+            g = int(3 + (14 - 3) * f)
+            b = int(8 + (50 - 8) * f)
+        elif t < 0.75:
+            f = (t - 0.4) / 0.35
+            r = int(24 + (10 - 24) * f)
+            g = int(14 + (6 - 14) * f)
+            b = int(50 + (24 - 50) * f)
+        else:
+            f = (t - 0.75) / 0.25
+            r = int(10 + (4 - 10) * f)
+            g = int(6 + (3 - 6) * f)
+            b = int(24 + (8 - 24) * f)
+        draw.line([(0, y), (width, y)], fill=(r, g, b))
+
+    # Vertical divider accent line on the right edge
+    draw.line([(width - 1, 0), (width - 1, height)], fill=(43, 33, 78))
+
+    # Centered glowing emblem
+    emblem_size = 96
+    emblem = create_squircle_icon(master, emblem_size, corner_ratio=0.20)
+    emblem_x = (width - emblem_size) // 2
+    emblem_y = 44
+    sidebar.paste(emblem.convert("RGB"), (emblem_x, emblem_y))
+
+    # System fonts
+    try:
+        f_title = ImageFont.truetype(r"C:\Windows\Fonts\segoeuib.ttf", 14)
+        f_sub = ImageFont.truetype(r"C:\Windows\Fonts\segoeui.ttf", 9)
+        f_tag = ImageFont.truetype(r"C:\Windows\Fonts\segoeui.ttf", 8)
+    except Exception:
+        f_title = f_sub = f_tag = None
+
+    if f_title:
+        draw.text((width // 2, 154), "SMART MIGRATE", fill=(255, 255, 255), font=f_title, anchor="mm")
+        draw.text((width // 2, 172), "Connect • Transfer • Control", fill=(179, 157, 255), font=f_sub, anchor="mm")
+
+        # Subtle separator line
+        draw.line([(24, 220), (width - 24, 220)], fill=(40, 30, 70))
+
+        draw.text((width // 2, 240), "MigRoute Core Engine", fill=(160, 150, 200), font=f_tag, anchor="mm")
+        draw.text((width // 2, 256), "Smart Migrate Protocol (SMP/1)", fill=(120, 110, 160), font=f_tag, anchor="mm")
+        draw.text((width // 2, 284), "v1.4.0 High-Speed Host", fill=(138, 107, 255), font=f_tag, anchor="mm")
+
+    return sidebar
+
+def create_installer_header(master: Image.Image) -> Image.Image:
+    """
+    Generates the 150x57 24-bit RGB bitmap for NSIS header pages.
+    Seamless white background (#FFFFFF) with emblem placed on the right.
+    """
+    width, height = 150, 57
+    header = Image.new("RGB", (width, height), (255, 255, 255))
+    emblem_size = 44
+    emblem = create_squircle_icon(master, emblem_size, corner_ratio=0.20)
+    emblem_x = width - emblem_size - 10
+    emblem_y = (height - emblem_size) // 2
+    header.paste(emblem.convert("RGB"), (emblem_x, emblem_y))
+    return header
+
+def create_wix_banner(master: Image.Image) -> Image.Image:
+    """
+    Generates the 493x58 24-bit RGB bitmap for WiX MSI banner.
+    Seamless white background (#FFFFFF) with emblem on right.
+    """
+    width, height = 493, 58
+    banner = Image.new("RGB", (width, height), (255, 255, 255))
+    emblem_size = 44
+    emblem = create_squircle_icon(master, emblem_size, corner_ratio=0.20)
+    emblem_x = width - emblem_size - 14
+    emblem_y = (height - emblem_size) // 2
+    banner.paste(emblem.convert("RGB"), (emblem_x, emblem_y))
+    return banner
+
+def create_wix_dialog(sidebar: Image.Image) -> Image.Image:
+    """
+    Generates the 493x312 24-bit RGB bitmap for WiX MSI dialogs.
+    Left 164x312 is the branded sidebar; right 329x312 is white (#FFFFFF).
+    """
+    width, height = 493, 312
+    dialog = Image.new("RGB", (width, height), (255, 255, 255))
+    sb_resized = sidebar.resize((164, 312), Image.Resampling.LANCZOS)
+    dialog.paste(sb_resized, (0, 0))
+    return dialog
+
+def generate_multi_res_ico(master: Image.Image, output_path: str):
+    """
+    Generates a multi-resolution Windows ICO containing 16, 24, 32, 48, 64, 128, 256 px.
+    Uses squircle masking and DIB/PNG packaging for 100% compatibility with NSIS & Windows Explorer.
+    """
+    sizes = [16, 24, 32, 48, 64, 128, 256]
+    frames = [create_squircle_icon(master, s, corner_ratio=0.20) for s in sizes]
+    
+    # Save the ICO with all individual frames
+    primary = frames[-1]  # 256x256
+    append_frames = frames[:-1]
+    
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    primary.save(
+        output_path,
+        format="ICO",
+        sizes=[(s, s) for s in sizes],
+        append_images=append_frames,
+        bitmap_format="bmp"
+    )
 
 def main():
     if not os.path.exists(SOURCE_IMAGE):
         print(f"Error: Source image not found at {SOURCE_IMAGE}")
         sys.exit(1)
-        
+
     print(f"Loading source logo from: {SOURCE_IMAGE}")
-    master_logo = get_tight_logo_master(SOURCE_IMAGE)
-    print(f"Master tightly-scaled logo generated: {master_logo.size}")
+    master_logo = get_emblem_master(SOURCE_IMAGE, target_occupancy=0.82)
+    print(f"Master tightly-scaled emblem generated: {master_logo.size} (82% canvas fill)")
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 1. Windows Tauri Icons (apps/windows-host/src-tauri/icons)
+    # 1. Branding Assets (branding/ directory)
     # ─────────────────────────────────────────────────────────────────────────
-    tauri_icons_dir = os.path.join(ROOT_DIR, "apps", "windows-host", "src-tauri", "icons")
-    os.makedirs(tauri_icons_dir, exist_ok=True)
-    
-    tauri_sizes = {
-        "icon.png": (512, 512),
-        "32x32.png": (32, 32),
-        "64x64.png": (64, 64),
-        "128x128.png": (128, 128),
-        "128x128@2x.png": (256, 256),
-        "Square30x30Logo.png": (30, 30),
-        "Square44x44Logo.png": (44, 44),
-        "Square71x71Logo.png": (71, 71),
-        "Square89x89Logo.png": (89, 89),
-        "Square107x107Logo.png": (107, 107),
-        "Square142x142Logo.png": (142, 142),
-        "Square150x150Logo.png": (150, 150),
-        "Square284x284Logo.png": (284, 284),
-        "Square310x310Logo.png": (310, 310),
-        "StoreLogo.png": (50, 50),
-    }
-    
-    for filename, (w, h) in tauri_sizes.items():
-        out_path = os.path.join(tauri_icons_dir, filename)
-        resized = master_logo.resize((w, h), Image.Resampling.LANCZOS)
-        resized.save(out_path, format="PNG")
-        print(f"Generated Tauri icon: {filename} ({w}x{h})")
+    branding_dir = os.path.join(ROOT_DIR, "branding")
+    win_brand_dir = os.path.join(branding_dir, "windows")
+    android_brand_dir = os.path.join(branding_dir, "android")
+    web_brand_dir = os.path.join(branding_dir, "web")
 
-    # Generate Windows Multi-Res icon.ico (16, 24, 32, 48, 64, 128, 256)
-    ico_path = os.path.join(tauri_icons_dir, "icon.ico")
-    ico_sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
-    master_logo.save(ico_path, format="ICO", sizes=ico_sizes)
-    print(f"Generated multi-res Windows icon.ico ({len(ico_sizes)} layers: 16 to 256px)")
+    os.makedirs(win_brand_dir, exist_ok=True)
+    os.makedirs(android_brand_dir, exist_ok=True)
+    os.makedirs(web_brand_dir, exist_ok=True)
 
-    # Windows Host React UI logo
-    win_src_dir = os.path.join(ROOT_DIR, "apps", "windows-host", "src")
+    # Windows ICO in branding/windows/SmartMigrate.ico
+    win_ico_brand = os.path.join(win_brand_dir, "SmartMigrate.ico")
+    generate_multi_res_ico(master_logo, win_ico_brand)
+    print(f"Generated {win_ico_brand} (multi-res: 16 to 256px)")
+
+    # Individual resolution PNGs in branding/windows/SmartMigrate-<size>.png
+    win_resolutions = [16, 24, 32, 48, 64, 128, 256]
+    for res in win_resolutions:
+        p = os.path.join(win_brand_dir, f"SmartMigrate-{res}.png")
+        create_squircle_icon(master_logo, res, corner_ratio=0.20).save(p, format="PNG")
+        print(f"Generated {p}")
+
+    # Android branding assets
     master_logo.resize((512, 512), Image.Resampling.LANCZOS).save(
-        os.path.join(win_src_dir, "smart_migrate_logo.png"), format="PNG"
+        os.path.join(android_brand_dir, "adaptive-icon.png"), format="PNG"
     )
-    print("Generated Windows Host React UI logo (smart_migrate_logo.png)")
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # 2. Android Client Icons (apps/android-client/app/src/main/res)
-    # ─────────────────────────────────────────────────────────────────────────
-    res_dir = os.path.join(ROOT_DIR, "apps", "android-client", "app", "src", "main", "res")
-    os.makedirs(res_dir, exist_ok=True)
-
-    # 2A. Adaptive icon background color in values/ic_launcher_background.xml
-    values_dir = os.path.join(res_dir, "values")
-    os.makedirs(values_dir, exist_ok=True)
-    with open(os.path.join(values_dir, "ic_launcher_background.xml"), "w", encoding="utf-8") as f:
+    create_squircle_icon(master_logo, 432, corner_ratio=0.20).save(
+        os.path.join(android_brand_dir, "ic_launcher_foreground.png"), format="PNG"
+    )
+    with open(os.path.join(android_brand_dir, "ic_launcher_background.xml"), "w", encoding="utf-8") as f:
         f.write('''<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#040308</color>
 </resources>
 ''')
+    print("Generated Android branding assets (adaptive-icon.png, ic_launcher_foreground.png, background.xml)")
 
-    # 2B. Adaptive icon XMLs in mipmap-anydpi-v26
-    anydpi_dir = os.path.join(res_dir, "mipmap-anydpi-v26")
-    os.makedirs(anydpi_dir, exist_ok=True)
-    adaptive_xml = '''<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
-</adaptive-icon>
-'''
-    with open(os.path.join(anydpi_dir, "ic_launcher.xml"), "w", encoding="utf-8") as f:
-        f.write(adaptive_xml)
-    with open(os.path.join(anydpi_dir, "ic_launcher_round.xml"), "w", encoding="utf-8") as f:
-        f.write(adaptive_xml)
-    print("Generated Android Adaptive Icon XML declarations (mipmap-anydpi-v26)")
+    # Web branding assets
+    create_squircle_icon(master_logo, 32, corner_ratio=0.20).save(
+        os.path.join(web_brand_dir, "favicon-32.png"), format="PNG"
+    )
+    create_squircle_icon(master_logo, 16, corner_ratio=0.20).save(
+        os.path.join(web_brand_dir, "favicon-16.png"), format="PNG"
+    )
 
-    # 2C. Mipmaps for each density: Adaptive foreground + Legacy round & squircle
-    # Density definitions: (legacy_size, foreground_size)
-    mipmap_configs = {
-        "mipmap-mdpi": (48, 108),
-        "mipmap-hdpi": (72, 162),
-        "mipmap-xhdpi": (96, 216),
-        "mipmap-xxhdpi": (144, 324),
-        "mipmap-xxxhdpi": (192, 432),
-    }
-
-    for folder, (legacy_size, fg_size) in mipmap_configs.items():
-        target_dir = os.path.join(res_dir, folder)
-        os.makedirs(target_dir, exist_ok=True)
-
-        # 1. Adaptive foreground
-        fg_icon = create_adaptive_foreground(master_logo, fg_size)
-        fg_icon.save(os.path.join(target_dir, "ic_launcher_foreground.png"), format="PNG")
-
-        # 2. Legacy squircle
-        square_icon = create_rounded_rect_icon(master_logo, legacy_size)
-        square_icon.save(os.path.join(target_dir, "ic_launcher.png"), format="PNG")
-
-        # 3. Legacy circle
-        round_icon = create_round_icon(master_logo, legacy_size)
-        round_icon.save(os.path.join(target_dir, "ic_launcher_round.png"), format="PNG")
-        print(f"Generated Android {folder}: launcher ({legacy_size}px) + foreground ({fg_size}px)")
-
-    # 2D. Android drawable logos (Splash & UI)
-    drawable_dir = os.path.join(res_dir, "drawable")
-    os.makedirs(drawable_dir, exist_ok=True)
-    logo_512 = master_logo.resize((512, 512), Image.Resampling.LANCZOS)
-    logo_512.save(os.path.join(drawable_dir, "smart_migrate_logo.png"), format="PNG")
-    print("Generated Android drawable high-res logo (smart_migrate_logo.png)")
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # 3. Website Assets (apps/website and apps/website/public)
-    # ─────────────────────────────────────────────────────────────────────────
-    web_dirs = [
-        os.path.join(ROOT_DIR, "apps", "website"),
-        os.path.join(ROOT_DIR, "apps", "website", "public"),
-    ]
-    
-    for web_dir in web_dirs:
-        os.makedirs(web_dir, exist_ok=True)
-        
-        # Favicon ICO with 16, 24, 32, 48 px
-        web_ico_path = os.path.join(web_dir, "favicon.ico")
-        master_logo.save(web_ico_path, format="ICO", sizes=[(16, 16), (24, 24), (32, 32), (48, 48)])
-        
-        # Logo PNG and JPG
-        master_logo.resize((512, 512), Image.Resampling.LANCZOS).save(
-            os.path.join(web_dir, "smart_migrate_logo.png"), format="PNG"
-        )
-        master_logo.convert("RGB").save(
-            os.path.join(web_dir, "smart_migrate_logo.jpg"), format="JPEG", quality=95
-        )
-        
-        # Apple Touch Icon (180x180 squircle)
-        apple_icon = create_rounded_rect_icon(master_logo, 180, corner_radius=38)
-        apple_icon.save(os.path.join(web_dir, "apple-touch-icon.png"), format="PNG")
-
-        # Media directory if exists
-        media_dir = os.path.join(web_dir, "media")
-        if os.path.exists(media_dir):
-            master_logo.resize((512, 512), Image.Resampling.LANCZOS).save(
-                os.path.join(media_dir, "smart_migrate_logo.png"), format="PNG"
-            )
-            master_logo.convert("RGB").save(
-                os.path.join(media_dir, "smart-migrate-logo.jpg"), format="JPEG", quality=95
-            )
-
-    # 3B. High-Contrast Scaled AMOLED Vector SVG Favicon
-    # Scaled to 88% canvas fill so it is immediately legible in browser tabs
     svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
   <defs>
     <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -268,10 +295,10 @@ def main():
     </filter>
   </defs>
   <!-- Pure AMOLED Black Background -->
-  <rect width="512" height="512" rx="112" fill="#040308"/>
-  <rect width="510" height="510" x="1" y="1" rx="111" fill="none" stroke="#2B214E" stroke-width="2.5"/>
+  <rect width="512" height="512" rx="102" fill="#040308"/>
+  <rect width="510" height="510" x="1" y="1" rx="101" fill="none" stroke="#2B214E" stroke-width="2.5"/>
   
-  <!-- Outer Glow Group with 1.34x scale to fill viewport crisply -->
+  <!-- Outer Glow Group with 1.34x scale to fill viewport crisply (82% occupancy) -->
   <g filter="url(#glow)" transform="translate(-89, -84) scale(1.34)">
     <!-- Top-Right Dual Migration Arrow Glyph -->
     <path d="M 330 145 L 360 115 L 360 135 L 405 135 L 405 155 L 360 155 L 360 175 Z" fill="url(#accentGrad)" />
@@ -284,14 +311,121 @@ def main():
     <path d="M 270 335 L 270 140 L 320 140 L 350 240 L 380 140 L 430 140 L 430 335 L 385 335 L 385 220 L 360 305 L 340 305 L 315 220 L 315 335 L 295 385 L 305 335 Z" fill="url(#purpleGrad)"/>
   </g>
 </svg>'''
+    with open(os.path.join(web_brand_dir, "favicon.svg"), "w", encoding="utf-8") as f:
+        f.write(svg_content)
+    with open(os.path.join(branding_dir, "smart-migrate-logo.svg"), "w", encoding="utf-8") as f:
+        f.write(svg_content)
+    print("Generated SVG brand logos (smart-migrate-logo.svg, favicon.svg)")
 
-    for web_dir in web_dirs:
-        svg_path = os.path.join(web_dir, "favicon.svg")
-        with open(svg_path, "w", encoding="utf-8") as f:
+    # ─────────────────────────────────────────────────────────────────────────
+    # 2. Windows Tauri Host Icons & Installer Bitmaps
+    # ─────────────────────────────────────────────────────────────────────────
+    tauri_icons_dir = os.path.join(ROOT_DIR, "apps", "windows-host", "src-tauri", "icons")
+    os.makedirs(tauri_icons_dir, exist_ok=True)
+
+    # Multi-resolution icon.ico and installer.ico
+    tauri_ico_path = os.path.join(tauri_icons_dir, "icon.ico")
+    generate_multi_res_ico(master_logo, tauri_ico_path)
+    generate_multi_res_ico(master_logo, os.path.join(tauri_icons_dir, "installer.ico"))
+    print(f"Generated Tauri multi-res icon.ico and installer.ico (16 to 256px)")
+
+    # Installer Bitmaps
+    sidebar_bmp = create_installer_sidebar(master_logo)
+    sidebar_path = os.path.join(tauri_icons_dir, "sidebar.bmp")
+    sidebar_bmp.save(sidebar_path, format="BMP")
+    print(f"Generated NSIS installer sidebar.bmp (164x314): {sidebar_path}")
+
+    header_bmp = create_installer_header(master_logo)
+    header_path = os.path.join(tauri_icons_dir, "header.bmp")
+    header_bmp.save(header_path, format="BMP")
+    print(f"Generated NSIS installer header.bmp (150x57): {header_path}")
+
+    banner_bmp = create_wix_banner(master_logo)
+    banner_path = os.path.join(tauri_icons_dir, "banner.bmp")
+    banner_bmp.save(banner_path, format="BMP")
+    print(f"Generated WiX MSI banner.bmp (493x58): {banner_path}")
+
+    dialog_bmp = create_wix_dialog(sidebar_bmp)
+    dialog_path = os.path.join(tauri_icons_dir, "dialog.bmp")
+    dialog_bmp.save(dialog_path, format="BMP")
+    print(f"Generated WiX MSI dialog.bmp (493x312): {dialog_path}")
+
+    # Standard Tauri PNG icons
+    tauri_pngs = {
+        "icon.png": 512,
+        "32x32.png": 32,
+        "64x64.png": 64,
+        "128x128.png": 128,
+        "128x128@2x.png": 256,
+        "Square30x30Logo.png": 30,
+        "Square44x44Logo.png": 44,
+        "Square71x71Logo.png": 71,
+        "Square89x89Logo.png": 89,
+        "Square107x107Logo.png": 107,
+        "Square142x142Logo.png": 142,
+        "Square150x150Logo.png": 150,
+        "Square284x284Logo.png": 284,
+        "Square310x310Logo.png": 310,
+        "StoreLogo.png": 50,
+    }
+    for fname, sz in tauri_pngs.items():
+        out_p = os.path.join(tauri_icons_dir, fname)
+        create_squircle_icon(master_logo, sz, corner_ratio=0.20).save(out_p, format="PNG")
+        print(f"Generated Tauri icon: {fname} ({sz}x{sz})")
+
+    # Windows Host React UI logo
+    win_src_dir = os.path.join(ROOT_DIR, "apps", "windows-host", "src")
+    create_squircle_icon(master_logo, 512, corner_ratio=0.20).save(
+        os.path.join(win_src_dir, "smart_migrate_logo.png"), format="PNG"
+    )
+    print("Generated Windows Host React UI logo (smart_migrate_logo.png)")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 3. Android Client Icons (apps/android-client/app/src/main/res)
+    # ─────────────────────────────────────────────────────────────────────────
+    res_dir = os.path.join(ROOT_DIR, "apps", "android-client", "app", "src", "main", "res")
+    mipmap_configs = {
+        "mipmap-mdpi": (48, 108),
+        "mipmap-hdpi": (72, 162),
+        "mipmap-xhdpi": (96, 216),
+        "mipmap-xxhdpi": (144, 324),
+        "mipmap-xxxhdpi": (192, 432),
+    }
+
+    for folder, (legacy_size, fg_size) in mipmap_configs.items():
+        target_dir = os.path.join(res_dir, folder)
+        os.makedirs(target_dir, exist_ok=True)
+        create_squircle_icon(master_logo, fg_size, corner_ratio=0.20).save(
+            os.path.join(target_dir, "ic_launcher_foreground.png"), format="PNG"
+        )
+        create_squircle_icon(master_logo, legacy_size, corner_ratio=0.22).save(
+            os.path.join(target_dir, "ic_launcher.png"), format="PNG"
+        )
+        create_circular_icon(master_logo, legacy_size).save(
+            os.path.join(target_dir, "ic_launcher_round.png"), format="PNG"
+        )
+        print(f"Generated Android {folder}: launcher ({legacy_size}px) + foreground ({fg_size}px)")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 4. Website Assets (apps/website and apps/website/public)
+    # ─────────────────────────────────────────────────────────────────────────
+    web_dirs = [
+        os.path.join(ROOT_DIR, "apps", "website"),
+        os.path.join(ROOT_DIR, "apps", "website", "public"),
+    ]
+    for w_dir in web_dirs:
+        os.makedirs(w_dir, exist_ok=True)
+        generate_multi_res_ico(master_logo, os.path.join(w_dir, "favicon.ico"))
+        create_squircle_icon(master_logo, 512, corner_ratio=0.20).save(
+            os.path.join(w_dir, "smart_migrate_logo.png"), format="PNG"
+        )
+        create_squircle_icon(master_logo, 180, corner_ratio=0.22).save(
+            os.path.join(w_dir, "apple-touch-icon.png"), format="PNG"
+        )
+        with open(os.path.join(w_dir, "favicon.svg"), "w", encoding="utf-8") as f:
             f.write(svg_content)
-        print(f"Generated high-contrast vector favicon.svg: {svg_path}")
 
-    print("\n[SUCCESS] All Smart Migrate multi-resolution, tightly-scaled brand assets generated across Windows, Android, and Web.")
+    print("\n[SUCCESS] All Smart Migrate multi-resolution, tightly-scaled brand assets and installer bitmaps generated.")
 
 if __name__ == "__main__":
     main()

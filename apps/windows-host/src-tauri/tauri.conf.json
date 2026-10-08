@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Smart Migrate",
-  "version": "0.1.0",
+  "version": "1.4.0",
   "identifier": "com.smartmigrate.host",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -38,6 +38,20 @@
     ],
     "targets": ["nsis", "msi"],
     "shortDescription": "Secure, explicit-consent cross-device connectivity",
-    "longDescription": "Smart Migrate Windows Host — the MigRoute-powered desktop host shell."
+    "longDescription": "Smart Migrate Windows Host — the MigRoute-powered desktop host shell.",
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "icons/header.bmp",
+        "sidebarImage": "icons/sidebar.bmp",
+        "installMode": "both",
+        "displayLanguageSelector": false
+      },
+      "wix": {
+        "bannerPath": "icons/banner.bmp",
+        "dialogImagePath": "icons/dialog.bmp"
+      }
+    }
   }
 }

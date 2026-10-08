@@ -18,7 +18,7 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
     dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
     for fname in filenames:
         ext = os.path.splitext(fname)[1].lower()
-        if ext in ['.exe', '.apk', '.msi', '.png', '.jpg', '.ico', '.jar', '.lock']:
+        if ext in ['.exe', '.apk', '.msi', '.png', '.jpg', '.ico', '.jar', '.lock', '.bin', '.bmp']:
             continue
         fpath = os.path.join(dirpath, fname)
         try:
