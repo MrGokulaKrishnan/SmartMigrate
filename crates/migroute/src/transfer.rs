@@ -268,7 +268,7 @@ pub fn compute_sha256(data: &[u8]) -> String {
     buffer.extend_from_slice(&bit_len.to_be_bytes());
 
     // Process blocks
-    for chunk in buffer.chunks_exact(64) {
+    for chunk in buffer.as_chunks::<64>().0 {
         let mut w = [0u32; 64];
         for i in 0..16 {
             w[i] = u32::from_be_bytes([
@@ -402,7 +402,7 @@ impl TransferSession {
         let total_chunks = if total_bytes == 0 {
             1
         } else {
-            (total_bytes + effective_chunk_size as u64 - 1) / effective_chunk_size as u64
+            total_bytes.div_ceil(effective_chunk_size as u64)
         };
 
         Ok(Self {
@@ -453,7 +453,7 @@ impl TransferSession {
         let calculated_chunks = if total_bytes == 0 {
             1
         } else {
-            (total_bytes + effective_chunk_size as u64 - 1) / effective_chunk_size as u64
+            total_bytes.div_ceil(effective_chunk_size as u64)
         };
 
         if total_chunks != 0 && total_chunks != calculated_chunks {
