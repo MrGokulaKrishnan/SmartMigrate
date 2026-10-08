@@ -1,97 +1,196 @@
 {
-  "hosting": {
-    "public": ".",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**",
-      "**/*.apk",
-      "**/*.exe",
-      "**/*.msi"
-    ],
-    "rewrites": [
-      {
-        "source": "/downloads/android/SmartMigrate.apk",
-        "destination": "/downloads/android/SmartMigrate.apk.bin"
-      },
-      {
-        "source": "/downloads/windows/SmartMigrate-Setup-x64.exe",
-        "destination": "/downloads/windows/SmartMigrate-Setup-x64.exe.bin"
-      },
-      {
-        "source": "/downloads/windows/SmartMigrate-x64.msi",
-        "destination": "/downloads/windows/SmartMigrate-x64.msi.bin"
-      }
-    ],
-    "headers": [
-      {
-        "source": "**",
-        "headers": [
-          {
-            "key": "Content-Security-Policy",
-            "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
-          },
-          {
-            "key": "X-Frame-Options",
-            "value": "DENY"
-          },
-          {
-            "key": "X-Content-Type-Options",
-            "value": "nosniff"
-          },
-          {
-            "key": "Referrer-Policy",
-            "value": "strict-origin-when-cross-origin"
-          },
-          {
-            "key": "Permissions-Policy",
-            "value": "camera=(), microphone=(), geolocation=()"
-          },
-          {
-            "key": "Strict-Transport-Security",
-            "value": "max-age=31536000; includeSubDomains; preload"
-          }
-        ]
-      },
-      {
-        "source": "/downloads/android/SmartMigrate.apk",
-        "headers": [
-          {
-            "key": "Content-Type",
-            "value": "application/vnd.android.package-archive"
-          },
-          {
-            "key": "Content-Disposition",
-            "value": "attachment; filename=\"SmartMigrate.apk\""
-          }
-        ]
-      },
-      {
-        "source": "/downloads/windows/SmartMigrate-Setup-x64.exe",
-        "headers": [
-          {
-            "key": "Content-Type",
-            "value": "application/vnd.microsoft.portable-executable"
-          },
-          {
-            "key": "Content-Disposition",
-            "value": "attachment; filename=\"SmartMigrate-Setup-x64.exe\""
-          }
-        ]
-      },
-      {
-        "source": "/downloads/windows/SmartMigrate-x64.msi",
-        "headers": [
-          {
-            "key": "Content-Type",
-            "value": "application/x-msi"
-          },
-          {
-            "key": "Content-Disposition",
-            "value": "attachment; filename=\"SmartMigrate-x64.msi\""
-          }
-        ]
-      }
-    ]
-  }
+  "hosting": [
+    {
+      "site": "smartmigrate",
+      "public": ".",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**",
+        "**/*.apk",
+        "**/*.exe",
+        "**/*.msi"
+      ],
+      "rewrites": [
+        {
+          "source": "/downloads/android/SmartMigrate.apk",
+          "destination": "/downloads/android/SmartMigrate.apk.bin"
+        },
+        {
+          "source": "/downloads/windows/SmartMigrate-Setup-x64.exe",
+          "destination": "/downloads/windows/SmartMigrate-Setup-x64.exe.bin"
+        },
+        {
+          "source": "/downloads/windows/SmartMigrate-x64.msi",
+          "destination": "/downloads/windows/SmartMigrate-x64.msi.bin"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "camera=(), microphone=(), geolocation=()"
+            },
+            {
+              "key": "Strict-Transport-Security",
+              "value": "max-age=31536000; includeSubDomains; preload"
+            }
+          ]
+        },
+        {
+          "source": "/downloads/android/SmartMigrate.apk",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/vnd.android.package-archive"
+            },
+            {
+              "key": "Content-Disposition",
+              "value": "attachment; filename=\"SmartMigrate.apk\""
+            }
+          ]
+        },
+        {
+          "source": "/downloads/windows/SmartMigrate-Setup-x64.exe",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/vnd.microsoft.portable-executable"
+            },
+            {
+              "key": "Content-Disposition",
+              "value": "attachment; filename=\"SmartMigrate-Setup-x64.exe\""
+            }
+          ]
+        },
+        {
+          "source": "/downloads/windows/SmartMigrate-x64.msi",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-msi"
+            },
+            {
+              "key": "Content-Disposition",
+              "value": "attachment; filename=\"SmartMigrate-x64.msi\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site": "smartmigrated",
+      "public": ".",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**",
+        "**/*.apk",
+        "**/*.exe",
+        "**/*.msi"
+      ],
+      "rewrites": [
+        {
+          "source": "/downloads/android/SmartMigrate.apk",
+          "destination": "/downloads/android/SmartMigrate.apk.bin"
+        },
+        {
+          "source": "/downloads/windows/SmartMigrate-Setup-x64.exe",
+          "destination": "/downloads/windows/SmartMigrate-Setup-x64.exe.bin"
+        },
+        {
+          "source": "/downloads/windows/SmartMigrate-x64.msi",
+          "destination": "/downloads/windows/SmartMigrate-x64.msi.bin"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "camera=(), microphone=(), geolocation=()"
+            },
+            {
+              "key": "Strict-Transport-Security",
+              "value": "max-age=31536000; includeSubDomains; preload"
+            }
+          ]
+        },
+        {
+          "source": "/downloads/android/SmartMigrate.apk",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/vnd.android.package-archive"
+            },
+            {
+              "key": "Content-Disposition",
+              "value": "attachment; filename=\"SmartMigrate.apk\""
+            }
+          ]
+        },
+        {
+          "source": "/downloads/windows/SmartMigrate-Setup-x64.exe",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/vnd.microsoft.portable-executable"
+            },
+            {
+              "key": "Content-Disposition",
+              "value": "attachment; filename=\"SmartMigrate-Setup-x64.exe\""
+            }
+          ]
+        },
+        {
+          "source": "/downloads/windows/SmartMigrate-x64.msi",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/x-msi"
+            },
+            {
+              "key": "Content-Disposition",
+              "value": "attachment; filename=\"SmartMigrate-x64.msi\""
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
