@@ -29,6 +29,13 @@ window.addEventListener("scroll", updateNavigationGlass, { passive: true });
 
 // ─── Platform Detection & Downloads ──────────────────────────────────────────
 
+const DOWNLOAD_BASE_URL = "/downloads";
+const DOWNLOADS = {
+  android: `${DOWNLOAD_BASE_URL}/android/SmartMigrate.apk`,
+  windowsExe: `${DOWNLOAD_BASE_URL}/windows/SmartMigrate-Setup-x64.exe`,
+  windowsMsi: `${DOWNLOAD_BASE_URL}/windows/SmartMigrate-x64.msi`,
+};
+
 function detectPlatform() {
   const ua = navigator.userAgent || "";
   const platform = navigator.platform || "";
@@ -72,7 +79,7 @@ if (currentPlatform.id === "android") {
   if (featuredArch) featuredArch.textContent = "arm64-v8a / universal";
   if (featuredBtnText) featuredBtnText.textContent = "Download for Android (.apk)";
   if (featuredActionBtn) {
-    featuredActionBtn.setAttribute("href", "downloads/android/SmartMigrate.apk");
+    featuredActionBtn.setAttribute("href", DOWNLOADS.android);
     featuredActionBtn.setAttribute("download", "SmartMigrate.apk");
   }
 } else if (currentPlatform.id === "windows") {
@@ -83,7 +90,7 @@ if (currentPlatform.id === "android") {
   if (featuredArch) featuredArch.textContent = "x86_64";
   if (featuredBtnText) featuredBtnText.textContent = "Download for Windows (.exe)";
   if (featuredActionBtn) {
-    featuredActionBtn.setAttribute("href", "downloads/windows/SmartMigrate-Setup-x64.exe");
+    featuredActionBtn.setAttribute("href", DOWNLOADS.windowsExe);
     featuredActionBtn.setAttribute("download", "SmartMigrate-Setup-x64.exe");
   }
 } else {
@@ -129,10 +136,6 @@ async function hydrateReleaseData() {
     const data = await res.json();
     if (!data.artifacts) return;
 
-    const isRemoteHost = window.location.hostname !== 'localhost' &&
-                         window.location.hostname !== '127.0.0.1' &&
-                         window.location.protocol !== 'file:';
-
     const winExe = data.artifacts["windows-exe"];
     const winMsi = data.artifacts["windows-msi"];
     const androidApk = data.artifacts["android-apk"];
@@ -143,14 +146,15 @@ async function hydrateReleaseData() {
       const btnWinExe = document.querySelector("#btn-win-exe");
       if (elSize) elSize.textContent = winExe.size_human || elSize.textContent;
       if (elHash) elHash.textContent = winExe.sha256 || elHash.textContent;
-      if (btnWinExe && isRemoteHost && winExe.download_url) {
-        btnWinExe.setAttribute("href", winExe.download_url);
+      const exeUrl = winExe.download_url || DOWNLOADS.windowsExe;
+      if (btnWinExe) {
+        btnWinExe.setAttribute("href", exeUrl);
       }
       if (currentPlatform.id === "windows") {
         if (featuredSize) featuredSize.textContent = winExe.size_human || featuredSize.textContent;
         if (featuredHash) featuredHash.textContent = winExe.sha256 || featuredHash.textContent;
-        if (featuredActionBtn && isRemoteHost && winExe.download_url) {
-          featuredActionBtn.setAttribute("href", winExe.download_url);
+        if (featuredActionBtn) {
+          featuredActionBtn.setAttribute("href", exeUrl);
         }
       }
     }
@@ -161,8 +165,9 @@ async function hydrateReleaseData() {
       const btnWinMsi = document.querySelector("#btn-win-msi");
       if (elSize) elSize.textContent = winMsi.size_human || elSize.textContent;
       if (elHash) elHash.textContent = winMsi.sha256 || elHash.textContent;
-      if (btnWinMsi && isRemoteHost && winMsi.download_url) {
-        btnWinMsi.setAttribute("href", winMsi.download_url);
+      const msiUrl = winMsi.download_url || DOWNLOADS.windowsMsi;
+      if (btnWinMsi) {
+        btnWinMsi.setAttribute("href", msiUrl);
       }
     }
 
@@ -172,14 +177,15 @@ async function hydrateReleaseData() {
       const btnAndroidApk = document.querySelector("#btn-android-apk");
       if (elSize) elSize.textContent = androidApk.size_human || elSize.textContent;
       if (elHash) elHash.textContent = androidApk.sha256 || elHash.textContent;
-      if (btnAndroidApk && isRemoteHost && androidApk.download_url) {
-        btnAndroidApk.setAttribute("href", androidApk.download_url);
+      const apkUrl = androidApk.download_url || DOWNLOADS.android;
+      if (btnAndroidApk) {
+        btnAndroidApk.setAttribute("href", apkUrl);
       }
       if (currentPlatform.id === "android") {
         if (featuredSize) featuredSize.textContent = androidApk.size_human || featuredSize.textContent;
         if (featuredHash) featuredHash.textContent = androidApk.sha256 || featuredHash.textContent;
-        if (featuredActionBtn && isRemoteHost && androidApk.download_url) {
-          featuredActionBtn.setAttribute("href", androidApk.download_url);
+        if (featuredActionBtn) {
+          featuredActionBtn.setAttribute("href", apkUrl);
         }
       }
     }
