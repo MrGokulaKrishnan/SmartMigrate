@@ -6,25 +6,25 @@
       "filename": "SmartMigrate-Setup-x64.exe",
       "path": "downloads/windows/SmartMigrate-Setup-x64.exe",
       "download_url": "/downloads/windows/SmartMigrate-Setup-x64.exe",
-      "sha256": "9c5cb837cd51a5aef482b41c7f616a7fce21466195be15d913b816310676c466",
-      "size_bytes": 4509143,
-      "size_human": "4.3 MB"
+      "sha256": "0a3091a621c9072371834a008c2a744abee6f62119979b72039c4f339d3b2052",
+      "size_bytes": 4938508,
+      "size_human": "4.7 MB"
     },
     "windows-msi": {
       "filename": "SmartMigrate-x64.msi",
       "path": "downloads/windows/SmartMigrate-x64.msi",
       "download_url": "/downloads/windows/SmartMigrate-x64.msi",
-      "sha256": "90e7baf308155ea59b57af284510844451168c530f682d03b9d309cb87bc79c8",
-      "size_bytes": 13139968,
-      "size_human": "12.5 MB"
+      "sha256": "483a620e4018dbef87efb01d157b471ec283fb7fa4cdd7afbc45dde5d7b7b6ce",
+      "size_bytes": 13570048,
+      "size_human": "12.9 MB"
     },
     "android-apk": {
       "filename": "SmartMigrate.apk",
       "path": "downloads/android/SmartMigrate.apk",
       "download_url": "/downloads/android/SmartMigrate.apk",
-      "sha256": "c2e1b27c0ceb1504d4dadad6df0647257032e44b82ca421ff0bce72c6808ad29",
-      "size_bytes": 1720285,
-      "size_human": "1.6 MB"
+      "sha256": "f0a0cc43e2c0b88b0bee56de8d12b90dafe532a2163e6dfbc8f321308794d26b",
+      "size_bytes": 1584573,
+      "size_human": "1.5 MB"
     }
   }
 }

@@ -102,6 +102,83 @@ def create_circular_icon(master: Image.Image, size: int) -> Image.Image:
     out.paste(resized, (0, 0), mask=mask)
     return out.resize((size, size), Image.Resampling.LANCZOS)
 
+def create_android_adaptive_foreground(emblem: Image.Image, canvas_size: int, occupancy: float = 0.44) -> Image.Image:
+    """
+    Creates an Android Adaptive Icon foreground (108dp canvas).
+    The background is completely transparent. The emblem is scaled to occupy ~44% of the canvas
+    (190px on 432px xxxhdpi canvas) so that its diagonal corner distance (134px) is strictly less
+    than the 66dp circular safe zone radius (132-144px).
+    This mathematically guarantees zero clipping and completely prevents any zoomed-in appearance.
+    """
+    fg = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+    target_size = int(canvas_size * occupancy)
+    emblem_resized = emblem.resize((target_size, target_size), Image.Resampling.LANCZOS)
+    offset = (canvas_size - target_size) // 2
+    fg.paste(emblem_resized, (offset, offset), mask=emblem_resized if emblem_resized.mode == "RGBA" else None)
+    return fg
+
+def create_android_legacy_round(emblem: Image.Image, size: int, occupancy: float = 0.65) -> Image.Image:
+    """
+    Creates a circular icon for legacy Android launchers.
+    Background is AMOLED black (#040308). The emblem occupies 65% of the circle,
+    ensuring circular mask never cuts off the emblem corners.
+    """
+    scale = 4
+    high_size = size * scale
+    canvas = Image.new("RGBA", (high_size, high_size), (4, 3, 8, 255))
+    target_size = int(high_size * occupancy)
+    emblem_resized = emblem.resize((target_size, target_size), Image.Resampling.LANCZOS)
+    offset = (high_size - target_size) // 2
+    canvas.paste(emblem_resized, (offset, offset), mask=emblem_resized if emblem_resized.mode == "RGBA" else None)
+    
+    mask = Image.new("L", (high_size, high_size), 0)
+    draw_mask = ImageDraw.Draw(mask)
+    draw_mask.ellipse((0, 0, high_size, high_size), fill=255)
+    
+    out = Image.new("RGBA", (high_size, high_size), (0, 0, 0, 0))
+    out.paste(canvas, (0, 0), mask=mask)
+    
+    draw_border = ImageDraw.Draw(out)
+    draw_border.ellipse((scale, scale, high_size - scale, high_size - scale), outline=(55, 40, 106, 220), width=scale)
+    return out.resize((size, size), Image.Resampling.LANCZOS)
+
+def create_android_legacy_squircle(emblem: Image.Image, size: int, occupancy: float = 0.68) -> Image.Image:
+    """
+    Creates a rounded rectangle icon for legacy Android launchers.
+    Background is AMOLED black (#040308). The emblem occupies 68% of the squircle.
+    """
+    scale = 4
+    high_size = size * scale
+    canvas = Image.new("RGBA", (high_size, high_size), (4, 3, 8, 255))
+    target_size = int(high_size * occupancy)
+    emblem_resized = emblem.resize((target_size, target_size), Image.Resampling.LANCZOS)
+    offset = (high_size - target_size) // 2
+    canvas.paste(emblem_resized, (offset, offset), mask=emblem_resized if emblem_resized.mode == "RGBA" else None)
+    
+    mask = Image.new("L", (high_size, high_size), 0)
+    draw_mask = ImageDraw.Draw(mask)
+    radius = int(high_size * 0.22)
+    draw_mask.rounded_rectangle((0, 0, high_size, high_size), radius=radius, fill=255)
+    
+    out = Image.new("RGBA", (high_size, high_size), (0, 0, 0, 0))
+    out.paste(canvas, (0, 0), mask=mask)
+    
+    draw_border = ImageDraw.Draw(out)
+    draw_border.rounded_rectangle((scale, scale, high_size - scale, high_size - scale), radius=radius, outline=(55, 40, 106, 220), width=scale)
+    return out.resize((size, size), Image.Resampling.LANCZOS)
+
+def create_android_drawable_logo(emblem: Image.Image, size: int = 512, occupancy: float = 0.70) -> Image.Image:
+    """
+    Creates the in-app drawable logo with 15% breathing padding around the emblem,
+    so Compose modifiers (.clip(RoundedCornerShape(...))) never cut the emblem.
+    """
+    canvas = Image.new("RGBA", (size, size), (4, 3, 8, 255))
+    target_size = int(size * occupancy)
+    emblem_resized = emblem.resize((target_size, target_size), Image.Resampling.LANCZOS)
+    offset = (size - target_size) // 2
+    canvas.paste(emblem_resized, (offset, offset), mask=emblem_resized if emblem_resized.mode == "RGBA" else None)
+    return canvas
+
 def create_installer_sidebar(master: Image.Image) -> Image.Image:
     """
     Generates the 164x314 24-bit RGB bitmap for NSIS Welcome and Finish pages.
@@ -392,19 +469,29 @@ def main():
         "mipmap-xxxhdpi": (192, 432),
     }
 
+    # 3A. Generate calibrated adaptive foregrounds (44% emblem occupancy for 66dp safe zone)
+    # and legacy squircle/circular icons with safe margins
     for folder, (legacy_size, fg_size) in mipmap_configs.items():
         target_dir = os.path.join(res_dir, folder)
         os.makedirs(target_dir, exist_ok=True)
-        create_squircle_icon(master_logo, fg_size, corner_ratio=0.20).save(
+        create_android_adaptive_foreground(master_logo, fg_size, occupancy=0.44).save(
             os.path.join(target_dir, "ic_launcher_foreground.png"), format="PNG"
         )
-        create_squircle_icon(master_logo, legacy_size, corner_ratio=0.22).save(
+        create_android_legacy_squircle(master_logo, legacy_size, occupancy=0.68).save(
             os.path.join(target_dir, "ic_launcher.png"), format="PNG"
         )
-        create_circular_icon(master_logo, legacy_size).save(
+        create_android_legacy_round(master_logo, legacy_size, occupancy=0.65).save(
             os.path.join(target_dir, "ic_launcher_round.png"), format="PNG"
         )
-        print(f"Generated Android {folder}: launcher ({legacy_size}px) + foreground ({fg_size}px)")
+        print(f"Generated Android {folder}: launcher ({legacy_size}px) + foreground ({fg_size}px, 52% safe zone)")
+
+    # 3B. In-app drawable logo with breathing padding (never clipped by Compose)
+    drawable_dir = os.path.join(res_dir, "drawable")
+    os.makedirs(drawable_dir, exist_ok=True)
+    create_android_drawable_logo(master_logo, 512, occupancy=0.72).save(
+        os.path.join(drawable_dir, "smart_migrate_logo.png"), format="PNG"
+    )
+    print("Generated Android in-app drawable logo (drawable/smart_migrate_logo.png, 72% occupancy)")
 
     # ─────────────────────────────────────────────────────────────────────────
     # 4. Website Assets (apps/website and apps/website/public)

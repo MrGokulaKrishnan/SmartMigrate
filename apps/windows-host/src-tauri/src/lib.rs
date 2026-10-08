@@ -652,6 +652,10 @@ fn close_window(window: Window) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    std::panic::set_hook(Box::new(|info| {
+        let _ = std::fs::write("C:\\Smart Migrate\\crash.log", format!("{:#?}", info));
+    }));
+
     let identity = storage::load_or_create_identity();
     let trust_store = storage::load_trust_store();
     let app_state = AppState::new(identity, trust_store);
@@ -705,7 +709,10 @@ pub fn run() {
             close_window,
         ])
         .run(tauri::generate_context!())
-        .expect("failed to run Smart Migrate Windows host");
+        .unwrap_or_else(|e| {
+            let _ = std::fs::write("C:\\Smart Migrate\\crash.log", format!("Tauri run error: {:#?}", e));
+            panic!("failed to run Smart Migrate Windows host: {:#?}", e);
+        });
 }
 
 
