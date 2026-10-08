@@ -16,10 +16,29 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        create("release") {
+            val keystoreFile = file("release.keystore")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("SM_KEYSTORE_PASSWORD") ?: "smartmigrate_keystore_pass"
+                keyAlias = System.getenv("SM_KEY_ALIAS") ?: "smartmigrate_release"
+                keyPassword = System.getenv("SM_KEY_PASSWORD") ?: "smartmigrate_keystore_pass"
+            } else {
+                initWith(getByName("debug"))
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
