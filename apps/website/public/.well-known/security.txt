@@ -1,0 +1,6 @@
+Contact: mailto:security@smartmigrate.org
+Contact: https://github.com/MrGokulaKrishnan/SmartMigrate/security/advisories/new
+Expires: 2027-10-08T00:00:00.000Z
+Preferred-Languages: en
+Policy: https://github.com/MrGokulaKrishnan/SmartMigrate/blob/main/SECURITY.md
+Canonical: https://smartmigrated.web.app/.well-known/security.txt
