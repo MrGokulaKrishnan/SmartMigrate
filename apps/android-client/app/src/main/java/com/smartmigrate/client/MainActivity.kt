@@ -1027,10 +1027,10 @@ private fun PairingDialog(onDismiss: () -> Unit) {
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(38.dp)
-                                    .clip(RoundedCornerShape(6.dp, 2.dp, 6.dp, 2.dp))
+                                    .height(48.dp)
+                                    .clip(RoundedCornerShape(8.dp, 2.dp, 8.dp, 2.dp))
                                     .background(Color.White.copy(alpha = if (btn == "C" || btn == "⌫") .04f else .07f))
-                                    .border(1.dp, GlassBorder, RoundedCornerShape(6.dp, 2.dp, 6.dp, 2.dp))
+                                    .border(1.dp, GlassBorder, RoundedCornerShape(8.dp, 2.dp, 8.dp, 2.dp))
                                     .clickable {
                                         when (btn) {
                                             "C" -> pairingCode = ""
@@ -1040,7 +1040,7 @@ private fun PairingDialog(onDismiss: () -> Unit) {
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(btn, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text(btn, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
