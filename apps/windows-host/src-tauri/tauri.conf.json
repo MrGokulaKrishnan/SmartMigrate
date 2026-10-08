@@ -5,7 +5,7 @@
   "identifier": "com.smartmigrate.host",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "",
+    "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
@@ -29,6 +29,13 @@
   },
   "bundle": {
     "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
     "targets": ["nsis", "msi"],
     "shortDescription": "Secure, explicit-consent cross-device connectivity",
     "longDescription": "Smart Migrate Windows Host — the MigRoute-powered desktop host shell."

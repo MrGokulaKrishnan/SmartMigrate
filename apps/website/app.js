@@ -121,13 +121,17 @@ filterButtons.forEach((btn) => {
   });
 });
 
-// Hydrate hashes and file sizes from release.json
+// Hydrate hashes, file sizes, and download URLs from release.json
 async function hydrateReleaseData() {
   try {
     const res = await fetch("release.json");
     if (!res.ok) return;
     const data = await res.json();
     if (!data.artifacts) return;
+
+    const isRemoteHost = window.location.hostname !== 'localhost' &&
+                         window.location.hostname !== '127.0.0.1' &&
+                         window.location.protocol !== 'file:';
 
     const winExe = data.artifacts["windows-exe"];
     const winMsi = data.artifacts["windows-msi"];
@@ -136,29 +140,47 @@ async function hydrateReleaseData() {
     if (winExe) {
       const elSize = document.querySelector("#win-exe-size");
       const elHash = document.querySelector("#win-exe-hash");
+      const btnWinExe = document.querySelector("#btn-win-exe");
       if (elSize) elSize.textContent = winExe.size_human || elSize.textContent;
       if (elHash) elHash.textContent = winExe.sha256 || elHash.textContent;
+      if (btnWinExe && isRemoteHost && winExe.download_url) {
+        btnWinExe.setAttribute("href", winExe.download_url);
+      }
       if (currentPlatform.id === "windows") {
         if (featuredSize) featuredSize.textContent = winExe.size_human || featuredSize.textContent;
         if (featuredHash) featuredHash.textContent = winExe.sha256 || featuredHash.textContent;
+        if (featuredActionBtn && isRemoteHost && winExe.download_url) {
+          featuredActionBtn.setAttribute("href", winExe.download_url);
+        }
       }
     }
 
     if (winMsi) {
       const elSize = document.querySelector("#win-msi-size");
       const elHash = document.querySelector("#win-msi-hash");
+      const btnWinMsi = document.querySelector("#btn-win-msi");
       if (elSize) elSize.textContent = winMsi.size_human || elSize.textContent;
       if (elHash) elHash.textContent = winMsi.sha256 || elHash.textContent;
+      if (btnWinMsi && isRemoteHost && winMsi.download_url) {
+        btnWinMsi.setAttribute("href", winMsi.download_url);
+      }
     }
 
     if (androidApk) {
       const elSize = document.querySelector("#android-apk-size");
       const elHash = document.querySelector("#android-apk-hash");
+      const btnAndroidApk = document.querySelector("#btn-android-apk");
       if (elSize) elSize.textContent = androidApk.size_human || elSize.textContent;
       if (elHash) elHash.textContent = androidApk.sha256 || elHash.textContent;
+      if (btnAndroidApk && isRemoteHost && androidApk.download_url) {
+        btnAndroidApk.setAttribute("href", androidApk.download_url);
+      }
       if (currentPlatform.id === "android") {
         if (featuredSize) featuredSize.textContent = androidApk.size_human || featuredSize.textContent;
         if (featuredHash) featuredHash.textContent = androidApk.sha256 || featuredHash.textContent;
+        if (featuredActionBtn && isRemoteHost && androidApk.download_url) {
+          featuredActionBtn.setAttribute("href", androidApk.download_url);
+        }
       }
     }
   } catch (err) {
