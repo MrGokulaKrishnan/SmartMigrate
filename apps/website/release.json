@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0",
+  "version": "1.4.0",
   "date": "2026-10-08",
   "artifacts": {
     "windows-exe": {
@@ -22,9 +22,9 @@
       "filename": "SmartMigrate.apk",
       "path": "downloads/android/SmartMigrate.apk",
       "download_url": "/downloads/android/SmartMigrate.apk",
-      "sha256": "adc894c645c8eba7c306edf66f3dd7bacc47c92f506c0bf66b251dcaac6ffc38",
-      "size_bytes": 1491093,
-      "size_human": "1.4 MB"
+      "sha256": "c2e1b27c0ceb1504d4dadad6df0647257032e44b82ca421ff0bce72c6808ad29",
+      "size_bytes": 1720285,
+      "size_human": "1.6 MB"
     }
   }
 }

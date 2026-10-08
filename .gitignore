@@ -19,3 +19,4 @@ target/
 .firebase/
 .gradle/
 local.properties
+*.dll

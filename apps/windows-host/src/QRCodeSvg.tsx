@@ -1,6 +1,6 @@
 // Deterministic SVG QR-style visual code generator for Smart Migrate SMP/1 payloads.
 
-export function QRCodeSvg({ value }: { value: string }) {
+export function QRCodeSvg({ value, size: renderSize = 200 }: { value: string; size?: number }) {
   // Deterministic 25x25 cell matrix based on string hash and markers
   const size = 25;
   const cells: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
@@ -49,7 +49,7 @@ export function QRCodeSvg({ value }: { value: string }) {
   }
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} width="100%" height="100%" shapeRendering="crispEdges">
+    <svg viewBox={`0 0 ${size} ${size}`} width={renderSize} height={renderSize} shapeRendering="crispEdges">
       <rect width={size} height={size} fill="#ffffff" />
       {cells.map((row, y) =>
         row.map((active, x) =>

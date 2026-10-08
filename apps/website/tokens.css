@@ -1,45 +1,106 @@
 :root {
   color-scheme: dark;
-  --sm-black: #000000;
-  --sm-surface-0: #000000;
-  --sm-surface-1: #050508;
-  --sm-surface-2: #0a0914;
-  --sm-surface-3: #120e24;
-  --sm-line: #1c1736;
-  --sm-line-strong: #4f3eb5;
 
-  --sm-bevel: #7665b5;
+  /* ─── AMOLED Black Base & Dark Surfaces ──────────────────────────────────── */
+  --sm-black: #050505;
+  --sm-bg-0: #050505;
+  --sm-bg-1: #080808;
+  --sm-bg-2: #0b0b0d;
+
+  /* Secondary Surfaces */
+  --sm-surface-0: #080808;
+  --sm-surface-1: #111114;
+  --sm-surface-2: #151519;
+  --sm-surface-3: #1a1a1f;
+
+  /* Elevated Surfaces */
+  --sm-elevated-1: #202027;
+  --sm-elevated-2: #24242c;
+
+  /* Borders & Dividers */
+  --sm-line: rgba(255, 255, 255, 0.08);
+  --sm-line-subtle: rgba(255, 255, 255, 0.05);
+  --sm-line-medium: rgba(255, 255, 255, 0.12);
+  --sm-line-strong: rgba(139, 92, 246, 0.35);
+
+  /* ─── Primary Smart Migrate Accent (Purple / Violet) ──────────────────────── */
+  --sm-brand-300: #a78bfa;
+  --sm-brand-400: #8b5cf6;
+  --sm-brand-500: #7c4dff;
+  --sm-brand-600: #6d3df5;
+  --sm-brand-glow: rgba(124, 77, 255, 0.25);
+
+  /* Compatibility aliases */
   --sm-200: #c4baff;
-  --sm-300: #9e8eff;
-  --sm-400: #7d69f6;
-  --sm-500: #553cd4;
-  --sm-600: #3f27b8;
-  --sm-700: #3922a6;
-  --sm-800: #341f92;
-  --sm-900: #291873;
+  --sm-300: #a78bfa;
+  --sm-400: #8b5cf6;
+  --sm-500: #7c4dff;
+  --sm-600: #6d3df5;
+  --sm-700: #592ee0;
+  --sm-800: #4924c2;
+  --sm-900: #381a9c;
 
-  --sm-text-1: #ffffff;
-  --sm-text-2: #c5bfdc;
-  --sm-text-3: #827b9e;
-  --sm-success: #3ddc97;
-  --sm-warning: #ffb84d;
-  --sm-danger: #ff5c7a;
-  --sm-info: #5cc8ff;
+  /* ─── Text Colors ────────────────────────────────────────────────────────── */
+  --sm-text-1: #f3f3f7;
+  --sm-text-2: #b5b5c3;
+  --sm-text-3: #757588;
+  --sm-text-muted: #525263;
 
-  --sm-gradient-brand: linear-gradient(145deg, #7d69f6 0%, #4a34c2 45%, #2e1a7e 100%);
-  --sm-gradient-glow: linear-gradient(135deg, #9e8eff 0%, #553cd4 100%);
-  --sm-gradient-panel: linear-gradient(180deg, #0b0914 0%, #000000 100%);
-  --sm-edge-light: inset 1px 1px 0 rgba(255, 255, 255, 0.12);
-  --sm-radius: 8px;
+  /* ─── Status Colors (Icon + Text + Color) ─────────────────────────────────── */
+  --sm-success: #10b981;
+  --sm-success-bg: rgba(16, 185, 129, 0.12);
+  --sm-success-border: rgba(16, 185, 129, 0.28);
 
-  /* AMOLED Liquid-glass foundation */
-  --sm-glass-fill: linear-gradient(145deg, rgba(16, 12, 32, 0.65) 0%, rgba(3, 2, 8, 0.82) 100%);
-  --sm-glass-fill-strong: linear-gradient(145deg, rgba(24, 18, 50, 0.82) 0%, rgba(5, 4, 12, 0.94) 100%);
-  --sm-glass-highlight: linear-gradient(112deg, rgba(255, 255, 255, 0.16) 0%, rgba(189, 180, 255, 0.05) 32%, transparent 64%);
-  --sm-glass-border: rgba(189, 180, 255, 0.14);
-  --sm-glass-border-active: rgba(158, 142, 255, 0.48);
-  --sm-glass-shadow: 0 24px 64px rgba(0, 0, 0, 0.88), 0 0 36px rgba(125, 105, 246, 0.09);
-  --sm-glass-blur: 20px;
-  --sm-glass-blur-strong: 32px;
-  --sm-glass-saturation: 155%;
+  --sm-warning: #f59e0b;
+  --sm-warning-bg: rgba(245, 158, 11, 0.12);
+  --sm-warning-border: rgba(245, 158, 11, 0.28);
+
+  --sm-danger: #ef4444;
+  --sm-danger-bg: rgba(239, 68, 68, 0.12);
+  --sm-danger-border: rgba(239, 68, 68, 0.28);
+
+  --sm-info: #60a5fa;
+  --sm-info-bg: rgba(96, 165, 250, 0.12);
+  --sm-info-border: rgba(96, 165, 250, 0.28);
+
+  --sm-offline: #6b7280;
+  --sm-offline-bg: rgba(107, 114, 128, 0.12);
+  --sm-offline-border: rgba(107, 114, 128, 0.25);
+
+  /* ─── Gradients (Subtle & Controlled) ─────────────────────────────────────── */
+  --sm-gradient-brand: linear-gradient(135deg, #7c4dff 0%, #6d3df5 100%);
+  --sm-gradient-accent: linear-gradient(135deg, #8b5cf6 0%, #7c4dff 100%);
+  --sm-gradient-glow: linear-gradient(135deg, #a78bfa 0%, #7c4dff 100%);
+  --sm-gradient-surface: linear-gradient(180deg, #151519 0%, #0b0b0d 100%);
+  --sm-gradient-panel: linear-gradient(180deg, #111114 0%, #080808 100%);
+  --sm-edge-light: inset 1px 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* ─── Spacing Scale (4, 8, 12, 16, 20, 24, 32, 40, 48) ──────────────────── */
+  --sm-space-1: 4px;
+  --sm-space-2: 8px;
+  --sm-space-3: 12px;
+  --sm-space-4: 16px;
+  --sm-space-5: 20px;
+  --sm-space-6: 24px;
+  --sm-space-7: 32px;
+  --sm-space-8: 40px;
+  --sm-space-9: 48px;
+
+  /* ─── Corner Radii (Clean, Professional, Non-Exaggerated) ─────────────────── */
+  --sm-radius-sm: 6px;
+  --sm-radius-md: 10px;
+  --sm-radius-lg: 14px;
+  --sm-radius-xl: 18px;
+  --sm-radius: 10px;
+
+  /* ─── Refined Glass Foundation (Controlled & Subtle) ─────────────────────── */
+  --sm-glass-fill: rgba(17, 17, 20, 0.88);
+  --sm-glass-fill-strong: rgba(21, 21, 25, 0.95);
+  --sm-glass-highlight: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, transparent 100%);
+  --sm-glass-border: rgba(255, 255, 255, 0.08);
+  --sm-glass-border-active: rgba(124, 77, 255, 0.45);
+  --sm-glass-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.1);
+  --sm-glass-blur: 12px;
+  --sm-glass-blur-strong: 16px;
+  --sm-glass-saturation: 110%;
 }

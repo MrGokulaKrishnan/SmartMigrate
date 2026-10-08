@@ -1,36 +1,32 @@
-/* Shared liquid-glass primitives for the Smart Migrate website and Tauri UI.
-   Keep text on the opaque-enough fill variants below for readability. */
+/* Shared professional dark & refined glass primitives for Smart Migrate.
+   Provides subtle elevation, crisp borders, and controlled translucency. */
 .sm-glass {
   position: relative;
-  border: 1px solid var(--sm-glass-border);
-  background: var(--sm-glass-fill);
-  box-shadow: var(--sm-edge-light), var(--sm-glass-shadow);
-  -webkit-backdrop-filter: blur(var(--sm-glass-blur)) saturate(var(--sm-glass-saturation));
-  backdrop-filter: blur(var(--sm-glass-blur)) saturate(var(--sm-glass-saturation));
+  border: 1px solid var(--sm-line);
+  background: var(--sm-surface-1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .sm-glass::before {
   position: absolute;
-  inset: 1px 1px auto;
-  height: 46%;
-  border-radius: inherit;
-  background: var(--sm-glass-highlight);
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12) 30%, rgba(255, 255, 255, 0.12) 70%, transparent);
   content: "";
   pointer-events: none;
 }
 
 .sm-glass-nav {
   position: relative;
-  border: 1px solid var(--sm-glass-border);
-  background: linear-gradient(105deg, rgba(16, 12, 34, 0.88), rgba(4, 3, 10, 0.75));
-  box-shadow: var(--sm-edge-light), 0 16px 44px rgba(0, 0, 0, 0.8), 0 0 28px rgba(125, 105, 246, 0.1);
-  -webkit-backdrop-filter: blur(var(--sm-glass-blur-strong)) saturate(160%);
-  backdrop-filter: blur(var(--sm-glass-blur-strong)) saturate(160%);
+  border-bottom: 1px solid var(--sm-line);
+  background: rgba(8, 8, 8, 0.92);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .sm-glass,
   .sm-glass-nav {
-    background: var(--sm-surface-2);
+    background: var(--sm-surface-1);
   }
 }

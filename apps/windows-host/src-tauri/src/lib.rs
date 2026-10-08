@@ -2,6 +2,7 @@ mod capture;
 mod clipboard;
 mod input;
 mod resilience;
+mod smp_server;
 mod state;
 mod storage;
 mod stream;
@@ -654,6 +655,8 @@ pub fn run() {
     let identity = storage::load_or_create_identity();
     let trust_store = storage::load_trust_store();
     let app_state = AppState::new(identity, trust_store);
+
+    let _smp_stop = smp_server::start_smp_server(app_state.clone());
 
     tauri::Builder::default()
         .manage(app_state)

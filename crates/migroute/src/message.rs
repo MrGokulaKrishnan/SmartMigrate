@@ -13,6 +13,7 @@
 //! - Mouse / keyboard payloads are intentionally compact.
 
 use crate::{DeviceId, SessionPermission};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 /// Message type string constants matching the SMP/1 specification.
@@ -55,7 +56,7 @@ pub mod types {
 // ─── Device ──────────────────────────────────────────────────────────────────
 
 /// Initial device announcement.  Sent before a session exists.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceHello {
     pub device_id: DeviceId,
     pub device_name: String,
@@ -66,7 +67,7 @@ pub struct DeviceHello {
 }
 
 /// Device capability advertisement.  Sent after DEVICE_HELLO is acknowledged.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceCapabilities {
     pub device_id: DeviceId,
     pub available_permissions: BTreeSet<SessionPermission>,
@@ -82,7 +83,7 @@ pub struct DeviceCapabilities {
 // ─── Pairing ─────────────────────────────────────────────────────────────────
 
 /// Request to pair with a host device.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PairRequest {
     pub requester_device_id: DeviceId,
     pub host_device_id: DeviceId,
@@ -94,14 +95,14 @@ pub struct PairRequest {
 }
 
 /// Host accepted the pairing request.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PairAccept {
     pub request_id: String,
     pub granted_permissions: BTreeSet<SessionPermission>,
 }
 
 /// Host rejected the pairing request.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PairReject {
     pub request_id: String,
     /// Human-readable reason (never contains user data, only policy reasons).
@@ -111,7 +112,7 @@ pub struct PairReject {
 // ─── Session ─────────────────────────────────────────────────────────────────
 
 /// Client requests a new active session with a paired host.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionCreate {
     pub session_id: String,
     pub requester_device_id: DeviceId,
@@ -121,27 +122,27 @@ pub struct SessionCreate {
 }
 
 /// Host accepted the session.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionAccept {
     pub session_id: String,
     pub granted_permissions: BTreeSet<SessionPermission>,
 }
 
 /// Host rejected the session request.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionReject {
     pub session_id: String,
     pub reason: String,
 }
 
 /// Either party is ending the session.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionEnd {
     pub session_id: String,
     pub reason: SessionEndReason,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionEndReason {
     UserRequested,
     HostRevoked,
@@ -154,7 +155,7 @@ pub enum SessionEndReason {
 // ─── Transfer ────────────────────────────────────────────────────────────────
 
 /// Announce a file transfer to the receiving side.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferStart {
     pub transfer_id: String,
     /// Filename only — no path component.  The receiving side determines the
@@ -169,7 +170,7 @@ pub struct TransferStart {
 }
 
 /// One chunk of file data.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferChunk {
     pub transfer_id: String,
     pub chunk_index: u64,
@@ -179,27 +180,27 @@ pub struct TransferChunk {
 }
 
 /// Receiver acknowledges a chunk.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferAck {
     pub transfer_id: String,
     pub chunk_index: u64,
 }
 
 /// Receiver requests a chunk retransmission.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferRetry {
     pub transfer_id: String,
     pub chunk_index: u64,
 }
 
 /// Either party pauses the transfer.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferPause {
     pub transfer_id: String,
 }
 
 /// Either party resumes the transfer.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferResume {
     pub transfer_id: String,
     /// Next expected chunk index (enables resumption after disconnect).
@@ -207,13 +208,13 @@ pub struct TransferResume {
 }
 
 /// Sender signals the transfer is complete.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferComplete {
     pub transfer_id: String,
 }
 
 /// Either party cancels the transfer.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferCancel {
     pub transfer_id: String,
     pub reason: String,
@@ -225,7 +226,7 @@ pub struct TransferCancel {
 ///
 /// Requires `SessionPermission::ControlMouse` to have been granted.
 /// Coordinate origin is the top-left corner of the captured display region.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputMouse {
     pub session_id: String,
     /// Horizontal position in display pixels.
@@ -237,7 +238,7 @@ pub struct InputMouse {
     pub scroll_delta: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct MouseButtons {
     pub left: bool,
     pub right: bool,
@@ -247,7 +248,7 @@ pub struct MouseButtons {
 /// Key event from the Android client to the Windows host.
 ///
 /// Requires `SessionPermission::ControlKeyboard` to have been granted.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputKeyboard {
     pub session_id: String,
     /// USB HID usage code for the key.
@@ -257,13 +258,13 @@ pub struct InputKeyboard {
     pub modifiers: KeyModifiers,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyEvent {
     Press,
     Release,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct KeyModifiers {
     pub shift: bool,
     pub ctrl: bool,
@@ -276,21 +277,21 @@ pub struct KeyModifiers {
 /// Host signals that the video stream is starting.
 ///
 /// Requires `SessionPermission::ViewScreen` to have been granted.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StreamStart {
     pub session_id: String,
     pub config: StreamConfig,
 }
 
 /// Either party requests a stream stop.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StreamStop {
     pub session_id: String,
     pub reason: String,
 }
 
 /// Current stream encoding parameters.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StreamConfig {
     pub width: u32,
     pub height: u32,
@@ -302,7 +303,7 @@ pub struct StreamConfig {
     pub bitrate_bps: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VideoCodec {
     H264,
     H265,
@@ -315,7 +316,7 @@ pub enum VideoCodec {
 ///
 /// Requires `SessionPermission::Clipboard` to have been granted.
 /// The payload is intentionally not logged.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClipboardUpdate {
     pub session_id: String,
     /// Only plain text in the initial implementation.
@@ -324,17 +325,17 @@ pub struct ClipboardUpdate {
 
 // ─── Health ──────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ping {
     pub token: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pong {
     pub token: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SmpError {
     /// The message_type of the message that caused this error, if known.
     pub in_response_to: Option<String>,
@@ -343,7 +344,7 @@ pub struct SmpError {
     pub description: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ErrorCode {
     UnknownMessageType,
     Unauthorized,
@@ -359,7 +360,7 @@ pub enum ErrorCode {
 ///
 /// After the envelope passes [`crate::envelope::validate`], the caller decodes
 /// the payload into this enum.  Each variant carries the typed payload struct.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SmpMessage {
     // Device
     DeviceHello(DeviceHello),

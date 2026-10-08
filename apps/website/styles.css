@@ -262,6 +262,13 @@ footer {
   color: var(--sm-text-1);
 }
 
+.btn-sm-nav {
+  padding: 0.45rem 1rem !important;
+  font-size: 0.8rem !important;
+  min-height: 34px !important;
+  text-decoration: none !important;
+}
+
 .menu-button {
   display: none;
   border: 1px solid var(--sm-glass-border-active);
