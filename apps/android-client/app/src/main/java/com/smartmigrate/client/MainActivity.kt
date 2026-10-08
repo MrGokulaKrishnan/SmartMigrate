@@ -10,6 +10,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,14 +31,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,10 +56,14 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -279,10 +290,29 @@ private fun HomeScreen(onPair: () -> Unit, onNotice: (String) -> Unit) {
 
 @Composable
 private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
-    var isStreaming by rememberSaveable { mutableStateOf(true) }
+    val streamEngine = remember { StreamEngine() }
+    val connectionState by streamEngine.state
+    val latestBitmap by streamEngine.latestBitmap
+    val diagnostics by streamEngine.diagnostics
+    var hostAddress by rememberSaveable { mutableStateOf("10.0.2.2") }
     var inputSeq by rememberSaveable { mutableStateOf(1L) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    DisposableEffect(streamEngine) {
+        onDispose {
+            streamEngine.stopStreaming()
+        }
+    }
+
+    val isConnected = connectionState == StreamConnectionState.CONNECTED
+    val isConnecting = connectionState == StreamConnectionState.CONNECTING || connectionState == StreamConnectionState.NEGOTIATING
+    val isReconnecting = connectionState == StreamConnectionState.RECONNECTING
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
         GlassSurface(
             modifier = Modifier.fillMaxWidth(),
             corner = RoundedCornerShape(20.dp, 5.dp, 20.dp, 5.dp),
@@ -292,8 +322,17 @@ private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FrostedPill(
-                        label = if (isStreaming) "1080p 30 FPS" else "STANDBY",
-                        tint = if (isStreaming) Success else Purple200
+                        label = when {
+                            isConnected -> "${String.format(java.util.Locale.US, "%.0f", diagnostics.currentFps)} FPS • ${diagnostics.resolution}"
+                            isConnecting -> "CONNECTING..."
+                            isReconnecting -> "RECONNECTING"
+                            else -> "STANDBY"
+                        },
+                        tint = when {
+                            isConnected -> Success
+                            isConnecting || isReconnecting -> Purple300
+                            else -> Purple200
+                        }
                     )
                     Spacer(Modifier.weight(1f))
                     FrostedPill(label = "SMP/1 SEQ #$inputSeq", tint = Purple300)
@@ -301,93 +340,195 @@ private fun RemoteViewfinderScreen(onNotice: (String) -> Unit) {
 
                 Spacer(Modifier.height(14.dp))
 
-                // Viewfinder Screen Surface
+                // Host Connection IP Input Bar
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp, 3.dp, 10.dp, 3.dp))
+                        .background(Color(0xFF07060E))
+                        .border(1.dp, GlassBorder, RoundedCornerShape(10.dp, 3.dp, 10.dp, 3.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text("HOST:", color = Purple300, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.weight(1f)) {
+                        BasicTextField(
+                            value = hostAddress,
+                            onValueChange = { hostAddress = it },
+                            textStyle = TextStyle(
+                                color = TextPrimary,
+                                fontSize = 13.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            cursorBrush = SolidColor(Purple300),
+                            singleLine = true,
+                            enabled = !isConnected && !isConnecting
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(":7890", color = TextMuted, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Live Viewfinder Screen Surface
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(12.dp, 3.dp, 12.dp, 3.dp))
                         .background(Color(0xFF040308))
-                        .border(1.dp, if (isStreaming) Purple400.copy(alpha = 0.5f) else GlassBorder, RoundedCornerShape(12.dp, 3.dp, 12.dp, 3.dp)),
+                        .border(
+                            1.dp,
+                            if (isConnected) Success.copy(alpha = 0.5f) else GlassBorder,
+                            RoundedCornerShape(12.dp, 3.dp, 12.dp, 3.dp)
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            if (isConnected) {
+                                inputSeq++
+                                onNotice("Screen tap dispatched at seq #$inputSeq")
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isStreaming) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("⌁ WINDOWS HOST DISPLAY 1", color = Purple200, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            Spacer(Modifier.height(6.dp))
-                            Text("1920 × 1080 @ 30 FPS", color = TextSecondary, fontSize = 11.sp)
+                    val frameBitmap = latestBitmap
+                    if (isConnected && frameBitmap != null) {
+                        Image(
+                            bitmap = frameBitmap.asImageBitmap(),
+                            contentDescription = "Live Host Display",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                        // Small live indicator in top corner
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color.Black.copy(alpha = 0.7f))
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(5.dp).background(Success, CircleShape))
+                                Spacer(Modifier.width(4.dp))
+                                Text("REAL STREAM", color = TextPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    } else if (isConnecting || isReconnecting) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
+                            DeviceGlyph("⌁", size = 42.dp)
+                            Spacer(Modifier.height(10.dp))
+                            Text(connectionState.userMessage, color = Purple200, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
                             Spacer(Modifier.height(4.dp))
-                            Text("LAN Latency: 12 ms • Encrypted WebRTC", color = TextMuted, fontSize = 10.sp)
+                            Text("Connecting to $hostAddress:7890/live via HTTP multipart JPEG stream...", color = TextMuted, fontSize = 10.sp, textAlign = TextAlign.Center)
                         }
                     } else {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("◇", color = TextMuted, fontSize = 28.sp)
-                            Spacer(Modifier.height(6.dp))
-                            Text("Stream Disconnected", color = TextSecondary, fontSize = 13.sp)
-                            Text("Ready for host transmission", color = TextMuted, fontSize = 10.sp)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
+                            DeviceGlyph("◇", size = 42.dp)
+                            Spacer(Modifier.height(10.dp))
+                            Text("Display Stream Offline", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(4.dp))
+                            Text("Ensure Smart Migrate is running on Windows PC, then tap Connect.", color = TextMuted, fontSize = 11.sp, textAlign = TextAlign.Center)
                         }
                     }
                 }
 
                 Spacer(Modifier.height(12.dp))
 
-                // Input Interaction Bar (Milestone 4: Controlled pointer & keyboard)
-                if (isStreaming) {
-                    Text("CONTROLLED INPUT DISPATCH (HOST-GATED)", color = Purple300, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                        Box(Modifier.weight(1f)) {
-                            OutlineButton("L-Click") {
-                                inputSeq++
-                                onNotice("Injected Left Click (Seq #$inputSeq)")
-                            }
-                        }
-                        Box(Modifier.weight(1f)) {
-                            OutlineButton("R-Click") {
-                                inputSeq++
-                                onNotice("Injected Right Click (Seq #$inputSeq)")
-                            }
-                        }
-                        Box(Modifier.weight(1f)) {
-                            OutlineButton("Scroll ▲") {
-                                inputSeq++
-                                onNotice("Injected Wheel Up (Seq #$inputSeq)")
-                            }
-                        }
-                        Box(Modifier.weight(1f)) {
-                            OutlineButton("Scroll ▼") {
-                                inputSeq++
-                                onNotice("Injected Wheel Down (Seq #$inputSeq)")
-                            }
+                // Input Interaction Bar
+                Text("HOST-GATED INPUT INJECTION", color = Purple300, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    Box(Modifier.weight(1f)) {
+                        OutlineButton("L-Click") {
+                            inputSeq++
+                            onNotice("Injected Left Click (Seq #$inputSeq)")
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
+                    Box(Modifier.weight(1f)) {
+                        OutlineButton("R-Click") {
+                            inputSeq++
+                            onNotice("Injected Right Click (Seq #$inputSeq)")
+                        }
+                    }
+                    Box(Modifier.weight(1f)) {
+                        OutlineButton("Scroll ▲") {
+                            inputSeq++
+                            onNotice("Injected Scroll Up (Seq #$inputSeq)")
+                        }
+                    }
+                    Box(Modifier.weight(1f)) {
+                        OutlineButton("Scroll ▼") {
+                            inputSeq++
+                            onNotice("Injected Scroll Down (Seq #$inputSeq)")
+                        }
+                    }
                 }
 
+                Spacer(Modifier.height(12.dp))
+
+                // Action buttons: Connect / Disconnect and Fullscreen/Fit
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    Box(Modifier.weight(1f)) {
-                        OutlineButton(
-                            label = if (isStreaming) "Disconnect" else "Reconnect",
-                            onClick = {
-                                isStreaming = !isStreaming
-                                onNotice(if (isStreaming) "Reconnected to host display." else "Session paused.")
+                    Box(Modifier.weight(1.2f)) {
+                        if (isConnected || isConnecting || isReconnecting) {
+                            OutlineButton("Disconnect Stream") {
+                                streamEngine.stopStreaming()
+                                onNotice("Disconnected from host display stream.")
                             }
-                        )
+                        } else {
+                            GradientButton(
+                                label = "Connect Stream",
+                                trailing = "⇢",
+                                onClick = {
+                                    val target = hostAddress.trim().ifEmpty { "10.0.2.2" }
+                                    streamEngine.startStreaming(target, 7890)
+                                    onNotice("Connecting to $target:7890/live...")
+                                }
+                            )
+                        }
                     }
-                    Box(Modifier.weight(1f)) {
-                        GradientButton(
-                            label = "Fit Screen",
-                            trailing = "⛶",
-                            onClick = { onNotice("Viewfinder scaled to native aspect ratio.") }
-                        )
+                    Box(Modifier.weight(0.8f)) {
+                        OutlineButton("Fit Screen") {
+                            onNotice("Display viewport scaled to native resolution.")
+                        }
                     }
                 }
             }
         }
 
+        // Real Telemetry Grid
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            MetricCard("Decoder", "MediaCodec", "H.264 HW Acceleration", Modifier.weight(1f))
-            MetricCard("Transport", if (isStreaming) "12 ms RTT" else "--", if (isStreaming) "Direct P2P (0% Loss)" else "Standby", Modifier.weight(1f))
+            MetricCard(
+                label = "Live FPS",
+                value = if (isConnected) String.format(java.util.Locale.US, "%.1f", diagnostics.currentFps) else "--",
+                detail = if (isConnected) "${diagnostics.framesRendered} frames rendered" else "Stream idle",
+                modifier = Modifier.weight(1f)
+            )
+            MetricCard(
+                label = "Latency & Bitrate",
+                value = if (isConnected) "${String.format(java.util.Locale.US, "%.0f", diagnostics.latencyMs)} ms" else "--",
+                detail = if (isConnected) "${String.format(java.util.Locale.US, "%.0f", diagnostics.bitrateKbps)} kbps" else "Direct LAN (P2P)",
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            MetricCard(
+                label = "Resolution",
+                value = if (isConnected) diagnostics.resolution else "--",
+                detail = "Native DIB Capture",
+                modifier = Modifier.weight(1f)
+            )
+            MetricCard(
+                label = "Decoder Engine",
+                value = "BitmapFactory",
+                detail = "${diagnostics.droppedFrames} dropped frames",
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -603,7 +744,7 @@ private fun FilesTransferScreen(onNotice: (String) -> Unit) {
                 ) {
                     Text("ACTIVE FILE MIGRATION", color = Purple300, fontSize = 9.sp,
                         fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp)
-                    StatusPill(if (transferActive) "STREAMING ⇄" else "STANDBY", if (transferActive) Success else Purple300)
+                    FrostedPill(if (transferActive) "STREAMING ⇄" else "STANDBY", if (transferActive) Success else Purple300)
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
@@ -643,14 +784,15 @@ private fun FilesTransferScreen(onNotice: (String) -> Unit) {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(chunkInfo, color = TextMuted, fontSize = 10.sp)
-                    Text("${(transferProgress * 100).toInt()}% • $transferSpeed", color = Purple300, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    Text("${(transferProgress * 100f).toInt()}% • $transferSpeed", color = Purple300, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                 }
 
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     Box(Modifier.weight(1f)) {
-                        PrimaryButton(
+                        GradientButton(
                             label = if (transferActive) "Pause Stream" else "Simulate Send",
+                            trailing = if (transferActive) "⏸" else "▶",
                             onClick = {
                                 transferActive = !transferActive
                                 if (transferActive) {

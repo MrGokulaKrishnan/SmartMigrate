@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { QRCodeSvg } from "./QRCodeSvg";
+import brandLogoUrl from "./smart_migrate_logo.png";
 import "./styles.css";
 
 type Destination = "Home" | "Devices" | "Transfer" | "Remote" | "History" | "Security" | "Settings";
@@ -356,7 +357,7 @@ function App() {
         onDoubleClick={handleMaximize}
       >
         <div className="brand-lockup">
-          <div className="brand-mark" aria-hidden="true">SM</div>
+          <img src={brandLogoUrl} alt="Smart Migrate logo" className="brand-logo-img" />
           <div>
             <strong>Smart Migrate</strong>
             <span>Windows host</span>
@@ -1959,13 +1960,7 @@ function StartupIntro({ onComplete }: { onComplete: () => void }) {
 
       <div className="intro-stage">
         <div className={`intro-emblem ${phase === "emblem" || phase === "text" || phase === "dissolve" ? "visible" : ""}`}>
-          <div className="intro-emblem-mark">
-            <span>SM</span>
-            <div className="intro-arrows" aria-hidden="true">
-              <span className="arrow-left">‹</span>
-              <span className="arrow-right">›</span>
-            </div>
-          </div>
+          <img src={brandLogoUrl} alt="Smart Migrate emblem" className="intro-logo-img" />
         </div>
 
         <div className={`intro-typography ${phase === "text" || phase === "dissolve" ? "visible" : ""}`}>

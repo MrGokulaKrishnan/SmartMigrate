@@ -16,6 +16,8 @@ button { color: inherit; font: inherit; cursor: pointer; }
 .brand-lockup, .titlebar-state, .window-controls, .sidebar-footer, .engine-badge, .online-badge, .overview-actions, .panel-heading { display: flex; align-items: center; }
 .brand-lockup { gap: .68rem; }
 .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; clip-path: polygon(0 0, 74% 0, 100% 26%, 100% 100%, 26% 100%, 0 74%); background: var(--sm-gradient-brand); box-shadow: inset 1px 1px 0 rgba(255,255,255,.32), 0 7px 16px rgba(0,0,0,.28); font: 700 .65rem "Chakra Petch", sans-serif; }
+.brand-logo-img { width: 32px; height: 32px; border-radius: 8px 3px 8px 3px; border: 1px solid rgba(189, 180, 255, 0.35); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 10px rgba(122, 102, 240, 0.3); object-fit: cover; flex-shrink: 0; }
+.intro-logo-img { width: 130px; height: 130px; border-radius: 26px; border: 2px solid rgba(189, 180, 255, 0.4); box-shadow: 0 0 60px rgba(122, 102, 240, 0.6), 0 0 100px rgba(79, 55, 195, 0.4); margin-bottom: 1.5rem; object-fit: cover; }
 .brand-lockup strong, .sidebar-footer strong { display: block; font: 600 .9rem "Chakra Petch", sans-serif; letter-spacing: -.035em; }
 .brand-lockup span, .sidebar-footer span { display: block; margin-top: .06rem; color: var(--sm-text-3); font-size: .61rem; }
 .titlebar-state { gap: .43rem; color: var(--sm-text-3); font-size: .68rem; }

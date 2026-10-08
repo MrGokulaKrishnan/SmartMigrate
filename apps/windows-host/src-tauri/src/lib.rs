@@ -279,7 +279,8 @@ fn start_display_stream(
 
 /// Stops the active display streaming session immediately.
 #[tauri::command]
-fn stop_display_stream(state: State<'_, AppState>, _reason: String) -> Result<(), String> {
+fn stop_display_stream(state: State<'_, AppState>, reason: String) -> Result<(), String> {
+    let _ = stream::stop_stream(&reason);
     let mut active = state.active_stream.lock().unwrap();
     *active = StreamSessionState::default();
     Ok(())
