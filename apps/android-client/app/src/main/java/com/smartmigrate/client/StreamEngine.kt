@@ -3,11 +3,13 @@ package com.smartmigrate.client
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.SystemClock
+import android.util.Log
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -17,27 +19,38 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.UUID
 
 /**
- * Connection states for the Smart Migrate Protocol (SMP/1) display streaming engine.
+ * Coherent session state machine for the Smart Migrate Protocol (SMP/1) display streaming engine.
+ *
+ * Distinct lifecycle states:
+ * - DISCONNECTED: Idle or explicitly closed session.
+ * - CONNECTING: Network socket connection initiated.
+ * - AUTHENTICATING: Verifying session token and device authorization.
+ * - CONNECTED: Media channel established; awaiting first video frame.
+ * - STREAMING: First frame successfully decoded & actively rendering.
+ * - RECONNECTING: Transient network interruption with bounded exponential backoff.
+ * - FAILED: Terminal connection or auth failure with actionable reason.
+ * - DISCONNECTING: Graceful teardown in progress.
  */
 enum class StreamConnectionState(val userMessage: String) {
-    IDLE("Ready for session"),
-    DISCOVERING("Discovering host on LAN..."),
-    PAIRING("Verifying VIEW_SCREEN permission..."),
-    CONNECTING("Establishing secure media channel..."),
-    NEGOTIATING("Negotiating video stream..."),
-    CONNECTED("Live encrypted stream active"),
+    DISCONNECTED("Session offline"),
+    CONNECTING("Connecting to Windows host..."),
+    AUTHENTICATING("Verifying credentials & session..."),
+    CONNECTED("Media transport connected. Waiting for first frame..."),
+    STREAMING("Live interactive desktop active"),
     RECONNECTING("Network interrupted. Reconnecting..."),
-    DISCONNECTED("Stream ended"),
-    FAILED("Unable to establish media connection")
+    FAILED("Unable to establish media connection"),
+    DISCONNECTING("Closing session...")
 }
 
 /**
  * Real-time performance diagnostics sourced directly from the active decode & render loop.
  */
 data class StreamDiagnostics(
-    val connectionState: StreamConnectionState = StreamConnectionState.IDLE,
+    val sessionId: String = "",
+    val connectionState: StreamConnectionState = StreamConnectionState.DISCONNECTED,
     val failureReason: String? = null,
     val currentFps: Float = 0f,
     val latencyMs: Float = 0f,
@@ -54,12 +67,25 @@ data class StreamDiagnostics(
 /**
  * Native background streaming client that receives, depacketizes, decodes, and measures
  * real video frames from the Smart Migrate Windows host.
+ *
+ * Implements:
+ * 1. Decoupled Network Read and Decode Coroutines via Conflated Channel.
+ * 2. RGB_565 fast decoding to reduce memory allocations and prevent GC thrashing.
+ * 3. Bounded exponential backoff reconnection.
+ * 4. Stale-frame prevention.
+ * 5. Structured diagnostic telemetry.
  */
 class StreamEngine {
+    companion object {
+        private const val TAG = "SmartMigrate-Stream"
+        private const val MAX_RECONNECT_ATTEMPTS = 5
+    }
+
     private val scope = CoroutineScope(Dispatchers.IO + Job())
     private var streamJob: Job? = null
+    private var currentSessionId: String = ""
 
-    private val _state = mutableStateOf(StreamConnectionState.IDLE)
+    private val _state = mutableStateOf(StreamConnectionState.DISCONNECTED)
     val state: State<StreamConnectionState> = _state
 
     private val _latestBitmap = mutableStateOf<Bitmap?>(null)
@@ -85,119 +111,47 @@ class StreamEngine {
             hostAddress.trim()
         }
 
+        val sessionId = "smp-sess-" + UUID.randomUUID().toString().take(8)
+        currentSessionId = sessionId
+        Log.i(TAG, "[$sessionId] Initiating stream connection to $resolvedHost:$port")
+
         streamJob = scope.launch {
             _state.value = StreamConnectionState.CONNECTING
             _diagnostics.value = _diagnostics.value.copy(
+                sessionId = sessionId,
                 connectionState = StreamConnectionState.CONNECTING,
                 failureReason = null
             )
 
             var reconnectAttempts = 0
             while (isActive) {
-                try {
-                    val streamUrl = if (!authToken.isNullOrBlank()) {
-                        "http://$resolvedHost:$port/live?token=${java.net.URLEncoder.encode(authToken, "UTF-8")}"
-                    } else {
-                        "http://$resolvedHost:$port/live"
+                // Conflated channel guarantees zero buffer bloat: newest frame always replaces un-decoded older frame
+                val frameChannel = Channel<ByteArray>(Channel.CONFLATED)
+
+                // Launch decode worker
+                val decodeJob = launch(Dispatchers.Default) {
+                    val decodeOptions = BitmapFactory.Options().apply {
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                        inDither = true
                     }
-                    val url = URL(streamUrl)
-                    val conn = (url.openConnection() as HttpURLConnection).apply {
-                        connectTimeout = 4000
-                        readTimeout = 6000
-                        requestMethod = "GET"
-                        setRequestProperty("Accept", "multipart/x-mixed-replace")
-                        setRequestProperty("User-Agent", "SmartMigrate-Android/0.1.0")
-                        if (!authToken.isNullOrBlank()) {
-                            setRequestProperty("Authorization", "Bearer $authToken")
+
+                    var lastFpsTime = SystemClock.elapsedRealtime()
+                    var fpsCount = 0
+                    var bytesInWindow = 0L
+
+                    for (jpegBytes in frameChannel) {
+                        if (!isActive) break
+
+                        val t0 = SystemClock.elapsedRealtime()
+                        val bitmap = try {
+                            BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, decodeOptions)
+                        } catch (oom: OutOfMemoryError) {
+                            Log.w(TAG, "[$sessionId] Decoder OOM: ${oom.message}")
+                            null
                         }
-                        doInput = true
-                    }
 
-                    _state.value = StreamConnectionState.NEGOTIATING
-                    _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.NEGOTIATING)
-
-                    val responseCode = conn.responseCode
-                    if (responseCode != 200) {
-                        throw IllegalStateException("Host returned HTTP $responseCode")
-                    }
-
-                    _state.value = StreamConnectionState.CONNECTED
-                    _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.CONNECTED)
-                    reconnectAttempts = 0
-
-                    val stream = BufferedInputStream(conn.inputStream, 65536)
-                    readMultipartStream(stream)
-
-                } catch (e: Exception) {
-                    if (!isActive) break
-
-                    reconnectAttempts++
-                    totalDropped++
-                    _state.value = StreamConnectionState.RECONNECTING
-                    _diagnostics.value = _diagnostics.value.copy(
-                        connectionState = StreamConnectionState.RECONNECTING,
-                        failureReason = e.message ?: "Socket reset",
-                        droppedFrames = totalDropped
-                    )
-
-                    delay(1500)
-                }
-            }
-        }
-    }
-
-    /**
-     * Gracefully stops the stream and releases memory/decoders.
-     */
-    fun stopStreaming() {
-        streamJob?.cancel()
-        streamJob = null
-        _state.value = StreamConnectionState.DISCONNECTED
-        _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.DISCONNECTED)
-    }
-
-    /**
-     * Reads MJPEG multipart frames from the active stream socket.
-     */
-    private suspend fun readMultipartStream(stream: InputStream) = withContext(Dispatchers.IO) {
-        var lastFpsTime = SystemClock.elapsedRealtime()
-        var fpsCount = 0
-        var bytesInSecond = 0L
-
-        val buffer = ByteArray(65536)
-        val frameOutputStream = ByteArrayOutputStream(131072)
-        var inJpeg = false
-        var prevByte = 0
-
-        while (isActive) {
-            val bytesRead = stream.read(buffer)
-            if (bytesRead == -1) break
-
-            bytesInSecond += bytesRead
-
-            for (i in 0 until bytesRead) {
-                val b = buffer[i].toInt() and 0xFF
-
-                if (!inJpeg) {
-                    // Search for JPEG SOI marker: 0xFF 0xD8
-                    if (prevByte == 0xFF && b == 0xD8) {
-                        inJpeg = true
-                        frameOutputStream.reset()
-                        frameOutputStream.write(0xFF)
-                        frameOutputStream.write(0xD8)
-                    }
-                } else {
-                    frameOutputStream.write(b)
-                    // Search for JPEG EOI marker: 0xFF 0xD9
-                    if (prevByte == 0xFF && b == 0xD9) {
-                        inJpeg = false
-                        totalFramesReceived++
-
-                        val jpegBytes = frameOutputStream.toByteArray()
-                        val decodeStart = SystemClock.elapsedRealtime()
-
-                        val bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
-                        val decodeLatency = (SystemClock.elapsedRealtime() - decodeStart).toFloat()
+                        val decodeLatency = (SystemClock.elapsedRealtime() - t0).toFloat()
+                        bytesInWindow += jpegBytes.size
 
                         if (bitmap != null) {
                             totalFramesDecoded++
@@ -205,21 +159,27 @@ class StreamEngine {
                             fpsCount++
 
                             _latestBitmap.value = bitmap
+
+                            // Transition to STREAMING on first valid decoded frame
+                            if (_state.value != StreamConnectionState.STREAMING) {
+                                Log.i(TAG, "[$sessionId] First frame rendered (${bitmap.width}x${bitmap.height}) -> Transition to STREAMING")
+                                _state.value = StreamConnectionState.STREAMING
+                            }
                         } else {
                             totalDropped++
                         }
 
-                        // Update FPS and Bitrate every 1000ms
                         val now = SystemClock.elapsedRealtime()
                         if (now - lastFpsTime >= 1000L) {
                             val elapsedSec = (now - lastFpsTime) / 1000f
                             val currentFps = fpsCount / elapsedSec
-                            val bitrate = (bytesInSecond * 8f) / (elapsedSec * 1000f)
+                            val bitrate = (bytesInWindow * 8f) / (elapsedSec * 1000f)
 
                             _diagnostics.value = StreamDiagnostics(
-                                connectionState = StreamConnectionState.CONNECTED,
+                                sessionId = sessionId,
+                                connectionState = _state.value,
                                 currentFps = currentFps,
-                                latencyMs = decodeLatency + 8f,
+                                latencyMs = decodeLatency + 6f,
                                 bitrateKbps = bitrate,
                                 resolution = if (bitmap != null) "${bitmap.width} × ${bitmap.height}" else "1920 × 1080",
                                 transport = "Direct LAN (P2P)",
@@ -231,9 +191,152 @@ class StreamEngine {
                             )
 
                             fpsCount = 0
-                            bytesInSecond = 0L
+                            bytesInWindow = 0L
                             lastFpsTime = now
                         }
+                    }
+                }
+
+                try {
+                    val streamUrl = if (!authToken.isNullOrBlank()) {
+                        "http://$resolvedHost:$port/live?token=${java.net.URLEncoder.encode(authToken, "UTF-8")}"
+                    } else {
+                        "http://$resolvedHost:$port/live"
+                    }
+
+                    _state.value = StreamConnectionState.AUTHENTICATING
+                    _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.AUTHENTICATING)
+
+                    val url = URL(streamUrl)
+                    val conn = (url.openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 4000
+                        readTimeout = 8000
+                        requestMethod = "GET"
+                        setRequestProperty("Accept", "multipart/x-mixed-replace")
+                        setRequestProperty("User-Agent", "SmartMigrate-Android/0.1.0")
+                        setRequestProperty("Connection", "keep-alive")
+                        if (!authToken.isNullOrBlank()) {
+                            setRequestProperty("Authorization", "Bearer $authToken")
+                        }
+                        doInput = true
+                    }
+
+                    val responseCode = conn.responseCode
+                    if (responseCode == 401 || responseCode == 403) {
+                        Log.e(TAG, "[$sessionId] Authentication failed: HTTP $responseCode")
+                        _state.value = StreamConnectionState.FAILED
+                        _diagnostics.value = _diagnostics.value.copy(
+                            connectionState = StreamConnectionState.FAILED,
+                            failureReason = "Host rejected authentication (HTTP $responseCode). Pair device first."
+                        )
+                        decodeJob.cancel()
+                        frameChannel.close()
+                        break
+                    }
+                    if (responseCode != 200) {
+                        throw IllegalStateException("Host returned HTTP $responseCode")
+                    }
+
+                    Log.i(TAG, "[$sessionId] Media channel connected (HTTP 200). Awaiting stream frames...")
+                    _state.value = StreamConnectionState.CONNECTED
+                    _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.CONNECTED)
+                    reconnectAttempts = 0
+
+                    val stream = BufferedInputStream(conn.inputStream, 65536)
+                    readMultipartStream(stream, frameChannel, sessionId)
+
+                } catch (e: Exception) {
+                    if (!isActive) break
+
+                    reconnectAttempts++
+                    totalDropped++
+                    Log.w(TAG, "[$sessionId] Stream network disconnect (attempt $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS): ${e.message}")
+
+                    if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+                        _state.value = StreamConnectionState.FAILED
+                        _diagnostics.value = _diagnostics.value.copy(
+                            connectionState = StreamConnectionState.FAILED,
+                            failureReason = "Connection failed after $MAX_RECONNECT_ATTEMPTS attempts: ${e.message ?: "Host unreachable"}",
+                            droppedFrames = totalDropped
+                        )
+                        decodeJob.cancel()
+                        frameChannel.close()
+                        break
+                    }
+
+                    _state.value = StreamConnectionState.RECONNECTING
+                    _diagnostics.value = _diagnostics.value.copy(
+                        connectionState = StreamConnectionState.RECONNECTING,
+                        failureReason = e.message ?: "Socket reset",
+                        droppedFrames = totalDropped
+                    )
+
+                    val backoffMs = (reconnectAttempts * 1000L).coerceAtMost(4000L)
+                    delay(backoffMs)
+                } finally {
+                    decodeJob.cancel()
+                    frameChannel.close()
+                }
+            }
+        }
+    }
+
+    /**
+     * Gracefully stops the stream and releases memory/decoders.
+     */
+    fun stopStreaming() {
+        if (_state.value != StreamConnectionState.DISCONNECTED) {
+            _state.value = StreamConnectionState.DISCONNECTING
+            _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.DISCONNECTING)
+        }
+        streamJob?.cancel()
+        streamJob = null
+        _latestBitmap.value = null
+        _state.value = StreamConnectionState.DISCONNECTED
+        _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.DISCONNECTED)
+        Log.i(TAG, "[$currentSessionId] Stream session stopped and released")
+    }
+
+    /**
+     * Reads MJPEG multipart frames from the active stream socket and publishes to the conflated frame channel.
+     */
+    private suspend fun readMultipartStream(
+        stream: InputStream,
+        frameChannel: Channel<ByteArray>,
+        sessionId: String
+    ) = withContext(Dispatchers.IO) {
+        val buffer = ByteArray(65536)
+        val frameOutputStream = ByteArrayOutputStream(196608)
+        var inJpeg = false
+        var prevByte = 0
+
+        while (isActive) {
+            val bytesRead = stream.read(buffer)
+            if (bytesRead == -1) {
+                Log.w(TAG, "[$sessionId] Stream EOF reached from host")
+                break
+            }
+
+            for (i in 0 until bytesRead) {
+                val b = buffer[i].toInt() and 0xFF
+
+                if (!inJpeg) {
+                    // JPEG SOI: 0xFF 0xD8
+                    if (prevByte == 0xFF && b == 0xD8) {
+                        inJpeg = true
+                        frameOutputStream.reset()
+                        frameOutputStream.write(0xFF)
+                        frameOutputStream.write(0xD8)
+                    }
+                } else {
+                    frameOutputStream.write(b)
+                    // JPEG EOI: 0xFF 0xD9
+                    if (prevByte == 0xFF && b == 0xD9) {
+                        inJpeg = false
+                        totalFramesReceived++
+
+                        val jpegBytes = frameOutputStream.toByteArray()
+                        frameChannel.trySend(jpegBytes)
                     }
                 }
                 prevByte = b

@@ -681,12 +681,17 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 }
             }
 
+            // Remove socket read timeout so streaming socket is not interrupted by OS timeout
+            let _ = socket.set_read_timeout(None);
+            let _ = socket.set_write_timeout(Some(Duration::from_millis(4000)));
+
             // Stream frames directly on this connection
             let http_header = "HTTP/1.1 200 OK\r\n\
                 Content-Type: multipart/x-mixed-replace; boundary=--smartmigrate\r\n\
                 Cache-Control: no-cache, no-store, must-revalidate\r\n\
                 Pragma: no-cache\r\n\
                 Expires: 0\r\n\
+                Connection: keep-alive\r\n\
                 Access-Control-Allow-Origin: *\r\n\r\n";
             if socket.write_all(http_header.as_bytes()).is_err() {
                 return;

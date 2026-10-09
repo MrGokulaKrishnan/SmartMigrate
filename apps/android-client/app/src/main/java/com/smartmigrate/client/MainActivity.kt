@@ -101,6 +101,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -183,6 +184,7 @@ private fun SmartMigrateApp() {
     val initialHost = remember { "${SmpClient.getLocalSubnetPrefix()}33" }
     var targetHostAddress by rememberSaveable { mutableStateOf(initialHost) }
     var currentSessionToken by rememberSaveable { mutableStateOf("") }
+    var isDedicatedRemoteSessionActive by rememberSaveable { mutableStateOf(false) }
 
     // Auto-discover Windows Host on LAN at startup
     LaunchedEffect(Unit) {
@@ -207,65 +209,89 @@ private fun SmartMigrateApp() {
                 .fillMaxSize()
                 .background(Black)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 14.dp)
-                    .padding(top = 8.dp, bottom = 8.dp)
-            ) {
-                // Top App Bar
-                AppBar(
-                    onScanQR = { qrScannerOpen = true },
-                    batterySaver = batterySaverMode
+            if (isDedicatedRemoteSessionActive) {
+                // ── DEDICATED FULLSCREEN REMOTE DESKTOP SESSION SCREEN ───────────
+                DedicatedRemoteSessionScreen(
+                    hostAddress = targetHostAddress,
+                    sessionToken = currentSessionToken,
+                    batterySaver = batterySaverMode,
+                    onLeaveSession = {
+                        isDedicatedRemoteSessionActive = false
+                        notice = "Session minimized to dashboard. Return to Stream tab to resume."
+                    },
+                    onDisconnect = {
+                        isDedicatedRemoteSessionActive = false
+                        notice = "Remote desktop session disconnected."
+                    },
+                    onNotice = { notice = it }
                 )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 14.dp)
+                        .padding(top = 8.dp, bottom = 8.dp)
+                ) {
+                    // Top App Bar
+                    AppBar(
+                        onScanQR = { qrScannerOpen = true },
+                        batterySaver = batterySaverMode
+                    )
 
-                Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(12.dp))
 
-                // Screen Content
-                AnimatedContent(
-                    targetState = destination,
-                    label = "smart-migrate-screen",
-                    modifier = Modifier.weight(1f)
-                ) { target ->
-                    when (target) {
-                        AppDestination.Home -> HomeScreen(
-                            hostAddress = targetHostAddress,
-                            onPair = { pairingDialog = true },
-                            onScanQR = { qrScannerOpen = true },
-                            onNavigate = { destination = it },
-                            onNotice = { notice = it },
-                            batterySaver = batterySaverMode,
-                            onToggleBatterySaver = { batterySaverMode = !batterySaverMode }
-                        )
-                        AppDestination.Devices -> DevicesScreen(
-                            onPair = { pairingDialog = true },
-                            onNotice = { notice = it }
-                        )
-                        AppDestination.Remote -> RemoteScreen(
-                            hostAddress = targetHostAddress,
-                            sessionToken = currentSessionToken,
-                            batterySaver = batterySaverMode,
-                            onNotice = { notice = it }
-                        )
-                        AppDestination.Security -> SecurityScreen(
-                            hostAddress = targetHostAddress,
-                            onNotice = { notice = it }
-                        )
+                    // Screen Content
+                    AnimatedContent(
+                        targetState = destination,
+                        label = "smart-migrate-screen",
+                        modifier = Modifier.weight(1f)
+                    ) { target ->
+                        when (target) {
+                            AppDestination.Home -> HomeScreen(
+                                hostAddress = targetHostAddress,
+                                onPair = { pairingDialog = true },
+                                onScanQR = { qrScannerOpen = true },
+                                onNavigate = { destination = it },
+                                onNotice = { notice = it },
+                                batterySaver = batterySaverMode,
+                                onToggleBatterySaver = { batterySaverMode = !batterySaverMode }
+                            )
+                            AppDestination.Devices -> DevicesScreen(
+                                onPair = { pairingDialog = true },
+                                onNotice = { notice = it }
+                            )
+                            AppDestination.Remote -> RemoteLandingScreen(
+                                hostAddress = targetHostAddress,
+                                sessionToken = currentSessionToken,
+                                onStartSession = { host, token ->
+                                    targetHostAddress = host
+                                    currentSessionToken = token
+                                    isDedicatedRemoteSessionActive = true
+                                },
+                                onScanQR = { qrScannerOpen = true },
+                                onPair = { pairingDialog = true },
+                                onNotice = { notice = it }
+                            )
+                            AppDestination.Security -> SecurityScreen(
+                                hostAddress = targetHostAddress,
+                                onNotice = { notice = it }
+                            )
+                        }
                     }
+
+                    // Notice Bar
+                    NoticeBar(notice)
+                    Spacer(Modifier.height(8.dp))
+
+                    // Bottom Navigation
+                    BottomNavBar(selected = destination, onSelect = {
+                        destination = it
+                        notice = "${it.label} view selected."
+                    })
+                    Spacer(Modifier.height(12.dp))
                 }
-
-                // Notice Bar
-                NoticeBar(notice)
-                Spacer(Modifier.height(8.dp))
-
-                // Bottom Navigation
-                BottomNavBar(selected = destination, onSelect = {
-                    destination = it
-                    notice = "${it.label} view selected."
-                })
-                Spacer(Modifier.height(12.dp))
             }
 
             // Real Camera QR Scanner Dialog
@@ -280,8 +306,9 @@ private fun SmartMigrateApp() {
                         qrScannerOpen = false
                         targetHostAddress = host
                         currentSessionToken = token
-                        notice = "Paired with $hostId at $host! Session verified."
+                        notice = "Paired with $hostId at $host! Launching remote session."
                         destination = AppDestination.Remote
+                        isDedicatedRemoteSessionActive = true
                     }
                 )
             }
@@ -295,8 +322,9 @@ private fun SmartMigrateApp() {
                         pairingDialog = false
                         targetHostAddress = host
                         currentSessionToken = token
-                        notice = "Paired with $hostId at $host! Session verified."
+                        notice = "Paired with $hostId at $host! Launching remote session."
                         destination = AppDestination.Remote
+                        isDedicatedRemoteSessionActive = true
                     }
                 )
             }
@@ -773,12 +801,203 @@ private fun DevicesScreen(onPair: () -> Unit, onNotice: (String) -> Unit) {
     }
 }
 
-// ─── 12 Remote Desktop 2.0 & Device Control (StarDesk-Inspired Interactive Pipeline) ───
+// ─── 12 Remote Desktop 2.0 (Landing Screen inside Tabs) ─────────────────────
 @Composable
-private fun RemoteScreen(
+private fun RemoteLandingScreen(
+    hostAddress: String,
+    sessionToken: String,
+    onStartSession: (String, String) -> Unit,
+    onScanQR: () -> Unit,
+    onPair: () -> Unit,
+    onNotice: (String) -> Unit
+) {
+    var hostInput by rememberSaveable { mutableStateOf(hostAddress) }
+    var tokenInput by rememberSaveable { mutableStateOf(sessionToken) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Section Header
+        Column {
+            Text("REMOTE DESKTOP & DISPLAY", color = Brand300, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+            Spacer(Modifier.height(2.dp))
+            Text("Control Windows PC with live touch gestures and virtual cursor", color = TextMuted, fontSize = 12.sp)
+        }
+
+        // Host Connection Card
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Surface1,
+            shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(Brand600.copy(alpha = 0.2f))
+                            .border(1.dp, Brand500.copy(alpha = 0.4f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        DesktopDeviceVector(color = Brand400, size = 22.dp)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Windows Host Connection", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("Port 7890 • Direct LAN Video & Input", color = Success, fontSize = 12.sp)
+                    }
+                }
+
+                // Inputs
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("HOST IP ADDRESS", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Surface2)
+                            .border(1.dp, Line, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        if (hostInput.isEmpty()) {
+                            Text("e.g. 192.168.31.33", color = TextMuted, fontSize = 13.sp)
+                        }
+                        BasicTextField(
+                            value = hostInput,
+                            onValueChange = { hostInput = it },
+                            textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp, fontFamily = FontFamily.Monospace),
+                            cursorBrush = SolidColor(Brand400),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Text("SESSION TOKEN (OPTIONAL IF ALREADY PAIRED)", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Surface2)
+                            .border(1.dp, Line, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        if (tokenInput.isEmpty()) {
+                            Text("Auto-negotiated token or empty", color = TextMuted, fontSize = 13.sp)
+                        }
+                        BasicTextField(
+                            value = tokenInput,
+                            onValueChange = { tokenInput = it },
+                            textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp, fontFamily = FontFamily.Monospace),
+                            cursorBrush = SolidColor(Brand400),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                PrimaryButton("Launch Dedicated Remote Desktop") {
+                    val h = hostInput.trim().ifEmpty { "10.0.2.2" }
+                    val tok = tokenInput.trim()
+                    onStartSession(h, tok)
+                    onNotice("Launching remote session for $h...")
+                }
+            }
+        }
+
+        // Quick Pairing Actions
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Surface1)
+                    .border(1.dp, Line, RoundedCornerShape(12.dp))
+                    .clickable { onScanQR() }
+                    .padding(14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    QrCodeVector(size = 18.dp, color = Brand300)
+                    Text("Scan Host QR", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Surface1)
+                    .border(1.dp, Line, RoundedCornerShape(12.dp))
+                    .clickable { onPair() }
+                    .padding(14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    KeypadVector(size = 18.dp, color = Brand300)
+                    Text("Pair with PIN", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        // Features Card
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Surface1,
+            shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, LineSubtle)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("STAR DESK-INSPIRED INTERACTIVE CAPABILITIES", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                listOf(
+                    "Touch Mode: Direct touch tap to click, drag window frames & long-press right click",
+                    "Cursor Mode: Relative trackpad glide, virtual cursor arrow, tactile [L] & [R] buttons",
+                    "Dedicated Session: Immersive edge-to-edge desktop without UI clipping",
+                    "Windows Integration: Native Win32 keyboard typing, Win+D, Alt+Tab hotkeys"
+                ).forEach { feat ->
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("•", color = Brand400, fontSize = 14.sp)
+                        Text(feat, color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── 13 Dedicated Fullscreen Remote Desktop Session Screen ───────────────────
+@Composable
+private fun DedicatedRemoteSessionScreen(
     hostAddress: String,
     sessionToken: String,
     batterySaver: Boolean,
+    onLeaveSession: () -> Unit,
+    onDisconnect: () -> Unit,
     onNotice: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -787,8 +1006,6 @@ private fun RemoteScreen(
     val latestBitmap by streamEngine.latestBitmap
     val streamDiag by streamEngine.diagnostics
 
-    var hostInput by rememberSaveable { mutableStateOf(hostAddress) }
-    var tokenInput by rememberSaveable { mutableStateOf(sessionToken) }
     var inputSeq by rememberSaveable { mutableLongStateOf(1L) }
 
     // Remote Control Modes & Panel State
@@ -802,13 +1019,19 @@ private fun RemoteScreen(
     var muteHostAudio by rememberSaveable { mutableStateOf(false) }
     var showClipboardBanner by rememberSaveable { mutableStateOf(true) }
     var fpsMode by rememberSaveable { mutableIntStateOf(60) }
-    var resolutionMode by rememberSaveable { mutableStateOf("1080p") }
     var keyboardInputText by rememberSaveable { mutableStateOf("") }
 
     // Virtual Cursor Position in Cursor Mode (normalized 0.0 .. 1.0)
     var cursorNormX by rememberSaveable { mutableFloatStateOf(0.5f) }
     var cursorNormY by rememberSaveable { mutableFloatStateOf(0.5f) }
     var viewportSize by remember { mutableStateOf(IntSize(1, 1)) }
+
+    // Automatically initiate stream on enter
+    LaunchedEffect(hostAddress, sessionToken) {
+        val h = hostAddress.trim().ifEmpty { "10.0.2.2" }
+        val tok = sessionToken.trim().ifEmpty { null }
+        streamEngine.startStreaming(h, 7890, tok)
+    }
 
     DisposableEffect(streamEngine) {
         onDispose {
@@ -819,569 +1042,733 @@ private fun RemoteScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF070B14))
+            .background(Color(0xFF06090F))
+            .statusBarsPadding()
     ) {
-        // ── 1. Live Remote Desktop Surface ────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .onSizeChanged { viewportSize = it }
-                .pointerInput(controlMode, connState) {
-                    if (connState != StreamConnectionState.CONNECTED) return@pointerInput
-
-                    if (controlMode == "Touch") {
-                        // Direct Touch Gestures
-                        detectTapGestures(
-                            onTap = { offset ->
-                                val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                val seq = inputSeq++
-                                scope.launch {
-                                    SmpClient.sendInput(
-                                        host = hostInput.ifEmpty { "10.0.2.2" },
-                                        action = "left_click",
-                                        normalizedX = nx,
-                                        normalizedY = ny,
-                                        sequence = seq,
-                                        sessionToken = tokenInput.ifEmpty { null }
-                                    )
-                                }
-                            },
-                            onDoubleTap = { offset ->
-                                val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                val seq = inputSeq++
-                                scope.launch {
-                                    SmpClient.sendInput(
-                                        host = hostInput.ifEmpty { "10.0.2.2" },
-                                        action = "double_click",
-                                        normalizedX = nx,
-                                        normalizedY = ny,
-                                        sequence = seq,
-                                        sessionToken = tokenInput.ifEmpty { null }
-                                    )
-                                }
-                            },
-                            onLongPress = { offset ->
-                                val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                val seq = inputSeq++
-                                scope.launch {
-                                    SmpClient.sendInput(
-                                        host = hostInput.ifEmpty { "10.0.2.2" },
-                                        action = "right_click",
-                                        normalizedX = nx,
-                                        normalizedY = ny,
-                                        sequence = seq,
-                                        sessionToken = tokenInput.ifEmpty { null }
-                                    )
-                                }
-                                onNotice("Right click dispatched")
-                            }
-                        )
-                    }
-                }
-                .pointerInput(controlMode, connState) {
-                    if (connState != StreamConnectionState.CONNECTED) return@pointerInput
-
-                    if (controlMode == "Cursor") {
-                        // Cursor Mode Relative Trackpad Glide
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            val dx = dragAmount.x
-                            val dy = dragAmount.y
-                            cursorNormX = (cursorNormX + dx / size.width.toFloat()).coerceIn(0f, 1f)
-                            cursorNormY = (cursorNormY + dy / size.height.toFloat()).coerceIn(0f, 1f)
-
-                            val seq = inputSeq++
-                            scope.launch {
-                                SmpClient.sendInput(
-                                    host = hostInput.ifEmpty { "10.0.2.2" },
-                                    action = "relative_move",
-                                    dx = (dx * 1.6f).toInt(),
-                                    dy = (dy * 1.6f).toInt(),
-                                    sequence = seq,
-                                    sessionToken = tokenInput.ifEmpty { null }
-                                )
-                            }
-                        }
-                    } else {
-                        // Touch Mode Dragging (Window Move / Selection)
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                val seq = inputSeq++
-                                scope.launch {
-                                    SmpClient.sendInput(
-                                        host = hostInput.ifEmpty { "10.0.2.2" },
-                                        action = "mouse_down",
-                                        button = "left",
-                                        normalizedX = nx,
-                                        normalizedY = ny,
-                                        sequence = seq,
-                                        sessionToken = tokenInput.ifEmpty { null }
-                                    )
-                                }
-                            },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                val nx = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                val ny = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                val seq = inputSeq++
-                                scope.launch {
-                                    SmpClient.sendInput(
-                                        host = hostInput.ifEmpty { "10.0.2.2" },
-                                        action = "move",
-                                        normalizedX = nx,
-                                        normalizedY = ny,
-                                        sequence = seq,
-                                        sessionToken = tokenInput.ifEmpty { null }
-                                    )
-                                }
-                            },
-                            onDragEnd = {
-                                val seq = inputSeq++
-                                scope.launch {
-                                    SmpClient.sendInput(
-                                        host = hostInput.ifEmpty { "10.0.2.2" },
-                                        action = "mouse_up",
-                                        button = "left",
-                                        sequence = seq,
-                                        sessionToken = tokenInput.ifEmpty { null }
-                                    )
-                                }
-                            }
-                        )
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            val frame = latestBitmap
-            if (connState == StreamConnectionState.CONNECTED && frame != null) {
-                Image(
-                    bitmap = frame.asImageBitmap(),
-                    contentDescription = "Windows Desktop Display",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
-                )
-
-                // Virtual Mouse Pointer in Cursor Mode (StarDesk Screenshot 5)
-                if (controlMode == "Cursor") {
-                    val px = cursorNormX * viewportSize.width.toFloat()
-                    val py = cursorNormY * viewportSize.height.toFloat()
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val path = Path().apply {
-                            moveTo(px, py)
-                            lineTo(px + 22.dp.toPx(), py + 14.dp.toPx())
-                            lineTo(px + 12.dp.toPx(), py + 14.dp.toPx())
-                            lineTo(px + 18.dp.toPx(), py + 26.dp.toPx())
-                            lineTo(px + 13.dp.toPx(), py + 28.dp.toPx())
-                            lineTo(px + 8.dp.toPx(), py + 16.dp.toPx())
-                            lineTo(px, py + 22.dp.toPx())
-                            close()
-                        }
-                        drawPath(path, color = Color.White)
-                        drawPath(path, color = Color.Black, style = Stroke(width = 2.dp.toPx()))
-                    }
-                }
-            } else {
-                // Offline / Setup View
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(CircleShape)
-                            .background(Brand600.copy(alpha = 0.2f))
-                            .border(1.dp, Brand500.copy(alpha = 0.4f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        DesktopDeviceVector(color = Brand400, size = 32.dp)
-                    }
-
-                    Text(
-                        if (connState == StreamConnectionState.CONNECTING || connState == StreamConnectionState.NEGOTIATING)
-                            "CONNECTING TO WINDOWS PC..."
-                        else "REMOTE DESKTOP READY",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
-                    Text(
-                        "Direct LAN hardware stream & full interactive PC remote control",
-                        color = TextMuted,
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center
-                    )
-
-                    // Host & Token Inputs
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1.2f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Surface2)
-                                .border(1.dp, Line, RoundedCornerShape(8.dp))
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
-                        ) {
-                            if (hostInput.isEmpty()) {
-                                Text("Host IP (e.g. 192.168.31.33)", color = TextMuted, fontSize = 12.sp)
-                            }
-                            BasicTextField(
-                                value = hostInput,
-                                onValueChange = { hostInput = it },
-                                textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp, fontFamily = FontFamily.Monospace),
-                                cursorBrush = SolidColor(Brand400),
-                                singleLine = true
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Surface2)
-                                .border(1.dp, Line, RoundedCornerShape(8.dp))
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
-                        ) {
-                            if (tokenInput.isEmpty()) {
-                                Text("Session Token", color = TextMuted, fontSize = 12.sp)
-                            }
-                            BasicTextField(
-                                value = tokenInput,
-                                onValueChange = { tokenInput = it },
-                                textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp, fontFamily = FontFamily.Monospace),
-                                cursorBrush = SolidColor(Brand400),
-                                singleLine = true
-                            )
-                        }
-                    }
-
-                    PrimaryButton("Connect Remote Desktop") {
-                        val h = hostInput.trim().ifEmpty { "10.0.2.2" }
-                        val tok = tokenInput.trim().ifEmpty { null }
-                        streamEngine.startStreaming(h, 7890, tok)
-                        onNotice("Connecting to $h:7890/live...")
-                    }
-                }
-            }
-        }
-
-        // ── 2. StarDesk-Inspired Right Slim Floating Toolbar (Screenshot 2) ───
-        if (connState == StreamConnectionState.CONNECTED) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 8.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xD90F172A))
-                    .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(12.dp))
-                    .padding(vertical = 8.dp, horizontal = 6.dp)
-            ) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // 1. Panel Button
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { isPanelOpen = !isPanelOpen }
-                            .padding(4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(if (isPanelOpen) Brand600 else Color(0x26FFFFFF)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Canvas(modifier = Modifier.size(14.dp)) {
-                                drawLine(Color.White, Offset(2.dp.toPx(), 4.dp.toPx()), Offset(12.dp.toPx(), 4.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
-                                drawLine(Color.White, Offset(2.dp.toPx(), 7.dp.toPx()), Offset(12.dp.toPx(), 7.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
-                                drawLine(Color.White, Offset(2.dp.toPx(), 10.dp.toPx()), Offset(12.dp.toPx(), 10.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
-                            }
-                        }
-                        Spacer(Modifier.height(2.dp))
-                        Text("Panel", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    // 2. Keyboard Button
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { isKeyboardOpen = !isKeyboardOpen }
-                            .padding(4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(if (isKeyboardOpen) Brand600 else Color(0x26FFFFFF)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Canvas(modifier = Modifier.size(14.dp)) {
-                                drawRect(Color.White, size = androidx.compose.ui.geometry.Size(14.dp.toPx(), 10.dp.toPx()), style = Stroke(width = 1.5.dp.toPx()))
-                                drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(4.dp.toPx(), 4.dp.toPx()))
-                                drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(7.dp.toPx(), 4.dp.toPx()))
-                                drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(10.dp.toPx(), 4.dp.toPx()))
-                                drawLine(Color.White, Offset(4.dp.toPx(), 7.dp.toPx()), Offset(10.dp.toPx(), 7.dp.toPx()), strokeWidth = 1.5.dp.toPx())
-                            }
-                        }
-                        Spacer(Modifier.height(2.dp))
-                        Text("Keyboard", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    // 3. Show Desktop Button (Win+D)
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable {
-                                val seq = inputSeq++
-                                scope.launch {
-                                    SmpClient.sendInput(
-                                        host = hostInput.ifEmpty { "10.0.2.2" },
-                                        action = "hotkey",
-                                        hotkey = "show_desktop",
-                                        sequence = seq,
-                                        sessionToken = tokenInput.ifEmpty { null }
-                                    )
-                                }
-                                onNotice("Sent Show Desktop (Win+D)")
-                            }
-                            .padding(4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x26FFFFFF)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Canvas(modifier = Modifier.size(14.dp)) {
-                                drawRect(Color.White, size = androidx.compose.ui.geometry.Size(14.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.5.dp.toPx()))
-                                drawLine(Color.White, Offset(7.dp.toPx(), 9.dp.toPx()), Offset(7.dp.toPx(), 12.dp.toPx()), strokeWidth = 1.5.dp.toPx())
-                                drawLine(Color.White, Offset(4.dp.toPx(), 12.dp.toPx()), Offset(10.dp.toPx(), 12.dp.toPx()), strokeWidth = 1.5.dp.toPx())
-                            }
-                        }
-                        Spacer(Modifier.height(2.dp))
-                        Text("Desktop", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    // 4. Task Switcher Button (Alt+Tab)
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable {
-                                val seq = inputSeq++
-                                scope.launch {
-                                    SmpClient.sendInput(
-                                        host = hostInput.ifEmpty { "10.0.2.2" },
-                                        action = "hotkey",
-                                        hotkey = "task_switch",
-                                        sequence = seq,
-                                        sessionToken = tokenInput.ifEmpty { null }
-                                    )
-                                }
-                                onNotice("Sent Task Switcher (Alt+Tab)")
-                            }
-                            .padding(4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x26FFFFFF)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Canvas(modifier = Modifier.size(14.dp)) {
-                                drawRect(Color.White.copy(alpha = 0.6f), topLeft = Offset(0f, 0f), size = androidx.compose.ui.geometry.Size(9.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.2.dp.toPx()))
-                                drawRect(Color.White, topLeft = Offset(4.dp.toPx(), 4.dp.toPx()), size = androidx.compose.ui.geometry.Size(9.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.2.dp.toPx()))
-                            }
-                        }
-                        Spacer(Modifier.height(2.dp))
-                        Text("Switch", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-        }
-
-        // ── 3. Virtual Mouse Tactile Buttons in Cursor Mode (Screenshot 5) ────
-        if (connState == StreamConnectionState.CONNECTED && controlMode == "Cursor" && virtualMouseEnabled) {
-            // Left & Right click floating tactile buttons at bottom left
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 16.dp, bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Left Click [ L ]
-                Box(
-                    modifier = Modifier
-                        .size(54.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xD91E293B))
-                        .border(1.5.dp, Brand400, CircleShape)
-                        .clickable {
-                            val seq = inputSeq++
-                            scope.launch {
-                                SmpClient.sendInput(
-                                    host = hostInput.ifEmpty { "10.0.2.2" },
-                                    action = "left_click",
-                                    sequence = seq,
-                                    sessionToken = tokenInput.ifEmpty { null }
-                                )
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("L", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                }
-
-                // Right Click [ R ]
-                Box(
-                    modifier = Modifier
-                        .size(54.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xD91E293B))
-                        .border(1.5.dp, Color(0x6694A3B8), CircleShape)
-                        .clickable {
-                            val seq = inputSeq++
-                            scope.launch {
-                                SmpClient.sendInput(
-                                    host = hostInput.ifEmpty { "10.0.2.2" },
-                                    action = "right_click",
-                                    sequence = seq,
-                                    sessionToken = tokenInput.ifEmpty { null }
-                                )
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("R", color = Color(0xFF94A3B8), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                }
-
-                // Double Click [ 2x ]
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xD91E293B))
-                        .border(1.dp, Color(0x33FFFFFF), CircleShape)
-                        .clickable {
-                            val seq = inputSeq++
-                            scope.launch {
-                                SmpClient.sendInput(
-                                    host = hostInput.ifEmpty { "10.0.2.2" },
-                                    action = "double_click",
-                                    sequence = seq,
-                                    sessionToken = tokenInput.ifEmpty { null }
-                                )
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("2x", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            // Vertical Scroll Strip on right edge
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 70.dp, bottom = 16.dp)
-                    .height(110.dp)
-                    .width(36.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xD91E293B))
-                    .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(18.dp))
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            val delta = (-dragAmount.y * 8f).toInt()
-                            if (delta != 0) {
-                                val seq = inputSeq++
-                                scope.launch {
-                                    SmpClient.sendInput(
-                                        host = hostInput.ifEmpty { "10.0.2.2" },
-                                        action = "scroll",
-                                        scrollDelta = delta,
-                                        sequence = seq,
-                                        sessionToken = tokenInput.ifEmpty { null }
-                                    )
-                                }
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("▲", color = Brand300, fontSize = 9.sp)
-                    Spacer(Modifier.height(2.dp))
-                    Text("⇕", color = Color.White, fontSize = 14.sp)
-                    Spacer(Modifier.height(2.dp))
-                    Text("▼", color = Brand300, fontSize = 9.sp)
-                }
-            }
-        }
-
-        // ── 4. StarDesk-Inspired Clipboard Notification Pill (Screenshot 2) ───
-        if (connState == StreamConnectionState.CONNECTED && showClipboardBanner && !clipboardSyncEnabled) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 12.dp, start = 16.dp, end = 16.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xF00F172A))
-                    .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(20.dp))
-                    .padding(horizontal = 14.dp, vertical = 7.dp)
+        Column(modifier = Modifier.fillMaxSize()) {
+            // ── TOP SESSION HUD BAR ──────────────────────────────────────────
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Color(0xF20B0F19),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x2638BDF8))
             ) {
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        "Enable clipboard sync to transfer text with the host device.",
-                        color = Color(0xFFE2E8F0),
-                        fontSize = 10.sp
-                    )
-                    Text(
-                        "Enable Now",
-                        color = Color(0xFF38BDF8),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
+                    // Back / Minimize Button
+                    Box(
                         modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x1AFFFFFF))
+                            .clickable { onLeaveSession() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text("‹", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Dashboard", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    // Host & Live Status Badge
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val dotColor = when (connState) {
+                            StreamConnectionState.STREAMING -> Success
+                            StreamConnectionState.CONNECTED -> Info
+                            StreamConnectionState.CONNECTING, StreamConnectionState.AUTHENTICATING -> Warning
+                            StreamConnectionState.RECONNECTING -> Warning
+                            StreamConnectionState.FAILED -> Danger
+                            else -> TextMuted
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(dotColor)
+                        )
+
+                        Text(
+                            hostAddress,
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+
+                        Text(
+                            when (connState) {
+                                StreamConnectionState.STREAMING -> "• ${String.format(java.util.Locale.US, "%.0f", streamDiag.currentFps)} FPS (${String.format(java.util.Locale.US, "%.0f", streamDiag.latencyMs)}ms)"
+                                StreamConnectionState.CONNECTED -> "• Ready"
+                                StreamConnectionState.CONNECTING -> "• Connecting"
+                                StreamConnectionState.AUTHENTICATING -> "• Auth"
+                                StreamConnectionState.RECONNECTING -> "• Reconnecting"
+                                StreamConnectionState.FAILED -> "• Failed"
+                                else -> "• Idle"
+                            },
+                            color = TextMuted,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    // Disconnect Button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Danger.copy(alpha = 0.18f))
+                            .border(1.dp, Danger.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             .clickable {
-                                clipboardSyncEnabled = true
-                                showClipboardBanner = false
-                                onNotice("Clipboard sync activated with Windows host")
+                                streamEngine.stopStreaming()
+                                scope.launch {
+                                    SmpClient.disconnectSession(hostAddress.ifEmpty { "10.0.2.2" }, 7890)
+                                }
+                                onDisconnect()
                             }
-                    )
-                    Text(
-                        "✕",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable { showClipboardBanner = false }
-                    )
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text("⏻", color = Danger, fontSize = 11.sp)
+                            Text("End", color = Danger, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // ── MAIN REMOTE DESKTOP VIEWPORT ────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(Color.Black)
+            ) {
+                val frame = latestBitmap
+
+                if (frame != null && (connState == StreamConnectionState.STREAMING || connState == StreamConnectionState.CONNECTED || connState == StreamConnectionState.RECONNECTING)) {
+                    // Continuous Remote Stream Canvas
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .onSizeChanged { viewportSize = it }
+                            .pointerInput(controlMode, connState) {
+                                if (controlMode == "Touch") {
+                                    detectTapGestures(
+                                        onTap = { offset ->
+                                            val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                            val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                            val seq = inputSeq++
+                                            scope.launch {
+                                                SmpClient.sendInput(
+                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                    action = "left_click",
+                                                    normalizedX = nx,
+                                                    normalizedY = ny,
+                                                    sequence = seq,
+                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                )
+                                            }
+                                        },
+                                        onDoubleTap = { offset ->
+                                            val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                            val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                            val seq = inputSeq++
+                                            scope.launch {
+                                                SmpClient.sendInput(
+                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                    action = "double_click",
+                                                    normalizedX = nx,
+                                                    normalizedY = ny,
+                                                    sequence = seq,
+                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                )
+                                            }
+                                        },
+                                        onLongPress = { offset ->
+                                            val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                            val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                            val seq = inputSeq++
+                                            scope.launch {
+                                                SmpClient.sendInput(
+                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                    action = "right_click",
+                                                    normalizedX = nx,
+                                                    normalizedY = ny,
+                                                    sequence = seq,
+                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                )
+                                            }
+                                            onNotice("Right click dispatched")
+                                        }
+                                    )
+                                }
+                            }
+                            .pointerInput(controlMode, connState) {
+                                if (controlMode == "Cursor") {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        val dx = dragAmount.x
+                                        val dy = dragAmount.y
+                                        cursorNormX = (cursorNormX + dx / size.width.toFloat()).coerceIn(0f, 1f)
+                                        cursorNormY = (cursorNormY + dy / size.height.toFloat()).coerceIn(0f, 1f)
+
+                                        val seq = inputSeq++
+                                        scope.launch {
+                                            SmpClient.sendInput(
+                                                host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                action = "relative_move",
+                                                dx = (dx * 1.6f).toInt(),
+                                                dy = (dy * 1.6f).toInt(),
+                                                sequence = seq,
+                                                sessionToken = sessionToken.ifEmpty { null }
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    // Touch Mode Drag
+                                    detectDragGestures(
+                                        onDragStart = { offset ->
+                                            val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                            val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                            val seq = inputSeq++
+                                            scope.launch {
+                                                SmpClient.sendInput(
+                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                    action = "mouse_down",
+                                                    button = "left",
+                                                    normalizedX = nx,
+                                                    normalizedY = ny,
+                                                    sequence = seq,
+                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                )
+                                            }
+                                        },
+                                        onDrag = { change, _ ->
+                                            change.consume()
+                                            val nx = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                            val ny = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                            val seq = inputSeq++
+                                            scope.launch {
+                                                SmpClient.sendInput(
+                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                    action = "move",
+                                                    normalizedX = nx,
+                                                    normalizedY = ny,
+                                                    sequence = seq,
+                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                )
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            val seq = inputSeq++
+                                            scope.launch {
+                                                SmpClient.sendInput(
+                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                    action = "mouse_up",
+                                                    button = "left",
+                                                    sequence = seq,
+                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                )
+                                            }
+                                        }
+                                    )
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            bitmap = frame.asImageBitmap(),
+                            contentDescription = "Windows Desktop Display",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+
+                        // Virtual Cursor in Cursor Mode
+                        if (controlMode == "Cursor") {
+                            val px = cursorNormX * viewportSize.width.toFloat()
+                            val py = cursorNormY * viewportSize.height.toFloat()
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val path = Path().apply {
+                                    moveTo(px, py)
+                                    lineTo(px + 22.dp.toPx(), py + 14.dp.toPx())
+                                    lineTo(px + 12.dp.toPx(), py + 14.dp.toPx())
+                                    lineTo(px + 18.dp.toPx(), py + 26.dp.toPx())
+                                    lineTo(px + 13.dp.toPx(), py + 28.dp.toPx())
+                                    lineTo(px + 8.dp.toPx(), py + 16.dp.toPx())
+                                    lineTo(px, py + 22.dp.toPx())
+                                    close()
+                                }
+                                drawPath(path, color = Color.White)
+                                drawPath(path, color = Color.Black, style = Stroke(width = 2.dp.toPx()))
+                            }
+                        }
+
+                        // Reconnecting overlay pill if network drops temporarily
+                        if (connState == StreamConnectionState.RECONNECTING) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 24.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xD90F172A))
+                                    .border(1.dp, Warning.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(Warning)
+                                    )
+                                    Text("Network hiccup. Reconnecting to Windows host...", color = Color.White, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                } else if (connState == StreamConnectionState.FAILED) {
+                    // Failure State
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(CircleShape)
+                                .background(Danger.copy(alpha = 0.2f))
+                                .border(1.dp, Danger.copy(alpha = 0.5f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("✕", color = Danger, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Text("CONNECTION FAILED", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            streamDiag.failureReason ?: "Unable to connect to host at $hostAddress:7890",
+                            color = TextMuted,
+                            fontSize = 12.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Brand600)
+                                    .clickable {
+                                        val h = hostAddress.trim().ifEmpty { "10.0.2.2" }
+                                        val tok = sessionToken.trim().ifEmpty { null }
+                                        streamEngine.startStreaming(h, 7890, tok)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                            ) {
+                                Text("Retry Connection", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Surface2)
+                                    .border(1.dp, Line, RoundedCornerShape(8.dp))
+                                    .clickable { onDisconnect() }
+                                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                            ) {
+                                Text("Return to Dashboard", color = TextPrimary, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                } else {
+                    // Connecting / Authenticating / Negotiating State
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(68.dp)
+                                .clip(CircleShape)
+                                .background(Brand600.copy(alpha = 0.2f))
+                                .border(1.dp, Brand500.copy(alpha = 0.4f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            DesktopDeviceVector(color = Brand400, size = 34.dp)
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        Text(
+                            "CONNECTING TO WINDOWS PC...",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Establishing secure channel to $hostAddress:7890/live",
+                            color = TextMuted,
+                            fontSize = 12.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            connState.userMessage,
+                            color = Brand300,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Surface2)
+                                .border(1.dp, Line, RoundedCornerShape(8.dp))
+                                .clickable { onDisconnect() }
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text("Cancel", color = TextMuted, fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                // ── OVERLAYS (ONLY ACTIVE WHEN STREAMING / CONNECTED) ───────────
+                if (connState == StreamConnectionState.STREAMING || (connState == StreamConnectionState.RECONNECTING && frame != null)) {
+                    // 1. StarDesk Right Slim Floating Toolbar
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 10.dp)
+                            .width(54.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xD90F172A))
+                            .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(14.dp))
+                            .padding(vertical = 10.dp, horizontal = 4.dp)
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // Panel Button
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { isPanelOpen = !isPanelOpen }
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isPanelOpen) Brand600 else Color(0x26FFFFFF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Canvas(modifier = Modifier.size(14.dp)) {
+                                        drawLine(Color.White, Offset(2.dp.toPx(), 4.dp.toPx()), Offset(12.dp.toPx(), 4.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                                        drawLine(Color.White, Offset(2.dp.toPx(), 7.dp.toPx()), Offset(12.dp.toPx(), 7.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                                        drawLine(Color.White, Offset(2.dp.toPx(), 10.dp.toPx()), Offset(12.dp.toPx(), 10.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                                    }
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                Text("Panel", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                            }
+
+                            // Keyboard Button
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { isKeyboardOpen = !isKeyboardOpen }
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isKeyboardOpen) Brand600 else Color(0x26FFFFFF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Canvas(modifier = Modifier.size(14.dp)) {
+                                        drawRect(Color.White, size = androidx.compose.ui.geometry.Size(14.dp.toPx(), 10.dp.toPx()), style = Stroke(width = 1.5.dp.toPx()))
+                                        drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(4.dp.toPx(), 4.dp.toPx()))
+                                        drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(7.dp.toPx(), 4.dp.toPx()))
+                                        drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(10.dp.toPx(), 4.dp.toPx()))
+                                        drawLine(Color.White, Offset(4.dp.toPx(), 7.dp.toPx()), Offset(10.dp.toPx(), 7.dp.toPx()), strokeWidth = 1.5.dp.toPx())
+                                    }
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                Text("Keyboard", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                            }
+
+                            // Show Desktop Button (Win+D)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        val seq = inputSeq++
+                                        scope.launch {
+                                            SmpClient.sendInput(
+                                                host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                action = "hotkey",
+                                                hotkey = "show_desktop",
+                                                sequence = seq,
+                                                sessionToken = sessionToken.ifEmpty { null }
+                                            )
+                                        }
+                                        onNotice("Sent Show Desktop (Win+D)")
+                                    }
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0x26FFFFFF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Canvas(modifier = Modifier.size(14.dp)) {
+                                        drawRect(Color.White, size = androidx.compose.ui.geometry.Size(14.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.5.dp.toPx()))
+                                        drawLine(Color.White, Offset(7.dp.toPx(), 9.dp.toPx()), Offset(7.dp.toPx(), 12.dp.toPx()), strokeWidth = 1.5.dp.toPx())
+                                        drawLine(Color.White, Offset(4.dp.toPx(), 12.dp.toPx()), Offset(10.dp.toPx(), 12.dp.toPx()), strokeWidth = 1.5.dp.toPx())
+                                    }
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                Text("Desktop", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                            }
+
+                            // Task Switcher Button (Alt+Tab)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        val seq = inputSeq++
+                                        scope.launch {
+                                            SmpClient.sendInput(
+                                                host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                action = "hotkey",
+                                                hotkey = "task_switch",
+                                                sequence = seq,
+                                                sessionToken = sessionToken.ifEmpty { null }
+                                            )
+                                        }
+                                        onNotice("Sent Task Switcher (Alt+Tab)")
+                                    }
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0x26FFFFFF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Canvas(modifier = Modifier.size(14.dp)) {
+                                        drawRect(Color.White.copy(alpha = 0.6f), topLeft = Offset(0f, 0f), size = androidx.compose.ui.geometry.Size(9.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.2.dp.toPx()))
+                                        drawRect(Color.White, topLeft = Offset(4.dp.toPx(), 4.dp.toPx()), size = androidx.compose.ui.geometry.Size(9.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.2.dp.toPx()))
+                                    }
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                Text("Switch", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                            }
+                        }
+                    }
+
+                    // 2. Fixed Responsive Clipboard Notification Pill
+                    if (showClipboardBanner && !clipboardSyncEnabled) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 14.dp, start = 16.dp, end = 68.dp)
+                                .fillMaxWidth(0.92f)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color(0xF00F172A))
+                                .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    "Enable clipboard sync to transfer text with host device.",
+                                    color = Color(0xFFE2E8F0),
+                                    fontSize = 11.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0x2638BDF8))
+                                        .clickable {
+                                            clipboardSyncEnabled = true
+                                            showClipboardBanner = false
+                                            onNotice("Clipboard sync activated with Windows host")
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text("Enable Now", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Text(
+                                    "✕",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable { showClipboardBanner = false }
+                                        .padding(4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // 3. Virtual Mouse Tactile Buttons in Cursor Mode
+                    if (controlMode == "Cursor" && virtualMouseEnabled) {
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .navigationBarsPadding()
+                                .padding(start = 16.dp, bottom = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Left Click [ L ]
+                            Box(
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xD91E293B))
+                                    .border(1.5.dp, Brand400, CircleShape)
+                                    .clickable {
+                                        val seq = inputSeq++
+                                        scope.launch {
+                                            SmpClient.sendInput(
+                                                host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                action = "left_click",
+                                                sequence = seq,
+                                                sessionToken = sessionToken.ifEmpty { null }
+                                            )
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("L", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            // Right Click [ R ]
+                            Box(
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xD91E293B))
+                                    .border(1.5.dp, Color(0x6694A3B8), CircleShape)
+                                    .clickable {
+                                        val seq = inputSeq++
+                                        scope.launch {
+                                            SmpClient.sendInput(
+                                                host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                action = "right_click",
+                                                sequence = seq,
+                                                sessionToken = sessionToken.ifEmpty { null }
+                                            )
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("R", color = Color(0xFF94A3B8), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            // Double Click [ 2x ]
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xD91E293B))
+                                    .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                                    .clickable {
+                                        val seq = inputSeq++
+                                        scope.launch {
+                                            SmpClient.sendInput(
+                                                host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                action = "double_click",
+                                                sequence = seq,
+                                                sessionToken = sessionToken.ifEmpty { null }
+                                            )
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("2x", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Vertical Scroll Strip
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .navigationBarsPadding()
+                                .padding(end = 72.dp, bottom = 16.dp)
+                                .height(110.dp)
+                                .width(36.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(Color(0xD91E293B))
+                                .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(18.dp))
+                                .pointerInput(Unit) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        val delta = (-dragAmount.y * 8f).toInt()
+                                        if (delta != 0) {
+                                            val seq = inputSeq++
+                                            scope.launch {
+                                                SmpClient.sendInput(
+                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                    action = "scroll",
+                                                    scrollDelta = delta,
+                                                    sequence = seq,
+                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                )
+                                            }
+                                        }
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("▲", color = Brand300, fontSize = 9.sp)
+                                Spacer(Modifier.height(2.dp))
+                                Text("⇕", color = Color.White, fontSize = 14.sp)
+                                Spacer(Modifier.height(2.dp))
+                                Text("▼", color = Brand300, fontSize = 9.sp)
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // ── 5. Keyboard Input Overlay ─────────────────────────────────────────
+        // ── 4. Virtual Keyboard Overlay Drawer ──────────────────────────────
         if (isKeyboardOpen) {
             Box(
                 modifier = Modifier
@@ -1398,59 +1785,20 @@ private fun RemoteScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("KEYBOARD INPUT (UNICODE INJECTION)", color = Brand300, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text("REMOTE KEYBOARD INPUT", color = Brand300, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         Text(
-                            "Close ✕",
-                            color = TextMuted,
-                            fontSize = 10.sp,
+                            "✕",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable { isKeyboardOpen = false }
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { isKeyboardOpen = false }
+                                .padding(4.dp)
                         )
                     }
 
-                    // Quick System Keys
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        listOf("Esc", "Tab", "Win", "Alt", "Ctrl", "Enter", "Bksp", "Space").forEach { key ->
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Surface2)
-                                    .clickable {
-                                        val seq = inputSeq++
-                                        val hk = when (key) {
-                                            "Esc" -> "escape"
-                                            "Tab" -> "tab"
-                                            "Win" -> "show_desktop"
-                                            "Alt" -> "task_switch"
-                                            "Enter" -> "enter"
-                                            "Bksp" -> "backspace"
-                                            "Space" -> "space"
-                                            else -> "tab"
-                                        }
-                                        scope.launch {
-                                            SmpClient.sendInput(
-                                                host = hostInput.ifEmpty { "10.0.2.2" },
-                                                action = "hotkey",
-                                                hotkey = hk,
-                                                sequence = seq,
-                                                sessionToken = tokenInput.ifEmpty { null }
-                                            )
-                                        }
-                                        onNotice("Sent key $key")
-                                    }
-                                    .padding(vertical = 6.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(key, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
-                    // Text Input & Send
+                    // Direct Unicode Typing Input Row
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1460,38 +1808,75 @@ private fun RemoteScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Surface2)
+                                .background(Color(0x26FFFFFF))
                                 .border(1.dp, Line, RoundedCornerShape(8.dp))
                                 .padding(horizontal = 10.dp, vertical = 8.dp)
                         ) {
                             if (keyboardInputText.isEmpty()) {
-                                Text("Type text to send to active PC window...", color = TextMuted, fontSize = 12.sp)
+                                Text("Type text to send directly to PC...", color = TextMuted, fontSize = 12.sp)
                             }
                             BasicTextField(
                                 value = keyboardInputText,
                                 onValueChange = { keyboardInputText = it },
-                                textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp),
+                                textStyle = TextStyle(color = Color.White, fontSize = 13.sp),
                                 cursorBrush = SolidColor(Brand400),
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
 
-                        PrimaryButton("Send") {
-                            if (keyboardInputText.isNotEmpty()) {
-                                val seq = inputSeq++
-                                val txt = keyboardInputText
-                                keyboardInputText = ""
-                                scope.launch {
-                                    SmpClient.sendInput(
-                                        host = hostInput.ifEmpty { "10.0.2.2" },
-                                        action = "text",
-                                        text = txt,
-                                        sequence = seq,
-                                        sessionToken = tokenInput.ifEmpty { null }
-                                    )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Brand600)
+                                .clickable {
+                                    if (keyboardInputText.isNotEmpty()) {
+                                        val textToSend = keyboardInputText
+                                        keyboardInputText = ""
+                                        val seq = inputSeq++
+                                        scope.launch {
+                                            SmpClient.sendInput(
+                                                host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                action = "text",
+                                                text = textToSend,
+                                                sequence = seq,
+                                                sessionToken = sessionToken.ifEmpty { null }
+                                            )
+                                        }
+                                        onNotice("Sent: '$textToSend'")
+                                    }
                                 }
-                                onNotice("Sent \"$txt\" to Windows PC")
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text("Send", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // Quick PC Keys Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        listOf("Esc" to "escape", "Tab" to "tab", "Win" to "show_desktop", "Alt" to "task_switch", "Enter" to "enter", "Bksp" to "backspace", "Space" to "space").forEach { (label, actionCode) ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0x26FFFFFF))
+                                    .clickable {
+                                        val seq = inputSeq++
+                                        scope.launch {
+                                            SmpClient.sendInput(
+                                                host = hostAddress.ifEmpty { "10.0.2.2" },
+                                                action = "hotkey",
+                                                hotkey = actionCode,
+                                                sequence = seq,
+                                                sessionToken = sessionToken.ifEmpty { null }
+                                            )
+                                        }
+                                    }
+                                    .padding(horizontal = 7.dp, vertical = 6.dp)
+                            ) {
+                                Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -1499,7 +1884,7 @@ private fun RemoteScreen(
             }
         }
 
-        // ── 6. StarDesk Slide-Out Control Drawer (Screenshots 3 & 4) ──────────
+        // ── 5. Slide-Out Control Panel Drawer ───────────────────────────────
         if (isPanelOpen) {
             Box(
                 modifier = Modifier
@@ -1552,7 +1937,7 @@ private fun RemoteScreen(
                             )
                         }
 
-                        // Top Quick Action Row (StarDesk Screenshot 4)
+                        // Top Quick Action Row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -1565,10 +1950,10 @@ private fun RemoteScreen(
                                     .clickable {
                                         streamEngine.stopStreaming()
                                         scope.launch {
-                                            SmpClient.disconnectSession(hostInput.ifEmpty { "10.0.2.2" }, 7890)
+                                            SmpClient.disconnectSession(hostAddress.ifEmpty { "10.0.2.2" }, 7890)
                                         }
                                         isPanelOpen = false
-                                        onNotice("Remote session disconnected")
+                                        onDisconnect()
                                     }
                                     .padding(6.dp)
                             ) {
@@ -1656,16 +2041,14 @@ private fun RemoteScreen(
                             }
                         }
 
-                        // ── TAB: PANEL (Screenshot 4) ─────────────────────────
+                        // TAB: PANEL
                         if (panelTab == "Panel") {
-                            // Remote Control Mode Selector (Touch Mode vs Cursor Mode)
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("CONTROL MODE", color = Color(0xFF94A3B8), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    // Touch Mode Card
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
@@ -1682,7 +2065,6 @@ private fun RemoteScreen(
                                         }
                                     }
 
-                                    // Cursor Mode Card
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
@@ -1701,7 +2083,6 @@ private fun RemoteScreen(
                                 }
                             }
 
-                            // Virtual Mouse Toggle
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1722,7 +2103,6 @@ private fun RemoteScreen(
                                 }
                             }
 
-                            // Display FPS & Scale
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1754,10 +2134,9 @@ private fun RemoteScreen(
                             }
                         }
 
-                        // ── TAB: SECURITY (Screenshot 3) ──────────────────────
+                        // TAB: SECURITY
                         if (panelTab == "Security") {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                // Mute Host Device
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1778,7 +2157,6 @@ private fun RemoteScreen(
                                     }
                                 }
 
-                                // Host Privacy Mode
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1799,7 +2177,6 @@ private fun RemoteScreen(
                                     }
                                 }
 
-                                // Clipboard Sync
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1827,7 +2204,6 @@ private fun RemoteScreen(
         }
     }
 }
-
 // ─── 14 Security Screen ──────────────────────────────────────────────────────
 @Composable
 private fun SecurityScreen(hostAddress: String = "10.0.2.2", onNotice: (String) -> Unit) {
