@@ -51,6 +51,9 @@ impl InputController {
         device_id_str: &str,
         x: i32,
         y: i32,
+        dx: i32,
+        dy: i32,
+        is_relative: bool,
         left_down: bool,
         left_up: bool,
         right_down: bool,
@@ -76,21 +79,26 @@ impl InputController {
             return Err("device is not authorized for CONTROL_MOUSE".to_string());
         }
 
-        // 3. Monotonic sequence replay protection
-        let mut tracker = self.sequence_tracker.lock().unwrap();
-        if let Some(prev) = tracker.last_sequence(device_id_str) {
-            if sequence <= prev {
-                let mut tel = self.telemetry.lock().unwrap();
-                tel.replayed_packets_dropped += 1;
-                return Err("replayed or out-of-order input packet rejected".to_string());
+        // 3. Monotonic sequence replay protection (enforced when sequence > 0)
+        if sequence > 0 {
+            let mut tracker = self.sequence_tracker.lock().unwrap();
+            if let Some(prev) = tracker.last_sequence(device_id_str) {
+                if sequence <= prev {
+                    let mut tel = self.telemetry.lock().unwrap();
+                    tel.replayed_packets_dropped += 1;
+                    return Err("replayed or out-of-order input packet rejected".to_string());
+                }
             }
+            tracker.accept(device_id_str, sequence);
         }
-        tracker.accept(device_id_str, sequence);
 
         // 4. Native Win32 SendInput injection
         #[cfg(target_os = "windows")]
         {
-            inject_win32_mouse(x, y, left_down, left_up, right_down, right_up, middle_down, middle_up, scroll_delta);
+            if is_relative && (dx != 0 || dy != 0) {
+                inject_win32_mouse_relative(dx, dy);
+            }
+            inject_win32_mouse(x, y, is_relative, left_down, left_up, right_down, right_up, middle_down, middle_up, scroll_delta);
         }
 
         let mut tel = self.telemetry.lock().unwrap();
@@ -123,21 +131,111 @@ impl InputController {
             return Err("device is not authorized for CONTROL_KEYBOARD".to_string());
         }
 
-        // 3. Monotonic sequence replay protection
-        let mut tracker = self.sequence_tracker.lock().unwrap();
-        if let Some(prev) = tracker.last_sequence(device_id_str) {
-            if sequence <= prev {
-                let mut tel = self.telemetry.lock().unwrap();
-                tel.replayed_packets_dropped += 1;
-                return Err("replayed or out-of-order keyboard packet rejected".to_string());
+        // 3. Monotonic sequence replay protection (enforced when sequence > 0)
+        if sequence > 0 {
+            let mut tracker = self.sequence_tracker.lock().unwrap();
+            if let Some(prev) = tracker.last_sequence(device_id_str) {
+                if sequence <= prev {
+                    let mut tel = self.telemetry.lock().unwrap();
+                    tel.replayed_packets_dropped += 1;
+                    return Err("replayed or out-of-order keyboard packet rejected".to_string());
+                }
             }
+            tracker.accept(device_id_str, sequence);
         }
-        tracker.accept(device_id_str, sequence);
 
         // 4. Native Win32 SendInput injection
         #[cfg(target_os = "windows")]
         {
             inject_win32_keyboard(vk_code, key_up);
+        }
+
+        let mut tel = self.telemetry.lock().unwrap();
+        tel.keyboard_events_injected += 1;
+        Ok(())
+    }
+
+    /// Injects Unicode string text directly to the active Windows window.
+    pub fn inject_text(
+        &self,
+        trust_store: &TrustStore,
+        device_id_str: &str,
+        text: &str,
+        sequence: u64,
+    ) -> Result<(), String> {
+        let device_id = DeviceId::try_from(device_id_str).map_err(|e| e.to_string())?;
+
+        if !*self.host_keyboard_override.lock().unwrap() {
+            let mut tel = self.telemetry.lock().unwrap();
+            tel.unauthorized_dropped += 1;
+            return Err("host operator has temporarily suspended remote keyboard input".to_string());
+        }
+
+        if !trust_store.is_authorized(&device_id, SessionPermission::ControlKeyboard) {
+            let mut tel = self.telemetry.lock().unwrap();
+            tel.unauthorized_dropped += 1;
+            return Err("device is not authorized for CONTROL_KEYBOARD".to_string());
+        }
+
+        if sequence > 0 {
+            let mut tracker = self.sequence_tracker.lock().unwrap();
+            if let Some(prev) = tracker.last_sequence(device_id_str) {
+                if sequence <= prev {
+                    let mut tel = self.telemetry.lock().unwrap();
+                    tel.replayed_packets_dropped += 1;
+                    return Err("replayed or out-of-order keyboard packet rejected".to_string());
+                }
+            }
+            tracker.accept(device_id_str, sequence);
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            inject_win32_unicode_str(text);
+        }
+
+        let mut tel = self.telemetry.lock().unwrap();
+        tel.keyboard_events_injected += text.chars().count() as u64;
+        Ok(())
+    }
+
+    /// Injects a system shortcut / hotkey (e.g. "show_desktop", "task_switch", "enter", "backspace").
+    pub fn inject_hotkey(
+        &self,
+        trust_store: &TrustStore,
+        device_id_str: &str,
+        hotkey: &str,
+        sequence: u64,
+    ) -> Result<(), String> {
+        let device_id = DeviceId::try_from(device_id_str).map_err(|e| e.to_string())?;
+
+        if !*self.host_keyboard_override.lock().unwrap() {
+            let mut tel = self.telemetry.lock().unwrap();
+            tel.unauthorized_dropped += 1;
+            return Err("host operator has temporarily suspended remote keyboard input".to_string());
+        }
+
+        if !trust_store.is_authorized(&device_id, SessionPermission::ControlKeyboard) {
+            let mut tel = self.telemetry.lock().unwrap();
+            tel.unauthorized_dropped += 1;
+            return Err("device is not authorized for CONTROL_KEYBOARD".to_string());
+        }
+
+        if sequence > 0 {
+            let mut tracker = self.sequence_tracker.lock().unwrap();
+            if let Some(prev) = tracker.last_sequence(device_id_str) {
+                if sequence <= prev {
+                    let mut tel = self.telemetry.lock().unwrap();
+                    tel.replayed_packets_dropped += 1;
+                    return Err("replayed or out-of-order keyboard packet rejected".to_string());
+                }
+            }
+            tracker.accept(device_id_str, sequence);
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            inject_win32_hotkey(hotkey);
         }
 
         let mut tel = self.telemetry.lock().unwrap();
@@ -216,12 +314,14 @@ mod win32 {
     pub const MOUSEEVENTF_WHEEL: u32 = 0x0800;
     pub const MOUSEEVENTF_ABSOLUTE: u32 = 0x8000;
     pub const KEYEVENTF_KEYUP: u32 = 0x0002;
+    pub const KEYEVENTF_UNICODE: u32 = 0x0004;
 }
 
 #[cfg(target_os = "windows")]
 fn inject_win32_mouse(
     x: i32,
     y: i32,
+    is_relative: bool,
     left_down: bool,
     left_up: bool,
     right_down: bool,
@@ -232,21 +332,24 @@ fn inject_win32_mouse(
 ) {
     use win32::*;
 
-    let screen_w = unsafe { GetSystemMetrics(0) };
-    let screen_h = unsafe { GetSystemMetrics(1) };
+    let mut flags = 0u32;
+    let mut norm_x = 0i32;
+    let mut norm_y = 0i32;
 
-    let sw = if screen_w > 0 { screen_w } else { 1920 };
-    let sh = if screen_h > 0 { screen_h } else { 1080 };
+    if !is_relative {
+        let screen_w = unsafe { GetSystemMetrics(0) };
+        let screen_h = unsafe { GetSystemMetrics(1) };
+        let sw = if screen_w > 0 { screen_w } else { 1920 };
+        let sh = if screen_h > 0 { screen_h } else { 1080 };
 
-    // Clamp coordinates strictly to screen
-    let clamped_x = x.clamp(0, sw);
-    let clamped_y = y.clamp(0, sh);
+        let clamped_x = x.clamp(0, sw);
+        let clamped_y = y.clamp(0, sh);
 
-    // Normalize to 0..65535 for MOUSEEVENTF_ABSOLUTE
-    let norm_x = ((clamped_x as f64 / sw as f64) * 65535.0) as i32;
-    let norm_y = ((clamped_y as f64 / sh as f64) * 65535.0) as i32;
+        norm_x = ((clamped_x as f64 / sw as f64) * 65535.0) as i32;
+        norm_y = ((clamped_y as f64 / sh as f64) * 65535.0) as i32;
+        flags |= MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+    }
 
-    let mut flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
     if left_down { flags |= MOUSEEVENTF_LEFTDOWN; }
     if left_up { flags |= MOUSEEVENTF_LEFTUP; }
     if right_down { flags |= MOUSEEVENTF_RIGHTDOWN; }
@@ -255,20 +358,42 @@ fn inject_win32_mouse(
     if middle_up { flags |= MOUSEEVENTF_MIDDLEUP; }
     if scroll_delta != 0 { flags |= MOUSEEVENTF_WHEEL; }
 
+    if flags != 0 {
+        let input = INPUT {
+            r#type: INPUT_MOUSE,
+            u: INPUT_UNION {
+                mi: MOUSEINPUT {
+                    dx: norm_x,
+                    dy: norm_y,
+                    mouse_data: scroll_delta as u32,
+                    dw_flags: flags,
+                    time: 0,
+                    dw_extra_info: 0,
+                },
+            },
+        };
+        unsafe {
+            SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn inject_win32_mouse_relative(dx: i32, dy: i32) {
+    use win32::*;
     let input = INPUT {
         r#type: INPUT_MOUSE,
         u: INPUT_UNION {
             mi: MOUSEINPUT {
-                dx: norm_x,
-                dy: norm_y,
-                mouse_data: scroll_delta as u32,
-                dw_flags: flags,
+                dx,
+                dy,
+                mouse_data: 0,
+                dw_flags: MOUSEEVENTF_MOVE,
                 time: 0,
                 dw_extra_info: 0,
             },
         },
     };
-
     unsafe {
         SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
     }
@@ -300,4 +425,129 @@ fn inject_win32_keyboard(vk_code: u16, key_up: bool) {
         SendInput(1, &input, std::mem::size_of::<INPUT>() as i32);
     }
 }
+
+#[cfg(target_os = "windows")]
+fn inject_win32_unicode_str(text: &str) {
+    use win32::*;
+    for c in text.chars() {
+        let mut buf = [0u16; 2];
+        let encoded = c.encode_utf16(&mut buf);
+        for &mut code_unit in encoded {
+            let input_down = INPUT {
+                r#type: INPUT_KEYBOARD,
+                u: INPUT_UNION {
+                    ki: KEYBDINPUT {
+                        w_vk: 0,
+                        w_scan: code_unit,
+                        dw_flags: KEYEVENTF_UNICODE,
+                        time: 0,
+                        dw_extra_info: 0,
+                    },
+                },
+            };
+            let input_up = INPUT {
+                r#type: INPUT_KEYBOARD,
+                u: INPUT_UNION {
+                    ki: KEYBDINPUT {
+                        w_vk: 0,
+                        w_scan: code_unit,
+                        dw_flags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
+                        time: 0,
+                        dw_extra_info: 0,
+                    },
+                },
+            };
+            let inputs = [input_down, input_up];
+            unsafe {
+                SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32);
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn inject_win32_hotkey(hotkey: &str) {
+    use win32::*;
+    let make_key = |vk: u16, up: bool| -> INPUT {
+        let flags = if up { KEYEVENTF_KEYUP } else { 0 };
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            u: INPUT_UNION {
+                ki: KEYBDINPUT {
+                    w_vk: vk,
+                    w_scan: 0,
+                    dw_flags: flags,
+                    time: 0,
+                    dw_extra_info: 0,
+                },
+            },
+        }
+    };
+
+    match hotkey.to_lowercase().as_str() {
+        "show_desktop" | "desktop" => {
+            // Win + D
+            let inputs = [
+                make_key(0x5B, false),
+                make_key(0x44, false),
+                make_key(0x44, true),
+                make_key(0x5B, true),
+            ];
+            unsafe { SendInput(4, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+        }
+        "task_switch" | "task_switcher" | "alt_tab" => {
+            // Alt + Tab
+            let inputs = [
+                make_key(0x12, false),
+                make_key(0x09, false),
+                make_key(0x09, true),
+                make_key(0x12, true),
+            ];
+            unsafe { SendInput(4, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+        }
+        "enter" => {
+            let inputs = [make_key(0x0D, false), make_key(0x0D, true)];
+            unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+        }
+        "backspace" => {
+            let inputs = [make_key(0x08, false), make_key(0x08, true)];
+            unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+        }
+        "tab" => {
+            let inputs = [make_key(0x09, false), make_key(0x09, true)];
+            unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+        }
+        "escape" | "esc" => {
+            let inputs = [make_key(0x1B, false), make_key(0x1B, true)];
+            unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+        }
+        "space" => {
+            let inputs = [make_key(0x20, false), make_key(0x20, true)];
+            unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32); }
+        }
+        _ => {}
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn inject_win32_mouse(
+    _x: i32, _y: i32, _is_relative: bool,
+    _left_down: bool, _left_up: bool,
+    _right_down: bool, _right_up: bool,
+    _middle_down: bool, _middle_up: bool,
+    _scroll_delta: i32,
+) {}
+
+#[cfg(not(target_os = "windows"))]
+fn inject_win32_mouse_relative(_dx: i32, _dy: i32) {}
+
+#[cfg(not(target_os = "windows"))]
+fn inject_win32_keyboard(_vk_code: u16, _key_up: bool) {}
+
+#[cfg(not(target_os = "windows"))]
+fn inject_win32_unicode_str(_text: &str) {}
+
+#[cfg(not(target_os = "windows"))]
+fn inject_win32_hotkey(_hotkey: &str) {}
+
 

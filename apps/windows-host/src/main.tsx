@@ -278,6 +278,8 @@ export function App() {
     lastHeartbeatAgoMs: 250,
   });
 
+  const [streamTelemetry, setStreamTelemetry] = useState<StreamTelemetry | null>(null);
+
   const [lanIps, setLanIps] = useState<string[]>(["192.168.31.33"]);
   const primaryHostIp = lanIps[0] || "192.168.31.33";
 
@@ -299,13 +301,41 @@ export function App() {
     invoke<ResilienceStatus>("get_resilience_status")
       .then(setResilience)
       .catch(() => {});
+
+    invoke<StreamTelemetry>("get_stream_telemetry")
+      .then(setStreamTelemetry)
+      .catch(() => {});
   };
 
   useEffect(() => {
     refreshStatus();
-    const interval = setInterval(refreshStatus, 4000);
+    const interval = setInterval(refreshStatus, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!streamTelemetry?.isActive) return;
+    const t = setInterval(() => {
+      invoke<StreamTelemetry>("get_stream_telemetry")
+        .then(setStreamTelemetry)
+        .catch(() => {});
+    }, 1000);
+    return () => clearInterval(t);
+  }, [streamTelemetry?.isActive]);
+
+  const formatDuration = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const handleDisconnectRemote = async () => {
+    await invoke("stop_display_stream", { reason: "host_operator_disconnected" });
+    setStreamTelemetry(null);
+    setNotice("Remote desktop control session ended by host operator.");
+    refreshStatus();
+  };
 
   const openPairing = async () => {
     try {
@@ -636,6 +666,61 @@ export function App() {
 
         {/* Content Workspace */}
         <main className="workspace">
+          {/* StarDesk-Style Active Remote Session Banner */}
+          {streamTelemetry?.isActive && (
+            <div className="controlled-host-banner">
+              <div className="controlled-banner-header">
+                <div className="controlled-banner-title">
+                  <div className="controlled-pulse-dot" />
+                  <span className="controlled-banner-text">Device is being controlled</span>
+                  <span className="controlled-banner-timer">{formatDuration(streamTelemetry.durationSeconds || 0)}</span>
+                  <span className="controlled-banner-count">| 1 devices controlling this PC</span>
+                </div>
+                <button className="btn-disconnect-all" onClick={handleDisconnectRemote}>
+                  Disconnect All Sessions
+                </button>
+              </div>
+              <table className="controlled-table">
+                <thead>
+                  <tr>
+                    <th>Device</th>
+                    <th>Type</th>
+                    <th>Connect Time</th>
+                    <th>Duration</th>
+                    <th>Operation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--sm-brand-300)" strokeWidth="2">
+                          <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+                          <line x1="12" y1="18" x2="12.01" y2="18" />
+                        </svg>
+                        <strong>{streamTelemetry.targetDeviceName || "samsung SM-G998B"}</strong>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="controlled-type-badge">
+                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34d399", display: "inline-block" }} />
+                        Remote Control
+                      </span>
+                    </td>
+                    <td>{new Date(Date.now() - (streamTelemetry.durationSeconds || 0) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                    <td style={{ fontFamily: "var(--sm-font-mono, monospace)", color: "#38bdf8", fontWeight: 600 }}>
+                      {formatDuration(streamTelemetry.durationSeconds || 0)}
+                    </td>
+                    <td>
+                      <button className="btn-disconnect-session" onClick={handleDisconnectRemote}>
+                        Disconnect
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
           {destination === "Home" && (
             <HomeView
               status={status}

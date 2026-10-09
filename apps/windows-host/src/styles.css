@@ -1541,3 +1541,143 @@ input:checked + .slider:before {
   box-shadow: 0 8px 24px rgba(109, 61, 245, 0.5);
 }
 
+/* ─── StarDesk-Inspired Remote Control Host Banner ─── */
+.controlled-host-banner {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(30, 58, 138, 0.28) 100%), rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 8px 32px rgba(2, 6, 23, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  animation: bannerFadeIn 0.3s ease-out;
+}
+
+@keyframes bannerFadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.controlled-banner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.controlled-banner-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.controlled-pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 12px #38bdf8;
+  animation: pulseGlow 1.5s infinite;
+}
+
+@keyframes pulseGlow {
+  0% { transform: scale(0.95); box-shadow: 0 0 4px #38bdf8; }
+  50% { transform: scale(1.15); box-shadow: 0 0 14px #38bdf8; }
+  100% { transform: scale(0.95); box-shadow: 0 0 4px #38bdf8; }
+}
+
+.controlled-banner-text {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f0f9ff;
+  letter-spacing: 0.2px;
+}
+
+.controlled-banner-timer {
+  font-family: var(--sm-font-mono, monospace);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(14, 165, 233, 0.15);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.controlled-banner-count {
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.controlled-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.controlled-table th {
+  text-align: left;
+  padding: 8px 12px;
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.controlled-table td {
+  padding: 10px 12px;
+  color: #e2e8f0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.controlled-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.btn-disconnect-session {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-disconnect-session:hover {
+  background: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.6);
+}
+
+.btn-disconnect-all {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-disconnect-all:hover {
+  background: rgba(239, 68, 68, 0.35);
+  border-color: rgba(239, 68, 68, 0.7);
+}
+
+

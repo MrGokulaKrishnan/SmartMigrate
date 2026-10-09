@@ -316,6 +316,9 @@ fn inject_remote_mouse(
     device_id: String,
     x: i32,
     y: i32,
+    dx: Option<i32>,
+    dy: Option<i32>,
+    is_relative: Option<bool>,
     left_down: bool,
     left_up: bool,
     right_down: bool,
@@ -331,6 +334,9 @@ fn inject_remote_mouse(
         &device_id,
         x,
         y,
+        dx.unwrap_or(0),
+        dy.unwrap_or(0),
+        is_relative.unwrap_or(false),
         left_down,
         left_up,
         right_down,
@@ -357,6 +363,40 @@ fn inject_remote_keyboard(
         &device_id,
         vk_code,
         key_up,
+        sequence,
+    )
+}
+
+/// Injects remote Unicode string text if authorized by host.
+#[tauri::command]
+fn inject_remote_text(
+    state: State<'_, AppState>,
+    device_id: String,
+    text: String,
+    sequence: u64,
+) -> Result<(), String> {
+    let trust_store = state.trust_store.lock().unwrap();
+    state.input_controller.inject_text(
+        &trust_store,
+        &device_id,
+        &text,
+        sequence,
+    )
+}
+
+/// Injects remote system hotkey (e.g. "show_desktop", "task_switch") if authorized by host.
+#[tauri::command]
+fn inject_remote_hotkey(
+    state: State<'_, AppState>,
+    device_id: String,
+    hotkey: String,
+    sequence: u64,
+) -> Result<(), String> {
+    let trust_store = state.trust_store.lock().unwrap();
+    state.input_controller.inject_hotkey(
+        &trust_store,
+        &device_id,
+        &hotkey,
         sequence,
     )
 }
@@ -671,14 +711,22 @@ fn minimize_window(window: Window) -> Result<(), String> {
     window.minimize().map_err(|e| e.to_string())
 }
 
-/// Toggle between maximized and restored window state.
+/// Toggle between maximized and restored window state. Returns new maximized state.
 #[tauri::command]
-fn toggle_maximize(window: Window) -> Result<(), String> {
+fn toggle_maximize(window: Window) -> Result<bool, String> {
     if window.is_maximized().map_err(|e| e.to_string())? {
-        window.unmaximize().map_err(|e| e.to_string())
+        window.unmaximize().map_err(|e| e.to_string())?;
+        Ok(false)
     } else {
-        window.maximize().map_err(|e| e.to_string())
+        window.maximize().map_err(|e| e.to_string())?;
+        Ok(true)
     }
+}
+
+/// Returns whether the window is currently maximized.
+#[tauri::command]
+fn is_window_maximized(window: Window) -> Result<bool, String> {
+    window.is_maximized().map_err(|e| e.to_string())
 }
 
 /// Close the main application window.
@@ -721,6 +769,8 @@ pub fn run() {
             get_stream_telemetry,
             inject_remote_mouse,
             inject_remote_keyboard,
+            inject_remote_text,
+            inject_remote_hotkey,
             get_input_telemetry,
             set_input_override,
             get_resilience_status,
@@ -746,6 +796,7 @@ pub fn run() {
             compute_folder_delta_sync,
             minimize_window,
             toggle_maximize,
+            is_window_maximized,
             close_window,
         ])
         .run(tauri::generate_context!())

@@ -35,7 +35,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -768,7 +773,7 @@ private fun DevicesScreen(onPair: () -> Unit, onNotice: (String) -> Unit) {
     }
 }
 
-// ─── 12 Remote Desktop 2.0 & Device Control ──────────────────────────────────
+// ─── 12 Remote Desktop 2.0 & Device Control (StarDesk-Inspired Interactive Pipeline) ───
 @Composable
 private fun RemoteScreen(
     hostAddress: String,
@@ -776,97 +781,266 @@ private fun RemoteScreen(
     batterySaver: Boolean,
     onNotice: (String) -> Unit
 ) {
-    var remoteMode by rememberSaveable { mutableStateOf("Display") }
-    var keyboardText by rememberSaveable { mutableStateOf("") }
-    var volume by rememberSaveable { mutableFloatStateOf(0.7f) }
-    var currentSlide by rememberSaveable { mutableIntStateOf(12) }
     val scope = rememberCoroutineScope()
+    val streamEngine = remember { StreamEngine() }
+    val connState by streamEngine.state
+    val latestBitmap by streamEngine.latestBitmap
+    val streamDiag by streamEngine.diagnostics
+
+    var hostInput by rememberSaveable { mutableStateOf(hostAddress) }
+    var tokenInput by rememberSaveable { mutableStateOf(sessionToken) }
     var inputSeq by rememberSaveable { mutableLongStateOf(1L) }
 
-    Column(
+    // Remote Control Modes & Panel State
+    var controlMode by rememberSaveable { mutableStateOf("Touch") } // "Touch" or "Cursor"
+    var isPanelOpen by rememberSaveable { mutableStateOf(false) }
+    var isKeyboardOpen by rememberSaveable { mutableStateOf(false) }
+    var panelTab by rememberSaveable { mutableStateOf("Panel") } // "Panel" or "Security"
+    var virtualMouseEnabled by rememberSaveable { mutableStateOf(true) }
+    var clipboardSyncEnabled by rememberSaveable { mutableStateOf(false) }
+    var hostPrivacyMode by rememberSaveable { mutableStateOf(false) }
+    var muteHostAudio by rememberSaveable { mutableStateOf(false) }
+    var showClipboardBanner by rememberSaveable { mutableStateOf(true) }
+    var fpsMode by rememberSaveable { mutableIntStateOf(60) }
+    var resolutionMode by rememberSaveable { mutableStateOf("1080p") }
+    var keyboardInputText by rememberSaveable { mutableStateOf("") }
+
+    // Virtual Cursor Position in Cursor Mode (normalized 0.0 .. 1.0)
+    var cursorNormX by rememberSaveable { mutableFloatStateOf(0.5f) }
+    var cursorNormY by rememberSaveable { mutableFloatStateOf(0.5f) }
+    var viewportSize by remember { mutableStateOf(IntSize(1, 1)) }
+
+    DisposableEffect(streamEngine) {
+        onDispose {
+            streamEngine.stopStreaming()
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .background(Color(0xFF070B14))
     ) {
-        // Remote Control Mode Tabs
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            listOf("Display", "Touchpad", "Keyboard", "Media", "Slide", "Game").forEach { mode ->
-                val isSel = remoteMode == mode
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isSel) Brand600 else Surface2)
-                        .border(1.dp, if (isSel) Brand500 else Line, RoundedCornerShape(6.dp))
-                        .clickable { remoteMode = mode }
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(mode, color = if (isSel) Color.White else TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+        // ── 1. Live Remote Desktop Surface ────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged { viewportSize = it }
+                .pointerInput(controlMode, connState) {
+                    if (connState != StreamConnectionState.CONNECTED) return@pointerInput
 
-        // Display Mirror Mode
-        if (remoteMode == "Display") {
-            val streamEngine = remember { StreamEngine() }
-            val connState by streamEngine.state
-            val latestBitmap by streamEngine.latestBitmap
-            val streamDiag by streamEngine.diagnostics
-            var hostInput by rememberSaveable { mutableStateOf(hostAddress) }
-            var tokenInput by rememberSaveable { mutableStateOf(sessionToken) }
-
-            DisposableEffect(streamEngine) {
-                onDispose {
-                    streamEngine.stopStreaming()
-                }
-            }
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Surface1,
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-            ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("LIVE WINDOWS DESKTOP STREAM", color = Brand300, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            when (connState) {
-                                StreamConnectionState.CONNECTED -> "● LIVE ${String.format(java.util.Locale.US, "%.0f", streamDiag.currentFps)} FPS"
-                                StreamConnectionState.CONNECTING, StreamConnectionState.NEGOTIATING -> "CONNECTING..."
-                                StreamConnectionState.RECONNECTING -> "RECONNECTING"
-                                else -> "OFFLINE"
+                    if (controlMode == "Touch") {
+                        // Direct Touch Gestures
+                        detectTapGestures(
+                            onTap = { offset ->
+                                val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                val seq = inputSeq++
+                                scope.launch {
+                                    SmpClient.sendInput(
+                                        host = hostInput.ifEmpty { "10.0.2.2" },
+                                        action = "left_click",
+                                        normalizedX = nx,
+                                        normalizedY = ny,
+                                        sequence = seq,
+                                        sessionToken = tokenInput.ifEmpty { null }
+                                    )
+                                }
                             },
-                            color = when (connState) {
-                                StreamConnectionState.CONNECTED -> Success
-                                StreamConnectionState.CONNECTING, StreamConnectionState.NEGOTIATING -> Brand300
-                                else -> TextMuted
+                            onDoubleTap = { offset ->
+                                val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                val seq = inputSeq++
+                                scope.launch {
+                                    SmpClient.sendInput(
+                                        host = hostInput.ifEmpty { "10.0.2.2" },
+                                        action = "double_click",
+                                        normalizedX = nx,
+                                        normalizedY = ny,
+                                        sequence = seq,
+                                        sessionToken = tokenInput.ifEmpty { null }
+                                    )
+                                }
                             },
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
+                            onLongPress = { offset ->
+                                val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                val seq = inputSeq++
+                                scope.launch {
+                                    SmpClient.sendInput(
+                                        host = hostInput.ifEmpty { "10.0.2.2" },
+                                        action = "right_click",
+                                        normalizedX = nx,
+                                        normalizedY = ny,
+                                        sequence = seq,
+                                        sessionToken = tokenInput.ifEmpty { null }
+                                    )
+                                }
+                                onNotice("Right click dispatched")
+                            }
                         )
                     }
+                }
+                .pointerInput(controlMode, connState) {
+                    if (connState != StreamConnectionState.CONNECTED) return@pointerInput
 
-                    // Host IP & Token Controls
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    if (controlMode == "Cursor") {
+                        // Cursor Mode Relative Trackpad Glide
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            val dx = dragAmount.x
+                            val dy = dragAmount.y
+                            cursorNormX = (cursorNormX + dx / size.width.toFloat()).coerceIn(0f, 1f)
+                            cursorNormY = (cursorNormY + dy / size.height.toFloat()).coerceIn(0f, 1f)
+
+                            val seq = inputSeq++
+                            scope.launch {
+                                SmpClient.sendInput(
+                                    host = hostInput.ifEmpty { "10.0.2.2" },
+                                    action = "relative_move",
+                                    dx = (dx * 1.6f).toInt(),
+                                    dy = (dy * 1.6f).toInt(),
+                                    sequence = seq,
+                                    sessionToken = tokenInput.ifEmpty { null }
+                                )
+                            }
+                        }
+                    } else {
+                        // Touch Mode Dragging (Window Move / Selection)
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                val seq = inputSeq++
+                                scope.launch {
+                                    SmpClient.sendInput(
+                                        host = hostInput.ifEmpty { "10.0.2.2" },
+                                        action = "mouse_down",
+                                        button = "left",
+                                        normalizedX = nx,
+                                        normalizedY = ny,
+                                        sequence = seq,
+                                        sessionToken = tokenInput.ifEmpty { null }
+                                    )
+                                }
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                val nx = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                val ny = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                val seq = inputSeq++
+                                scope.launch {
+                                    SmpClient.sendInput(
+                                        host = hostInput.ifEmpty { "10.0.2.2" },
+                                        action = "move",
+                                        normalizedX = nx,
+                                        normalizedY = ny,
+                                        sequence = seq,
+                                        sessionToken = tokenInput.ifEmpty { null }
+                                    )
+                                }
+                            },
+                            onDragEnd = {
+                                val seq = inputSeq++
+                                scope.launch {
+                                    SmpClient.sendInput(
+                                        host = hostInput.ifEmpty { "10.0.2.2" },
+                                        action = "mouse_up",
+                                        button = "left",
+                                        sequence = seq,
+                                        sessionToken = tokenInput.ifEmpty { null }
+                                    )
+                                }
+                            }
+                        )
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            val frame = latestBitmap
+            if (connState == StreamConnectionState.CONNECTED && frame != null) {
+                Image(
+                    bitmap = frame.asImageBitmap(),
+                    contentDescription = "Windows Desktop Display",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
+
+                // Virtual Mouse Pointer in Cursor Mode (StarDesk Screenshot 5)
+                if (controlMode == "Cursor") {
+                    val px = cursorNormX * viewportSize.width.toFloat()
+                    val py = cursorNormY * viewportSize.height.toFloat()
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val path = Path().apply {
+                            moveTo(px, py)
+                            lineTo(px + 22.dp.toPx(), py + 14.dp.toPx())
+                            lineTo(px + 12.dp.toPx(), py + 14.dp.toPx())
+                            lineTo(px + 18.dp.toPx(), py + 26.dp.toPx())
+                            lineTo(px + 13.dp.toPx(), py + 28.dp.toPx())
+                            lineTo(px + 8.dp.toPx(), py + 16.dp.toPx())
+                            lineTo(px, py + 22.dp.toPx())
+                            close()
+                        }
+                        drawPath(path, color = Color.White)
+                        drawPath(path, color = Color.Black, style = Stroke(width = 2.dp.toPx()))
+                    }
+                }
+            } else {
+                // Offline / Setup View
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(Brand600.copy(alpha = 0.2f))
+                            .border(1.dp, Brand500.copy(alpha = 0.4f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        DesktopDeviceVector(color = Brand400, size = 32.dp)
+                    }
+
+                    Text(
+                        if (connState == StreamConnectionState.CONNECTING || connState == StreamConnectionState.NEGOTIATING)
+                            "CONNECTING TO WINDOWS PC..."
+                        else "REMOTE DESKTOP READY",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        "Direct LAN hardware stream & full interactive PC remote control",
+                        color = TextMuted,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+
+                    // Host & Token Inputs
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Box(
                             modifier = Modifier
-                                .weight(1.1f)
-                                .clip(RoundedCornerShape(6.dp))
+                                .weight(1.2f)
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(Surface2)
-                                .border(1.dp, Line, RoundedCornerShape(6.dp))
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                .border(1.dp, Line, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
                         ) {
+                            if (hostInput.isEmpty()) {
+                                Text("Host IP (e.g. 192.168.31.33)", color = TextMuted, fontSize = 12.sp)
+                            }
                             BasicTextField(
                                 value = hostInput,
                                 onValueChange = { hostInput = it },
-                                textStyle = TextStyle(color = TextPrimary, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                                textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp, fontFamily = FontFamily.Monospace),
                                 cursorBrush = SolidColor(Brand400),
                                 singleLine = true
                             )
@@ -874,341 +1048,778 @@ private fun RemoteScreen(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(Surface2)
-                                .border(1.dp, Line, RoundedCornerShape(6.dp))
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                .border(1.dp, Line, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
                         ) {
                             if (tokenInput.isEmpty()) {
-                                Text("Token", color = TextMuted, fontSize = 11.sp)
+                                Text("Session Token", color = TextMuted, fontSize = 12.sp)
                             }
                             BasicTextField(
                                 value = tokenInput,
                                 onValueChange = { tokenInput = it },
-                                textStyle = TextStyle(color = TextPrimary, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                                textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp, fontFamily = FontFamily.Monospace),
                                 cursorBrush = SolidColor(Brand400),
                                 singleLine = true
                             )
                         }
                     }
 
-                    // Viewfinder Screen Surface
-                    Box(
+                    PrimaryButton("Connect Remote Desktop") {
+                        val h = hostInput.trim().ifEmpty { "10.0.2.2" }
+                        val tok = tokenInput.trim().ifEmpty { null }
+                        streamEngine.startStreaming(h, 7890, tok)
+                        onNotice("Connecting to $h:7890/live...")
+                    }
+                }
+            }
+        }
+
+        // ── 2. StarDesk-Inspired Right Slim Floating Toolbar (Screenshot 2) ───
+        if (connState == StreamConnectionState.CONNECTED) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xD90F172A))
+                    .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(12.dp))
+                    .padding(vertical = 8.dp, horizontal = 6.dp)
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // 1. Panel Button
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(16f / 9f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.Black)
-                            .border(1.dp, if (connState == StreamConnectionState.CONNECTED) Success.copy(alpha = 0.4f) else Line, RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { isPanelOpen = !isPanelOpen }
+                            .padding(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(if (isPanelOpen) Brand600 else Color(0x26FFFFFF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.size(14.dp)) {
+                                drawLine(Color.White, Offset(2.dp.toPx(), 4.dp.toPx()), Offset(12.dp.toPx(), 4.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                                drawLine(Color.White, Offset(2.dp.toPx(), 7.dp.toPx()), Offset(12.dp.toPx(), 7.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                                drawLine(Color.White, Offset(2.dp.toPx(), 10.dp.toPx()), Offset(12.dp.toPx(), 10.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                            }
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        Text("Panel", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // 2. Keyboard Button
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { isKeyboardOpen = !isKeyboardOpen }
+                            .padding(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(if (isKeyboardOpen) Brand600 else Color(0x26FFFFFF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.size(14.dp)) {
+                                drawRect(Color.White, size = androidx.compose.ui.geometry.Size(14.dp.toPx(), 10.dp.toPx()), style = Stroke(width = 1.5.dp.toPx()))
+                                drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(4.dp.toPx(), 4.dp.toPx()))
+                                drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(7.dp.toPx(), 4.dp.toPx()))
+                                drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(10.dp.toPx(), 4.dp.toPx()))
+                                drawLine(Color.White, Offset(4.dp.toPx(), 7.dp.toPx()), Offset(10.dp.toPx(), 7.dp.toPx()), strokeWidth = 1.5.dp.toPx())
+                            }
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        Text("Keyboard", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // 3. Show Desktop Button (Win+D)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
                             .clickable {
-                                if (connState == StreamConnectionState.CONNECTED) {
-                                    val seq = inputSeq++
-                                    scope.launch {
-                                        SmpClient.sendInput(hostInput, 7890, "left_click", 960, 540, sequence = seq)
-                                    }
-                                    onNotice("Dispatched tap to Windows PC (seq #$seq)")
+                                val seq = inputSeq++
+                                scope.launch {
+                                    SmpClient.sendInput(
+                                        host = hostInput.ifEmpty { "10.0.2.2" },
+                                        action = "hotkey",
+                                        hotkey = "show_desktop",
+                                        sequence = seq,
+                                        sessionToken = tokenInput.ifEmpty { null }
+                                    )
                                 }
-                            },
-                        contentAlignment = Alignment.Center
+                                onNotice("Sent Show Desktop (Win+D)")
+                            }
+                            .padding(4.dp)
                     ) {
-                        val frame = latestBitmap
-                        if (connState == StreamConnectionState.CONNECTED && frame != null) {
-                            Image(
-                                bitmap = frame.asImageBitmap(),
-                                contentDescription = "Windows Desktop",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Fit
-                            )
-                        } else if (connState == StreamConnectionState.CONNECTING || connState == StreamConnectionState.NEGOTIATING) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("CONNECTING STREAM...", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("Negotiating MJPEG multipart pipe on :7890/live", color = TextMuted, fontSize = 10.sp)
-                            }
-                        } else {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("STREAM OFFLINE", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("Verify Windows host is running, then tap Connect", color = TextMuted, fontSize = 10.sp)
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x26FFFFFF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.size(14.dp)) {
+                                drawRect(Color.White, size = androidx.compose.ui.geometry.Size(14.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.5.dp.toPx()))
+                                drawLine(Color.White, Offset(7.dp.toPx(), 9.dp.toPx()), Offset(7.dp.toPx(), 12.dp.toPx()), strokeWidth = 1.5.dp.toPx())
+                                drawLine(Color.White, Offset(4.dp.toPx(), 12.dp.toPx()), Offset(10.dp.toPx(), 12.dp.toPx()), strokeWidth = 1.5.dp.toPx())
                             }
                         }
+                        Spacer(Modifier.height(2.dp))
+                        Text("Desktop", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
                     }
 
-                    // Action buttons: Connect / Disconnect and Quick Click
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        Box(Modifier.weight(1.2f)) {
-                            if (connState == StreamConnectionState.CONNECTED || connState == StreamConnectionState.CONNECTING) {
-                                SecondaryButton("Stop Stream") {
-                                    streamEngine.stopStreaming()
-                                    onNotice("Stream stopped.")
-                                }
-                            } else {
-                                PrimaryButton("Connect Stream") {
-                                    val h = hostInput.trim().ifEmpty { "10.0.2.2" }
-                                    val tok = tokenInput.trim().ifEmpty { null }
-                                    streamEngine.startStreaming(h, 7890, tok)
-                                    onNotice("Connecting to $h:7890/live...")
-                                }
-                            }
-                        }
-                        Box(Modifier.weight(0.8f)) {
-                            SecondaryButton("L-Click") {
+                    // 4. Task Switcher Button (Alt+Tab)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable {
                                 val seq = inputSeq++
                                 scope.launch {
-                                    SmpClient.sendInput(hostInput, 7890, "left_click", 960, 540, sequence = seq)
+                                    SmpClient.sendInput(
+                                        host = hostInput.ifEmpty { "10.0.2.2" },
+                                        action = "hotkey",
+                                        hotkey = "task_switch",
+                                        sequence = seq,
+                                        sessionToken = tokenInput.ifEmpty { null }
+                                    )
                                 }
-                                onNotice("Sent Left Click")
+                                onNotice("Sent Task Switcher (Alt+Tab)")
+                            }
+                            .padding(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x26FFFFFF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.size(14.dp)) {
+                                drawRect(Color.White.copy(alpha = 0.6f), topLeft = Offset(0f, 0f), size = androidx.compose.ui.geometry.Size(9.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.2.dp.toPx()))
+                                drawRect(Color.White, topLeft = Offset(4.dp.toPx(), 4.dp.toPx()), size = androidx.compose.ui.geometry.Size(9.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.2.dp.toPx()))
                             }
                         }
-                        Box(Modifier.weight(0.8f)) {
-                            SecondaryButton("R-Click") {
-                                val seq = inputSeq++
-                                scope.launch {
-                                    SmpClient.sendInput(hostInput, 7890, "right_click", 960, 540, sequence = seq)
-                                }
-                                onNotice("Sent Right Click")
-                            }
-                        }
-                    }
-
-                    // Telemetry row
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        TelemetryCard(
-                            label = "FPS & Resolution",
-                            value = if (connState == StreamConnectionState.CONNECTED) "${String.format(java.util.Locale.US, "%.0f", streamDiag.currentFps)} FPS" else "--",
-                            detail = streamDiag.resolution,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TelemetryCard(
-                            label = "Decoded Frames",
-                            value = if (connState == StreamConnectionState.CONNECTED) "${streamDiag.framesRendered}" else "--",
-                            detail = "${String.format(java.util.Locale.US, "%.0f", streamDiag.latencyMs)} ms RTT",
-                            modifier = Modifier.weight(1f)
-                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text("Switch", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
         }
 
-        // Touchpad Mode
-        if (remoteMode == "Touchpad") {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Surface1,
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+        // ── 3. Virtual Mouse Tactile Buttons in Cursor Mode (Screenshot 5) ────
+        if (connState == StreamConnectionState.CONNECTED && controlMode == "Cursor" && virtualMouseEnabled) {
+            // Left & Right click floating tactile buttons at bottom left
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 16.dp, bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("WIRELESS TRACKPAD", color = Brand300, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.weight(1f))
-                        Text("14 ms • Smooth Glide", color = Success, fontSize = 10.sp)
-                    }
+                // Left Click [ L ]
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xD91E293B))
+                        .border(1.5.dp, Brand400, CircleShape)
+                        .clickable {
+                            val seq = inputSeq++
+                            scope.launch {
+                                SmpClient.sendInput(
+                                    host = hostInput.ifEmpty { "10.0.2.2" },
+                                    action = "left_click",
+                                    sequence = seq,
+                                    sessionToken = tokenInput.ifEmpty { null }
+                                )
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("L", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
 
-                    Spacer(Modifier.height(10.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Surface2)
-                            .border(1.dp, Line, RoundedCornerShape(10.dp))
-                            .clickable { onNotice("Touchpad click dispatched to Windows PC") },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("TOUCHPAD SURFACE", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            Text("Slide finger to steer mouse cursor", color = TextMuted.copy(alpha = 0.7f), fontSize = 10.sp)
-                        }
-                    }
+                // Right Click [ R ]
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xD91E293B))
+                        .border(1.5.dp, Color(0x6694A3B8), CircleShape)
+                        .clickable {
+                            val seq = inputSeq++
+                            scope.launch {
+                                SmpClient.sendInput(
+                                    host = hostInput.ifEmpty { "10.0.2.2" },
+                                    action = "right_click",
+                                    sequence = seq,
+                                    sessionToken = tokenInput.ifEmpty { null }
+                                )
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("R", color = Color(0xFF94A3B8), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
 
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        Box(Modifier.weight(1f)) {
-                            SecondaryButton("Left Click") { onNotice("Left click sent") }
+                // Double Click [ 2x ]
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xD91E293B))
+                        .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                        .clickable {
+                            val seq = inputSeq++
+                            scope.launch {
+                                SmpClient.sendInput(
+                                    host = hostInput.ifEmpty { "10.0.2.2" },
+                                    action = "double_click",
+                                    sequence = seq,
+                                    sessionToken = tokenInput.ifEmpty { null }
+                                )
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("2x", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Vertical Scroll Strip on right edge
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 70.dp, bottom = 16.dp)
+                    .height(110.dp)
+                    .width(36.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xD91E293B))
+                    .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(18.dp))
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            val delta = (-dragAmount.y * 8f).toInt()
+                            if (delta != 0) {
+                                val seq = inputSeq++
+                                scope.launch {
+                                    SmpClient.sendInput(
+                                        host = hostInput.ifEmpty { "10.0.2.2" },
+                                        action = "scroll",
+                                        scrollDelta = delta,
+                                        sequence = seq,
+                                        sessionToken = tokenInput.ifEmpty { null }
+                                    )
+                                }
+                            }
                         }
-                        Box(Modifier.weight(1f)) {
-                            SecondaryButton("Right Click") { onNotice("Right click sent") }
-                        }
-                    }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("▲", color = Brand300, fontSize = 9.sp)
+                    Spacer(Modifier.height(2.dp))
+                    Text("⇕", color = Color.White, fontSize = 14.sp)
+                    Spacer(Modifier.height(2.dp))
+                    Text("▼", color = Brand300, fontSize = 9.sp)
                 }
             }
         }
 
-        // Keyboard Mode
-        if (remoteMode == "Keyboard") {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Surface1,
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+        // ── 4. StarDesk-Inspired Clipboard Notification Pill (Screenshot 2) ───
+        if (connState == StreamConnectionState.CONNECTED && showClipboardBanner && !clipboardSyncEnabled) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xF00F172A))
+                    .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 14.dp, vertical = 7.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("PHONE AS PC KEYBOARD", color = Brand300, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    Box(
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Enable clipboard sync to transfer text with the host device.",
+                        color = Color(0xFFE2E8F0),
+                        fontSize = 10.sp
+                    )
+                    Text(
+                        "Enable Now",
+                        color = Color(0xFF38BDF8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Surface2)
-                            .border(1.dp, Line, RoundedCornerShape(8.dp))
-                            .padding(12.dp)
+                            .clickable {
+                                clipboardSyncEnabled = true
+                                showClipboardBanner = false
+                                onNotice("Clipboard sync activated with Windows host")
+                            }
+                    )
+                    Text(
+                        "✕",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { showClipboardBanner = false }
+                    )
+                }
+            }
+        }
+
+        // ── 5. Keyboard Input Overlay ─────────────────────────────────────────
+        if (isKeyboardOpen) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .background(Color(0xF50F172A))
+                    .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .padding(12.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        BasicTextField(
-                            value = keyboardText,
-                            onValueChange = { keyboardText = it },
-                            textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp),
-                            cursorBrush = SolidColor(Brand400),
-                            modifier = Modifier.fillMaxWidth()
+                        Text("KEYBOARD INPUT (UNICODE INJECTION)", color = Brand300, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Close ✕",
+                            color = TextMuted,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { isKeyboardOpen = false }
                         )
-                        if (keyboardText.isEmpty()) {
-                            Text("Type here to send directly to Windows PC...", color = TextMuted, fontSize = 13.sp)
-                        }
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("Enter", "Esc", "Tab", "Backspace").forEach { k ->
+                    // Quick System Keys
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf("Esc", "Tab", "Win", "Alt", "Ctrl", "Enter", "Bksp", "Space").forEach { key ->
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(Surface2)
-                                    .clickable { onNotice("Key $k dispatched") }
-                                    .padding(vertical = 8.dp),
+                                    .clickable {
+                                        val seq = inputSeq++
+                                        val hk = when (key) {
+                                            "Esc" -> "escape"
+                                            "Tab" -> "tab"
+                                            "Win" -> "show_desktop"
+                                            "Alt" -> "task_switch"
+                                            "Enter" -> "enter"
+                                            "Bksp" -> "backspace"
+                                            "Space" -> "space"
+                                            else -> "tab"
+                                        }
+                                        scope.launch {
+                                            SmpClient.sendInput(
+                                                host = hostInput.ifEmpty { "10.0.2.2" },
+                                                action = "hotkey",
+                                                hotkey = hk,
+                                                sequence = seq,
+                                                sessionToken = tokenInput.ifEmpty { null }
+                                            )
+                                        }
+                                        onNotice("Sent key $key")
+                                    }
+                                    .padding(vertical = 6.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(k, color = TextPrimary, fontSize = 10.sp)
+                                Text(key, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
 
-                    PrimaryButton("Send to PC") {
-                        onNotice("Sent: \"$keyboardText\" to PC")
-                        keyboardText = ""
-                    }
-                }
-            }
-        }
-
-        // Media Remote Mode
-        if (remoteMode == "Media") {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Surface1,
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("PC MEDIA CONTROLLER", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(48.dp).clip(CircleShape).background(Surface2).clickable { onNotice("Media Previous") }, contentAlignment = Alignment.Center) {
-                            SkipPrevVector(size = 18.dp)
-                        }
-                        Box(Modifier.size(64.dp).clip(CircleShape).background(Brand600).clickable { onNotice("Media Play/Pause") }, contentAlignment = Alignment.Center) {
-                            PlayPauseVector(isPlaying = true, size = 22.dp)
-                        }
-                        Box(Modifier.size(48.dp).clip(CircleShape).background(Surface2).clickable { onNotice("Media Next") }, contentAlignment = Alignment.Center) {
-                            SkipNextVector(size = 18.dp)
-                        }
-                    }
-
-                    Column(Modifier.fillMaxWidth()) {
-                        Text("Volume: ${(volume * 100).toInt()}%", color = TextSecondary, fontSize = 13.sp)
-                        Slider(
-                            value = volume,
-                            onValueChange = {
-                                volume = it
-                                onNotice("Volume set to ${(it * 100).toInt()}%")
-                            },
-                            colors = SliderDefaults.colors(
-                                thumbColor = Brand400,
-                                activeTrackColor = Brand500,
-                                inactiveTrackColor = Surface3
+                    // Text Input & Send
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Surface2)
+                                .border(1.dp, Line, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            if (keyboardInputText.isEmpty()) {
+                                Text("Type text to send to active PC window...", color = TextMuted, fontSize = 12.sp)
+                            }
+                            BasicTextField(
+                                value = keyboardInputText,
+                                onValueChange = { keyboardInputText = it },
+                                textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp),
+                                cursorBrush = SolidColor(Brand400),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
                             )
-                        )
-                    }
-                }
-            }
-        }
+                        }
 
-        // Presentation Remote Mode
-        if (remoteMode == "Slide") {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Surface1,
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("PRESENTATION REMOTE", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text("Slide $currentSlide", color = TextPrimary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        Box(Modifier.weight(1f)) {
-                            SecondaryButton("Previous Slide") {
-                                if (currentSlide > 1) currentSlide--
-                                onNotice("Slide $currentSlide")
+                        PrimaryButton("Send") {
+                            if (keyboardInputText.isNotEmpty()) {
+                                val seq = inputSeq++
+                                val txt = keyboardInputText
+                                keyboardInputText = ""
+                                scope.launch {
+                                    SmpClient.sendInput(
+                                        host = hostInput.ifEmpty { "10.0.2.2" },
+                                        action = "text",
+                                        text = txt,
+                                        sequence = seq,
+                                        sessionToken = tokenInput.ifEmpty { null }
+                                    )
+                                }
+                                onNotice("Sent \"$txt\" to Windows PC")
                             }
-                        }
-                        Box(Modifier.weight(1f)) {
-                            PrimaryButton("Next Slide") {
-                                currentSlide++
-                                onNotice("Slide $currentSlide")
-                            }
-                        }
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        Box(Modifier.weight(1f)) {
-                            SecondaryButton("Laser Pointer") { onNotice("Laser pointer toggled on PC") }
-                        }
-                        Box(Modifier.weight(1f)) {
-                            SecondaryButton("Black Screen") { onNotice("Black screen toggled") }
                         }
                     }
                 }
             }
         }
 
-        // Game Controller Mode
-        if (remoteMode == "Game") {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Surface1,
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+        // ── 6. StarDesk Slide-Out Control Drawer (Screenshots 3 & 4) ──────────
+        if (isPanelOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0x80000000))
+                    .clickable { isPanelOpen = false }
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text("GAMEPAD CONTROLLER", color = Brand300, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-
-                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                        Box(Modifier.clip(RoundedCornerShape(6.dp)).background(Surface2).clickable { onNotice("L1 Trigger") }.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                            Text("L1", color = Brand300, fontWeight = FontWeight.Bold)
-                        }
-                        Box(Modifier.clip(RoundedCornerShape(6.dp)).background(Surface2).clickable { onNotice("R1 Trigger") }.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                            Text("R1", color = Brand300, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        // D-Pad
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(Modifier.size(34.dp).clip(RoundedCornerShape(4.dp)).background(Surface2).clickable { onNotice("D-Pad Up") }, contentAlignment = Alignment.Center) { Text("▲", color = TextPrimary) }
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(Modifier.size(34.dp).clip(RoundedCornerShape(4.dp)).background(Surface2).clickable { onNotice("D-Pad Left") }, contentAlignment = Alignment.Center) { Text("◀", color = TextPrimary) }
-                                Box(Modifier.size(34.dp).clip(RoundedCornerShape(4.dp)).background(Surface3), contentAlignment = Alignment.Center) { Text("•", color = TextMuted) }
-                                Box(Modifier.size(34.dp).clip(RoundedCornerShape(4.dp)).background(Surface2).clickable { onNotice("D-Pad Right") }, contentAlignment = Alignment.Center) { Text("▶", color = TextPrimary) }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                        .background(Color(0xFA0F172A))
+                        .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                        .clickable(enabled = false) {}
+                        .padding(16.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        // Header with Tabs & Close
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("Panel", "Security").forEach { tab ->
+                                    val isSel = panelTab == tab
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isSel) Brand600 else Color(0x1AFFFFFF))
+                                            .border(1.dp, if (isSel) Brand400 else Color.Transparent, RoundedCornerShape(8.dp))
+                                            .clickable { panelTab = tab }
+                                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(tab, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
-                            Box(Modifier.size(34.dp).clip(RoundedCornerShape(4.dp)).background(Surface2).clickable { onNotice("D-Pad Down") }, contentAlignment = Alignment.Center) { Text("▼", color = TextPrimary) }
+
+                            Text(
+                                "✕",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { isPanelOpen = false }
+                                    .padding(4.dp)
+                            )
                         }
 
-                        // ABXY
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(Modifier.size(34.dp).clip(CircleShape).background(Brand600).clickable { onNotice("Y Button") }, contentAlignment = Alignment.Center) { Text("Y", color = Color.White, fontWeight = FontWeight.Bold) }
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(Modifier.size(34.dp).clip(CircleShape).background(Brand600).clickable { onNotice("X Button") }, contentAlignment = Alignment.Center) { Text("X", color = Color.White, fontWeight = FontWeight.Bold) }
-                                Spacer(Modifier.size(34.dp))
-                                Box(Modifier.size(34.dp).clip(CircleShape).background(Brand600).clickable { onNotice("B Button") }, contentAlignment = Alignment.Center) { Text("B", color = Color.White, fontWeight = FontWeight.Bold) }
+                        // Top Quick Action Row (StarDesk Screenshot 4)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // Disconnect (Red)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        streamEngine.stopStreaming()
+                                        scope.launch {
+                                            SmpClient.disconnectSession(hostInput.ifEmpty { "10.0.2.2" }, 7890)
+                                        }
+                                        isPanelOpen = false
+                                        onNotice("Remote session disconnected")
+                                    }
+                                    .padding(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0x33EF4444))
+                                        .border(1.dp, Color(0xFFEF4444), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("⏻", color = Color(0xFFEF4444), fontSize = 14.sp)
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text("Disconnect", color = Color(0xFFEF4444), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
-                            Box(Modifier.size(34.dp).clip(CircleShape).background(Brand600).clickable { onNotice("A Button") }, contentAlignment = Alignment.Center) { Text("A", color = Color.White, fontWeight = FontWeight.Bold) }
+
+                            // Rotate / Orientation
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onNotice("Orientation lock toggled") }
+                                    .padding(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0x26FFFFFF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("↻", color = Color.White, fontSize = 16.sp)
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text("Rotate", color = Color.White, fontSize = 9.sp)
+                            }
+
+                            // Audio Mute
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        muteHostAudio = !muteHostAudio
+                                        onNotice(if (muteHostAudio) "Host audio muted" else "Host audio unmuted")
+                                    }
+                                    .padding(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(if (muteHostAudio) Color(0x33EF4444) else Color(0x26FFFFFF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(if (muteHostAudio) "🔇" else "🔊", fontSize = 13.sp)
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text("Audio", color = Color.White, fontSize = 9.sp)
+                            }
+
+                            // Host Screen Curtain / Privacy
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        hostPrivacyMode = !hostPrivacyMode
+                                        onNotice(if (hostPrivacyMode) "Host Privacy Mode enabled (Curtain on)" else "Host Privacy Mode disabled")
+                                    }
+                                    .padding(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(if (hostPrivacyMode) Brand600 else Color(0x26FFFFFF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("👁", fontSize = 13.sp)
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text("Curtain", color = Color.White, fontSize = 9.sp)
+                            }
+                        }
+
+                        // ── TAB: PANEL (Screenshot 4) ─────────────────────────
+                        if (panelTab == "Panel") {
+                            // Remote Control Mode Selector (Touch Mode vs Cursor Mode)
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("CONTROL MODE", color = Color(0xFF94A3B8), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    // Touch Mode Card
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (controlMode == "Touch") Color(0x3338BDF8) else Color(0x1AFFFFFF))
+                                            .border(1.5.dp, if (controlMode == "Touch") Color(0xFF38BDF8) else Color(0x26FFFFFF), RoundedCornerShape(10.dp))
+                                            .clickable { controlMode = "Touch"; onNotice("Switched to Touch Mode") }
+                                            .padding(12.dp)
+                                    ) {
+                                        Column {
+                                            Text("Touch Mode", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Spacer(Modifier.height(2.dp))
+                                            Text("Direct touch to click, drag & gesture", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                                        }
+                                    }
+
+                                    // Cursor Mode Card
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (controlMode == "Cursor") Color(0x3338BDF8) else Color(0x1AFFFFFF))
+                                            .border(1.5.dp, if (controlMode == "Cursor") Color(0xFF38BDF8) else Color(0x26FFFFFF), RoundedCornerShape(10.dp))
+                                            .clickable { controlMode = "Cursor"; onNotice("Switched to Cursor Mode") }
+                                            .padding(12.dp)
+                                    ) {
+                                        Column {
+                                            Text("Cursor Mode", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Spacer(Modifier.height(2.dp))
+                                            Text("Virtual trackpad & mouse buttons", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Virtual Mouse Toggle
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("Virtual Mouse Buttons", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("Show on-screen Left/Right click triggers", color = TextMuted, fontSize = 10.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (virtualMouseEnabled) Brand600 else Color(0x26FFFFFF))
+                                        .clickable { virtualMouseEnabled = !virtualMouseEnabled }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(if (virtualMouseEnabled) "ON" else "OFF", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            // Display FPS & Scale
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0x1AFFFFFF))
+                                        .padding(10.dp)
+                                ) {
+                                    Column {
+                                        Text("TARGET FPS", color = TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                        Text("${fpsMode} FPS Ultra", color = Color(0xFF38BDF8), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0x1AFFFFFF))
+                                        .padding(10.dp)
+                                ) {
+                                    Column {
+                                        Text("STREAM LATENCY", color = TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                        Text("${String.format(java.util.Locale.US, "%.0f", streamDiag.latencyMs)} ms RTT", color = Color(0xFF34D399), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── TAB: SECURITY (Screenshot 3) ──────────────────────
+                        if (panelTab == "Security") {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                // Mute Host Device
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Mute Host Device", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Silence Windows PC audio during remote session", color = TextMuted, fontSize = 10.sp)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (muteHostAudio) Brand600 else Color(0x26FFFFFF))
+                                            .clickable { muteHostAudio = !muteHostAudio }
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(if (muteHostAudio) "ON" else "OFF", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                // Host Privacy Mode
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Host Privacy Mode", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Black out physical PC monitor while you control", color = TextMuted, fontSize = 10.sp)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (hostPrivacyMode) Brand600 else Color(0x26FFFFFF))
+                                            .clickable { hostPrivacyMode = !hostPrivacyMode }
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(if (hostPrivacyMode) "ON" else "OFF", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                // Clipboard Sync
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Clipboard Sync", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Seamless bidirectional clipboard sharing", color = TextMuted, fontSize = 10.sp)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (clipboardSyncEnabled) Brand600 else Color(0x26FFFFFF))
+                                            .clickable { clipboardSyncEnabled = !clipboardSyncEnabled }
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(if (clipboardSyncEnabled) "ON" else "OFF", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

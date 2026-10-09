@@ -24,6 +24,8 @@ import java.net.URL
  */
 object SmpClient {
 
+    val DEFAULT_DEVICE_ID: String = "sm-android-" + android.os.Build.MODEL.replace(" ", "-").lowercase()
+
     data class DeviceHello(
         val protocolVersion: Int,
         val protocolName: String,
@@ -384,36 +386,58 @@ object SmpClient {
     }
 
     /**
-     * Injects remote mouse action (left_click, right_click, move, scroll) to host PC.
+     * Injects remote input action (touch, mouse, keyboard, hotkey, text) to Windows PC.
      */
     suspend fun sendInput(
         host: String,
         port: Int = 7890,
         action: String,
-        x: Int,
-        y: Int,
+        x: Int? = null,
+        y: Int? = null,
         scrollDelta: Int = 0,
-        sequence: Long = 1L,
-        deviceId: String = "sm-android-client"
+        sequence: Long = 0L,
+        deviceId: String = DEFAULT_DEVICE_ID,
+        button: String? = null,
+        dx: Int? = null,
+        dy: Int? = null,
+        normalizedX: Float? = null,
+        normalizedY: Float? = null,
+        sessionToken: String? = null,
+        vkCode: Int? = null,
+        keyUp: Boolean? = null,
+        text: String? = null,
+        hotkey: String? = null
     ): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             val url = URL("http://$host:$port/smp/input")
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
-                connectTimeout = 2000
-                readTimeout = 2000
+                connectTimeout = 1500
+                readTimeout = 1500
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 setRequestProperty("Accept", "application/json")
+                if (!sessionToken.isNullOrBlank()) {
+                    setRequestProperty("Authorization", "Bearer $sessionToken")
+                }
             }
 
             val body = JSONObject().apply {
                 put("deviceId", deviceId)
                 put("action", action)
-                put("x", x)
-                put("y", y)
-                put("scrollDelta", scrollDelta)
-                put("sequence", sequence)
+                if (button != null) put("button", button)
+                if (x != null) put("x", x)
+                if (y != null) put("y", y)
+                if (dx != null) put("dx", dx)
+                if (dy != null) put("dy", dy)
+                if (normalizedX != null) put("normalizedX", normalizedX.toDouble())
+                if (normalizedY != null) put("normalizedY", normalizedY.toDouble())
+                if (scrollDelta != 0) put("scrollDelta", scrollDelta)
+                if (sequence > 0) put("sequence", sequence)
+                if (vkCode != null) put("vkCode", vkCode)
+                if (keyUp != null) put("keyUp", keyUp)
+                if (text != null) put("text", text)
+                if (hotkey != null) put("hotkey", hotkey)
             }
 
             OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
@@ -423,6 +447,25 @@ object SmpClient {
             } else {
                 Result.failure(Exception("Input injection returned HTTP $code"))
             }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Informs the Windows host to cleanly terminate the active display streaming / control session.
+     */
+    suspend fun disconnectSession(host: String, port: Int = 7890): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val url = URL("http://$host:$port/smp/disconnect")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 1500
+                readTimeout = 1500
+                doOutput = true
+            }
+            conn.outputStream.close()
+            Result.success(conn.responseCode == 200)
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -108,10 +108,19 @@ pub struct HeartbeatResponse {
 pub struct RemoteInputBody {
     pub device_id: String,
     pub action: String,
-    pub x: i32,
-    pub y: i32,
+    pub button: Option<String>,
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+    pub dx: Option<i32>,
+    pub dy: Option<i32>,
+    pub normalized_x: Option<f32>,
+    pub normalized_y: Option<f32>,
     pub scroll_delta: Option<i32>,
     pub sequence: Option<u64>,
+    pub vk_code: Option<u16>,
+    pub key_up: Option<bool>,
+    pub text: Option<String>,
+    pub hotkey: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -396,7 +405,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     return;
                 }
 
-                // Activate stream state with session token
+                // Activate stream state with session token and metadata
                 let mut stream_lock = state.active_stream.lock().unwrap();
                 stream_lock.is_active = true;
                 stream_lock.codec = "mjpeg".to_string();
@@ -404,6 +413,9 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 stream_lock.auth_token = sess_req.session_token.clone();
                 let session_id = format!("sm-sess-{}", &now_ms().to_string()[7..]);
                 stream_lock.session_id = session_id.clone();
+                stream_lock.started_at_epoch_ms = now_ms();
+                stream_lock.target_device_id = device.id.to_string();
+                stream_lock.target_device_name = device.name.clone();
 
                 let resp = SessionCreateResponse {
                     session_id,
@@ -435,37 +447,171 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             let body_str = extract_http_body(&request_str);
             if let Ok(input_body) = serde_json::from_str::<RemoteInputBody>(body_str) {
                 let trust_store = state.trust_store.lock().unwrap();
-                let is_left = input_body.action == "left_click";
-                let is_right = input_body.action == "right_click";
-                let scroll = input_body.scroll_delta.unwrap_or(0);
-                let seq = input_body.sequence.unwrap_or(1);
+                let active_stream = state.active_stream.lock().unwrap();
 
-                let res = state.input_controller.inject_mouse(
-                    &trust_store,
-                    &input_body.device_id,
-                    input_body.x,
-                    input_body.y,
-                    is_left,
-                    is_left,
-                    is_right,
-                    is_right,
-                    false,
-                    false,
-                    scroll,
-                    seq,
-                );
-
-                if res.is_ok() {
-                    send_json_response(&mut socket, 200, "OK", &serde_json::json!({ "status": "INJECTED" }));
+                // Target device ID for authorization
+                let dev_id_to_check = if !active_stream.target_device_id.is_empty() {
+                    active_stream.target_device_id.clone()
+                } else if !input_body.device_id.is_empty() {
+                    input_body.device_id.clone()
+                } else if let Some(d) = trust_store.list_all().first() {
+                    d.id.to_string()
                 } else {
-                    send_error_response(&mut socket, 403, "Forbidden", "SMP_INPUT_UNAUTHORIZED", &res.unwrap_err());
+                    "sm-android-client".to_string()
+                };
+                drop(active_stream);
+
+                let seq = input_body.sequence.unwrap_or(0);
+                let (sw, sh) = get_screen_size();
+
+                // Compute x, y (from normalized 0..1 or raw px)
+                let x = if let Some(nx) = input_body.normalized_x {
+                    (nx.clamp(0.0, 1.0) * sw as f32) as i32
+                } else {
+                    input_body.x.unwrap_or(0)
+                };
+                let y = if let Some(ny) = input_body.normalized_y {
+                    (ny.clamp(0.0, 1.0) * sh as f32) as i32
+                } else {
+                    input_body.y.unwrap_or(0)
+                };
+
+                let action = input_body.action.as_str();
+                let res = match action {
+                    "move" => {
+                        state.input_controller.inject_mouse(
+                            &trust_store,
+                            &dev_id_to_check,
+                            x, y, 0, 0, false,
+                            false, false, false, false, false, false, 0, seq,
+                        )
+                    }
+                    "relative_move" => {
+                        let dx = input_body.dx.unwrap_or(0);
+                        let dy = input_body.dy.unwrap_or(0);
+                        state.input_controller.inject_mouse(
+                            &trust_store,
+                            &dev_id_to_check,
+                            0, 0, dx, dy, true,
+                            false, false, false, false, false, false, 0, seq,
+                        )
+                    }
+                    "left_click" => {
+                        state.input_controller.inject_mouse(
+                            &trust_store,
+                            &dev_id_to_check,
+                            x, y, 0, 0, false,
+                            true, true, false, false, false, false, 0, seq,
+                        )
+                    }
+                    "right_click" => {
+                        state.input_controller.inject_mouse(
+                            &trust_store,
+                            &dev_id_to_check,
+                            x, y, 0, 0, false,
+                            false, false, true, true, false, false, 0, seq,
+                        )
+                    }
+                    "double_click" => {
+                        let r1 = state.input_controller.inject_mouse(
+                            &trust_store,
+                            &dev_id_to_check,
+                            x, y, 0, 0, false,
+                            true, true, false, false, false, false, 0, seq,
+                        );
+                        std::thread::sleep(Duration::from_millis(50));
+                        let r2 = state.input_controller.inject_mouse(
+                            &trust_store,
+                            &dev_id_to_check,
+                            x, y, 0, 0, false,
+                            true, true, false, false, false, false, 0, if seq > 0 { seq + 1 } else { 0 },
+                        );
+                        r1.and(r2)
+                    }
+                    "mouse_down" => {
+                        let btn = input_body.button.as_deref().unwrap_or("left");
+                        let is_l = btn == "left";
+                        let is_r = btn == "right";
+                        let is_m = btn == "middle";
+                        state.input_controller.inject_mouse(
+                            &trust_store,
+                            &dev_id_to_check,
+                            x, y, 0, 0, false,
+                            is_l, false, is_r, false, is_m, false, 0, seq,
+                        )
+                    }
+                    "mouse_up" => {
+                        let btn = input_body.button.as_deref().unwrap_or("left");
+                        let is_l = btn == "left";
+                        let is_r = btn == "right";
+                        let is_m = btn == "middle";
+                        state.input_controller.inject_mouse(
+                            &trust_store,
+                            &dev_id_to_check,
+                            x, y, 0, 0, false,
+                            false, is_l, false, is_r, false, is_m, 0, seq,
+                        )
+                    }
+                    "scroll" => {
+                        let delta = input_body.scroll_delta.unwrap_or(0);
+                        state.input_controller.inject_mouse(
+                            &trust_store,
+                            &dev_id_to_check,
+                            0, 0, 0, 0, false,
+                            false, false, false, false, false, false, delta, seq,
+                        )
+                    }
+                    "key" => {
+                        let vk = input_body.vk_code.unwrap_or(0);
+                        let up = input_body.key_up.unwrap_or(false);
+                        state.input_controller.inject_keyboard(
+                            &trust_store,
+                            &dev_id_to_check,
+                            vk,
+                            up,
+                            seq,
+                        )
+                    }
+                    "text" => {
+                        let txt = input_body.text.unwrap_or_default();
+                        state.input_controller.inject_text(
+                            &trust_store,
+                            &dev_id_to_check,
+                            &txt,
+                            seq,
+                        )
+                    }
+                    "hotkey" => {
+                        let hk = input_body.hotkey.unwrap_or_default();
+                        state.input_controller.inject_hotkey(
+                            &trust_store,
+                            &dev_id_to_check,
+                            &hk,
+                            seq,
+                        )
+                    }
+                    _ => Err(format!("unknown remote input action: {action}")),
+                };
+
+                if let Err(e) = res {
+                    send_error_response(&mut socket, 403, "Forbidden", "SMP_INPUT_UNAUTHORIZED", &e);
+                } else {
+                    send_json_response(&mut socket, 200, "OK", &serde_json::json!({ "status": "INJECTED" }));
                 }
             } else {
                 send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_INPUT_PAYLOAD", "Malformed input payload");
             }
         }
 
-        // ── 6. Diagnostics & Connection Test Tool ──
+        // ── 6. Disconnect Session ──
+        ("POST", "/smp/disconnect") => {
+            let mut stream_lock = state.active_stream.lock().unwrap();
+            stream_lock.is_active = false;
+            stream_lock.started_at_epoch_ms = 0;
+            send_json_response(&mut socket, 200, "OK", &serde_json::json!({ "status": "DISCONNECTED" }));
+        }
+
+        // ── 7. Diagnostics & Connection Test Tool ──
         ("GET", "/smp/diagnostics") => {
             let trust_count = state.trust_store.lock().unwrap().active_count();
             let pairing_status = if state.active_pairing.lock().unwrap().is_some() {
@@ -491,7 +637,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             send_json_response(&mut socket, 200, "OK", &diag);
         }
 
-        // ── 7. Live Display Stream (MJPEG) ──
+        // ── 8. Live Display Stream (MJPEG) ──
         ("GET", "/live") => {
             // Check auth token
             let active_token = {
@@ -500,7 +646,6 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             };
 
             let is_authorized = if active_token.is_empty() {
-                // If no token is set in active stream, check if any trusted device exists or reject
                 state.trust_store.lock().unwrap().active_count() > 0
             } else {
                 let token_query = format!("token={}", active_token);
@@ -516,6 +661,24 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     Unauthorized: Valid Smart Migrate session token required\r\n";
                 let _ = socket.write_all(reject_resp.as_bytes());
                 return;
+            }
+
+            // Mark stream session as actively transmitting
+            {
+                let mut stream_lock = state.active_stream.lock().unwrap();
+                stream_lock.is_active = true;
+                if stream_lock.started_at_epoch_ms == 0 {
+                    stream_lock.started_at_epoch_ms = now_ms();
+                }
+                if stream_lock.target_device_name.is_empty() {
+                    let trust = state.trust_store.lock().unwrap();
+                    if let Some(dev) = trust.list_all().first() {
+                        stream_lock.target_device_name = dev.name.clone();
+                        stream_lock.target_device_id = dev.id.to_string();
+                    } else {
+                        stream_lock.target_device_name = "Android Remote".to_string();
+                    }
+                }
             }
 
             // Stream frames directly on this connection
@@ -570,6 +733,12 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     std::thread::sleep(frame_interval - elapsed);
                 }
             }
+
+            // Reset active stream on disconnect
+            if let Ok(mut stream_lock) = state.active_stream.lock() {
+                stream_lock.is_active = false;
+                stream_lock.started_at_epoch_ms = 0;
+            }
         }
 
         // ── 404 Not Found ──
@@ -577,6 +746,22 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             send_error_response(&mut socket, 404, "Not Found", "SMP_ROUTE_NOT_FOUND", "Requested Smart Migrate endpoint does not exist");
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn get_screen_size() -> (i32, i32) {
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetSystemMetrics(nIndex: i32) -> i32;
+    }
+    let w = unsafe { GetSystemMetrics(0) };
+    let h = unsafe { GetSystemMetrics(1) };
+    (if w > 0 { w } else { 1920 }, if h > 0 { h } else { 1080 })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_screen_size() -> (i32, i32) {
+    (1920, 1080)
 }
 
 fn extract_http_body(request: &str) -> &str {
