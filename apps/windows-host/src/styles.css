@@ -55,8 +55,8 @@ input, select, textarea {
   background: var(--sm-surface-2);
   border: 1px solid var(--sm-line);
   border-radius: var(--sm-radius-sm);
-  padding: 8px 12px;
-  font-size: 0.8rem;
+  padding: 10px 14px;
+  font-size: 0.9rem;
   outline: none;
   transition: border-color 0.18s ease;
 }
@@ -126,14 +126,14 @@ input:focus, select:focus, textarea:focus {
 }
 
 .brand-name {
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--sm-text-1);
 }
 
 .brand-sub {
-  font-size: 0.62rem;
+  font-size: 0.82rem;
   color: var(--sm-text-3);
   font-family: "JetBrains Mono", monospace;
   margin-top: -1px;
@@ -148,18 +148,18 @@ input:focus, select:focus, textarea:focus {
 }
 
 .titlebar-search input {
-  width: 220px;
-  height: 28px;
-  padding-left: 30px;
-  padding-right: 36px;
+  width: 240px;
+  height: 32px;
+  padding-left: 32px;
+  padding-right: 40px;
   background: var(--sm-surface-1);
   border: 1px solid var(--sm-line);
   border-radius: var(--sm-radius-sm);
-  font-size: 0.75rem;
+  font-size: 0.86rem;
   color: var(--sm-text-2);
 }
 .titlebar-search input:focus {
-  width: 260px;
+  width: 280px;
   border-color: var(--sm-brand-500);
   color: var(--sm-text-1);
 }
@@ -174,8 +174,8 @@ input:focus, select:focus, textarea:focus {
 .search-shortcut-badge {
   position: absolute;
   right: 7px;
-  font-size: 0.62rem;
-  padding: 1px 5px;
+  font-size: 0.80rem;
+  padding: 2px 7px;
   background: var(--sm-surface-2);
   border: 1px solid var(--sm-line);
   border-radius: 4px;
@@ -195,16 +195,16 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 10px;
+  padding: 6px 12px;
   background: var(--sm-surface-1);
   border: 1px solid var(--sm-line);
   border-radius: var(--sm-radius-sm);
-  font-size: 0.72rem;
+  font-size: 0.86rem;
 }
 
 .status-indicator-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--sm-success);
   box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
@@ -212,7 +212,7 @@ input:focus, select:focus, textarea:focus {
 
 .host-fingerprint-text {
   font-family: "JetBrains Mono", monospace;
-  font-size: 0.7rem;
+  font-size: 0.84rem;
   color: var(--sm-text-2);
 }
 
@@ -260,22 +260,22 @@ input:focus, select:focus, textarea:focus {
 }
 
 .sidebar-category {
-  font-size: 0.62rem;
+  font-size: 0.82rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--sm-text-3);
-  padding: 8px 10px 4px;
+  padding: 10px 12px 6px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 8px 12px;
+  gap: 12px;
+  padding: 10px 14px;
   border-radius: var(--sm-radius-sm);
   color: var(--sm-text-2);
-  font-size: 0.8rem;
+  font-size: 0.94rem;
   font-weight: 500;
   text-align: left;
   position: relative;
@@ -310,8 +310,8 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
   justify-content: center;
   color: var(--sm-text-3);
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 .nav-item:hover .nav-icon,
 .nav-item.active .nav-icon {
@@ -320,8 +320,8 @@ input:focus, select:focus, textarea:focus {
 
 .nav-badge {
   margin-left: auto;
-  font-size: 0.65rem;
-  padding: 1px 6px;
+  font-size: 0.82rem;
+  padding: 2px 8px;
   border-radius: 10px;
   background: var(--sm-surface-3);
   color: var(--sm-text-2);
@@ -333,26 +333,26 @@ input:focus, select:focus, textarea:focus {
 }
 
 .sidebar-footer {
-  padding: 10px;
+  padding: 12px;
   background: var(--sm-surface-1);
   border: 1px solid var(--sm-line);
   border-radius: var(--sm-radius-sm);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .sidebar-footer-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.68rem;
+  font-size: 0.84rem;
   color: var(--sm-text-3);
 }
 
 .sidebar-footer-engine {
   font-family: "JetBrains Mono", monospace;
-  font-size: 0.72rem;
+  font-size: 0.88rem;
   color: var(--sm-brand-300);
   font-weight: 600;
 }
@@ -374,7 +374,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .workspace-title-group h1 {
-  font-size: 1.5rem;
+  font-size: 1.65rem;
   font-weight: 700;
   margin: 0;
   letter-spacing: -0.02em;
@@ -383,7 +383,7 @@ input:focus, select:focus, textarea:focus {
 
 .workspace-title-group p {
   margin: 4px 0 0;
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   color: var(--sm-text-3);
 }
 
@@ -399,9 +399,9 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 10px 18px;
   border-radius: var(--sm-radius-sm);
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   font-weight: 600;
   transition: all 0.18s ease;
 }
@@ -439,8 +439,8 @@ input:focus, select:focus, textarea:focus {
 }
 
 .btn-sm {
-  padding: 5px 10px;
-  font-size: 0.74rem;
+  padding: 6px 12px;
+  font-size: 0.84rem;
 }
 
 /* ─── Cards & Containers ────────────────────────────────────────────────────── */
@@ -482,16 +482,16 @@ input:focus, select:focus, textarea:focus {
 
 .hero-left p {
   margin: 0;
-  font-size: 0.84rem;
+  font-size: 0.95rem;
   color: var(--sm-text-2);
-  max-width: 520px;
+  max-width: 540px;
   line-height: 1.5;
 }
 
 .hero-stats-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
+  gap: 16px;
   margin-bottom: 24px;
 }
 
@@ -499,28 +499,29 @@ input:focus, select:focus, textarea:focus {
   background: var(--sm-surface-1);
   border: 1px solid var(--sm-line);
   border-radius: var(--sm-radius-md);
-  padding: 14px 18px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
 }
 
 .stat-label {
-  font-size: 0.7rem;
+  font-size: 0.84rem;
   color: var(--sm-text-3);
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  font-weight: 600;
 }
 
 .stat-value {
-  font-size: 1.3rem;
+  font-size: 1.45rem;
   font-weight: 700;
   color: var(--sm-text-1);
   font-family: "JetBrains Mono", monospace;
 }
 
 .stat-sub {
-  font-size: 0.68rem;
+  font-size: 0.84rem;
   color: var(--sm-text-3);
   margin-top: 4px;
 }
@@ -530,11 +531,11 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .section-title {
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--sm-text-1);
   margin: 0;
@@ -542,7 +543,7 @@ input:focus, select:focus, textarea:focus {
 
 .devices-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
   margin-bottom: 28px;
 }
@@ -551,10 +552,10 @@ input:focus, select:focus, textarea:focus {
   background: var(--sm-surface-1);
   border: 1px solid var(--sm-line);
   border-radius: var(--sm-radius-md);
-  padding: 16px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   transition: all 0.2s ease;
 }
 .device-card:hover {
@@ -571,12 +572,12 @@ input:focus, select:focus, textarea:focus {
 .device-identity {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .device-avatar {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--sm-radius-sm);
   background: var(--sm-surface-3);
   border: 1px solid var(--sm-line);
@@ -586,13 +587,13 @@ input:focus, select:focus, textarea:focus {
 }
 
 .device-name {
-  font-size: 0.88rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--sm-text-1);
 }
 
 .device-platform {
-  font-size: 0.7rem;
+  font-size: 0.86rem;
   color: var(--sm-text-3);
 }
 
@@ -600,9 +601,9 @@ input:focus, select:focus, textarea:focus {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px;
+  padding: 4px 10px;
   border-radius: 12px;
-  font-size: 0.68rem;
+  font-size: 0.84rem;
   font-weight: 600;
 }
 .badge-connected {
@@ -620,10 +621,10 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 10px 14px;
   background: var(--sm-surface-0);
   border-radius: var(--sm-radius-sm);
-  font-size: 0.72rem;
+  font-size: 0.86rem;
   color: var(--sm-text-2);
 }
 
@@ -663,12 +664,12 @@ input:focus, select:focus, textarea:focus {
   margin-bottom: 4px;
 }
 .dropzone-title {
-  font-size: 0.9rem;
+  font-size: 0.94rem;
   font-weight: 600;
   color: var(--sm-text-1);
 }
 .dropzone-desc {
-  font-size: 0.74rem;
+  font-size: 0.84rem;
   color: var(--sm-text-3);
 }
 
@@ -676,22 +677,22 @@ input:focus, select:focus, textarea:focus {
 .transfer-queue-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.78rem;
+  font-size: 0.92rem;
 }
 
 .transfer-queue-table th {
   text-align: left;
-  padding: 10px 14px;
+  padding: 12px 16px;
   color: var(--sm-text-3);
   font-weight: 600;
-  font-size: 0.68rem;
+  font-size: 0.84rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   border-bottom: 1px solid var(--sm-line);
 }
 
 .transfer-queue-table td {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--sm-line-subtle);
   color: var(--sm-text-2);
 }
@@ -701,9 +702,9 @@ input:focus, select:focus, textarea:focus {
 
 .progress-bar-container {
   width: 100%;
-  height: 6px;
+  height: 8px;
   background: var(--sm-surface-3);
-  border-radius: 3px;
+  border-radius: 4px;
   overflow: hidden;
   margin-top: 6px;
 }
@@ -711,7 +712,7 @@ input:focus, select:focus, textarea:focus {
 .progress-bar-fill {
   height: 100%;
   background: var(--sm-gradient-brand);
-  border-radius: 3px;
+  border-radius: 4px;
   transition: width 0.3s ease;
 }
 
@@ -727,22 +728,22 @@ input:focus, select:focus, textarea:focus {
 }
 
 .remote-toolbar {
-  height: 46px;
+  height: 50px;
   background: var(--sm-surface-1);
   border-bottom: 1px solid var(--sm-line);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  font-size: 0.78rem;
+  padding: 0 18px;
+  font-size: 0.9rem;
 }
 
 .remote-hud-stats {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
   font-family: "JetBrains Mono", monospace;
-  font-size: 0.74rem;
+  font-size: 0.85rem;
   color: var(--sm-text-2);
 }
 
@@ -770,7 +771,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .remote-bottom-dock {
-  height: 52px;
+  height: 56px;
   background: var(--sm-surface-1);
   border-top: 1px solid var(--sm-line);
   display: flex;
@@ -784,11 +785,11 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px;
+  padding: 8px 16px;
   background: var(--sm-surface-2);
   border: 1px solid var(--sm-line);
   border-radius: var(--sm-radius-sm);
-  font-size: 0.76rem;
+  font-size: 0.86rem;
   color: var(--sm-text-2);
 }
 .dock-btn.active {
@@ -803,15 +804,15 @@ input:focus, select:focus, textarea:focus {
 
 /* ─── Bottom Status Bar ─────────────────────────────────────────────────────── */
 .bottom-statusbar {
-  height: 32px;
-  min-height: 32px;
+  height: 36px;
+  min-height: 36px;
   background: var(--sm-bg-1);
   border-top: 1px solid var(--sm-line);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  font-size: 0.72rem;
+  padding: 0 18px;
+  font-size: 0.84rem;
   color: var(--sm-text-3);
   z-index: 40;
 }
@@ -897,11 +898,11 @@ input:focus, select:focus, textarea:focus {
 .step-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
+  gap: 14px;
+  padding: 10px 14px;
   background: var(--sm-surface-2);
   border-radius: var(--sm-radius-sm);
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   border: 1px solid transparent;
 }
 .step-item.active {
@@ -913,12 +914,12 @@ input:focus, select:focus, textarea:focus {
 }
 
 .step-number {
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 0.65rem;
+  font-size: 0.84rem;
   font-weight: 700;
   background: var(--sm-surface-3);
   color: var(--sm-text-3);
@@ -942,14 +943,14 @@ input:focus, select:focus, textarea:focus {
 .settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .settings-nav-btn {
   text-align: left;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-radius: var(--sm-radius-sm);
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   color: var(--sm-text-2);
   transition: all 0.15s ease;
 }
@@ -974,21 +975,21 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
+  padding: 16px 20px;
   background: var(--sm-surface-1);
   border: 1px solid var(--sm-line);
   border-radius: var(--sm-radius-sm);
 }
 
 .setting-info h4 {
-  margin: 0 0 3px;
-  font-size: 0.84rem;
+  margin: 0 0 4px;
+  font-size: 0.96rem;
   color: var(--sm-text-1);
 }
 
 .setting-info p {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   color: var(--sm-text-3);
 }
 
@@ -1111,7 +1112,7 @@ input:checked + .slider:before {
 }
 .intro-typography p {
   margin: 4px 0 0;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   color: var(--sm-text-3);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1125,7 +1126,7 @@ input:checked + .slider:before {
   color: var(--sm-text-3);
   padding: 6px 14px;
   border-radius: var(--sm-radius-sm);
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   cursor: pointer;
 }
 .intro-skip:hover {

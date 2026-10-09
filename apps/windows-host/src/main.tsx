@@ -125,9 +125,12 @@ export type TransferSessionDto = {
   direction: string;
   state: string;
   bytesTransferred: number;
-  chunksTransferred: number;
-  createdAtEpochMs: number;
-  updatedAtEpochMs: number;
+  chunksCompleted?: number;
+  progressPercent?: number;
+  nextExpectedChunk?: number;
+  chunksTransferred?: number;
+  createdAtEpochMs?: number;
+  updatedAtEpochMs?: number;
   errorMessage?: string;
 };
 
@@ -156,6 +159,71 @@ function formatBytes(bytes: number): string {
   const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
+// ─── Professional SVG Icons ──────────────────────────────────────────────────
+export function CheckIcon({ size = 14, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" className={className} style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <circle cx="10" cy="10" r="9" fill="rgba(16, 185, 129, 0.16)" stroke="var(--sm-success)" strokeWidth="1.5" />
+      <path d="M6 10.2L8.7 13L14 7.5" stroke="var(--sm-success)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function CheckBadgeIcon({ size = 14, label, className = "" }: { size?: number; label?: string; className?: string }) {
+  return (
+    <span className={`badge-check-lockup ${className}`} style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+      <svg width={size} height={size} viewBox="0 0 20 20" fill="none" style={{ display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}>
+        <circle cx="10" cy="10" r="9" fill="rgba(16, 185, 129, 0.18)" stroke="var(--sm-success)" strokeWidth="1.5" />
+        <path d="M6 10.2L8.7 13L14 7.5" stroke="var(--sm-success)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      {label && <span style={{ fontWeight: 600 }}>{label}</span>}
+    </span>
+  );
+}
+
+export function CloseIcon({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+  );
+}
+
+export function ZapIcon({ size = 13, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="rgba(124, 77, 255, 0.25)"></polygon>
+    </svg>
+  );
+}
+
+export function ChevronRightIcon({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  );
+}
+
+export function StatusDot({ status = "connected" }: { status?: "connected" | "revoked" | "standby" }) {
+  const color = status === "connected" ? "var(--sm-success)" : status === "revoked" ? "var(--sm-danger)" : "var(--sm-brand-300)";
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        width: "7px",
+        height: "7px",
+        borderRadius: "50%",
+        backgroundColor: color,
+        boxShadow: `0 0 8px ${color}`,
+        marginRight: "6px",
+        verticalAlign: "middle",
+      }}
+    />
+  );
 }
 
 export function App() {
@@ -635,7 +703,9 @@ export function App() {
                 </svg>
                 <h3>Pairing & Host Verification</h3>
               </div>
-              <button className="btn btn-secondary btn-sm" onClick={closePairing}>✕</button>
+              <button className="btn btn-secondary btn-sm" onClick={closePairing} aria-label="Close">
+                <CloseIcon />
+              </button>
             </div>
 
             <div className="modal-body">
@@ -751,7 +821,9 @@ export function App() {
           <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Connect Device — Smart Connection Flow</h3>
-              <button className="btn btn-secondary btn-sm" onClick={() => setConnectStepperOpen(false)}>✕</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setConnectStepperOpen(false)} aria-label="Close">
+                <CloseIcon />
+              </button>
             </div>
             <div className="modal-body">
               <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--sm-text-2)" }}>
@@ -772,7 +844,13 @@ export function App() {
                     }`}
                   >
                     <div className="step-number">
-                      {connectStep > item.n ? "✓" : item.n}
+                      {connectStep > item.n ? (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : (
+                        item.n
+                      )}
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, color: connectStep >= item.n ? "var(--sm-text-1)" : "var(--sm-text-3)" }}>
@@ -810,7 +888,9 @@ export function App() {
                 </span>
                 <h3>{deviceDetailsModal.name}</h3>
               </div>
-              <button className="btn btn-secondary btn-sm" onClick={() => setDeviceDetailsModal(null)}>✕</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setDeviceDetailsModal(null)} aria-label="Close">
+                <CloseIcon />
+              </button>
             </div>
             <div className="modal-body">
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -926,9 +1006,11 @@ function HomeView({
         </div>
 
         <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-          <span style={{ fontSize: "0.7rem", color: "var(--sm-text-3)", textTransform: "uppercase" }}>Transport Status</span>
+          <span style={{ fontSize: "0.76rem", color: "var(--sm-text-3)", textTransform: "uppercase" }}>Transport Status</span>
           <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--sm-brand-300)" }}>{resilience.transportState}</span>
-          <span style={{ fontSize: "0.75rem", color: "var(--sm-success)", marginTop: "4px" }}>● AES-GCM Encrypted</span>
+          <span style={{ fontSize: "0.82rem", color: "var(--sm-success)", marginTop: "4px", display: "inline-flex", alignItems: "center" }}>
+            <StatusDot status="connected" /> AES-GCM Encrypted
+          </span>
         </div>
       </div>
 
@@ -979,7 +1061,7 @@ function HomeView({
                 <div className="device-card-header">
                   <div className="device-identity">
                     <div className="device-avatar">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         {dev.platform === "android" ? (
                           <>
                             <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
@@ -998,8 +1080,9 @@ function HomeView({
                       <div className="device-platform">{dev.platform.toUpperCase()} • {dev.fingerprint}</div>
                     </div>
                   </div>
-                  <span className={`device-status-badge ${dev.is_revoked ? "badge-idle" : "badge-connected"}`}>
-                    ● {dev.is_revoked ? "Revoked" : "Connected"}
+                  <span className={`device-status-badge ${dev.is_revoked ? "badge-idle" : "badge-connected"}`} style={{ display: "inline-flex", alignItems: "center" }}>
+                    <StatusDot status={dev.is_revoked ? "revoked" : "connected"} />
+                    {dev.is_revoked ? "Revoked" : "Connected"}
                   </span>
                 </div>
 
@@ -1010,8 +1093,8 @@ function HomeView({
                 </div>
 
                 <div className="device-actions-row">
-                  <button className="btn btn-secondary btn-sm" onClick={() => onOpenDeviceDetails(dev)}>
-                    Overview →
+                  <button className="btn btn-secondary btn-sm" onClick={() => onOpenDeviceDetails(dev)} style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                    Overview <ChevronRightIcon size={12} />
                   </button>
                   <button className="btn btn-secondary btn-sm" onClick={() => onNavigate("Transfer")}>
                     Transfer
@@ -1070,12 +1153,13 @@ function DevicesView({
                   <div className="device-platform">{d.platform.toUpperCase()} • {d.fingerprint}</div>
                 </div>
               </div>
-              <span className={`device-status-badge ${d.is_revoked ? "badge-idle" : "badge-connected"}`}>
-                ● {d.is_revoked ? "Revoked" : "Trusted"}
+              <span className={`device-status-badge ${d.is_revoked ? "badge-idle" : "badge-connected"}`} style={{ display: "inline-flex", alignItems: "center" }}>
+                <StatusDot status={d.is_revoked ? "revoked" : "connected"} />
+                {d.is_revoked ? "Revoked" : "Trusted"}
               </span>
             </div>
 
-            <div style={{ fontSize: "0.72rem", color: "var(--sm-text-3)" }}>
+            <div style={{ fontSize: "0.76rem", color: "var(--sm-text-3)" }}>
               Permissions: {d.granted_permissions.join(", ")}
             </div>
 
@@ -1123,7 +1207,9 @@ function FavoritesView({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px" }}>
             {devices.map((d) => (
               <div key={d.id} className="stat-card" style={{ cursor: "pointer" }} onClick={() => onOpenDeviceDetails(d)}>
-                <span className="stat-label">★ Quick Connect</span>
+                <span className="stat-label" style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                  <ZapIcon size={13} color="var(--sm-brand-300)" /> Quick Connect
+                </span>
                 <span className="stat-value" style={{ fontSize: "1rem" }}>{d.name}</span>
                 <span className="stat-sub">Ready on Direct LAN</span>
               </div>
@@ -1149,6 +1235,7 @@ function TransferView({
 }) {
   const [tab, setTab] = useState<"Queue" | "Clipboard">("Queue");
   const [transfers, setTransfers] = useState<TransferSessionDto[]>([]);
+  const [priorities, setPriorities] = useState<Record<string, "High" | "Normal" | "Low">>({});
   const [clipboardStatus, setClipboardStatus] = useState<ClipboardStatus>({
     active: false,
     sessionId: "",
@@ -1173,19 +1260,29 @@ function TransferView({
     return () => clearInterval(interval);
   }, []);
 
-  const handleCreateSampleTransfer = async () => {
+  const handleCreateSampleTransfer = async (type: "Archive" | "Video" | "Document" = "Archive") => {
     try {
       await invoke("create_sample_migration_file");
+      const name = type === "Video" ? "4K_HighBitrate_Sample.mp4" : type === "Document" ? "Project_Specs_2026.pdf" : "Migration_Archive_Sample.dat";
+      const size = type === "Video" ? 52428800 : type === "Document" ? 5242880 : 10485760;
       await invoke("prepare_outgoing_transfer", {
-        fileName: "Migration_Archive_Sample.dat",
-        fileSize: 10485760, // 10MB
-        chunkSize: 1048576,  // 1MB
+        fileName: name,
+        fileSize: size,
+        chunkSize: 1048576,
         expectedSha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       });
       loadTransfers();
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const togglePriority = (transferId: string) => {
+    setPriorities((prev) => {
+      const current = prev[transferId] || "Normal";
+      const next = current === "High" ? "Normal" : current === "Normal" ? "Low" : "High";
+      return { ...prev, [transferId]: next };
+    });
   };
 
   return (
@@ -1205,8 +1302,11 @@ function TransferView({
           <button className="btn btn-secondary btn-sm" onClick={() => invoke("open_transfers_folder")}>
             Open Folder
           </button>
-          <button className="btn btn-primary btn-sm" onClick={handleCreateSampleTransfer}>
-            + Send Sample Archive
+          <button className="btn btn-primary btn-sm" onClick={() => handleCreateSampleTransfer("Archive")}>
+            + Stage Sample Archive
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => handleCreateSampleTransfer("Video")}>
+            + Stage 4K Video
           </button>
         </div>
       </div>
@@ -1217,7 +1317,7 @@ function TransferView({
         onClick={() => invoke("open_transfers_folder")}
         title="Click or drag files here to stage transfer"
       >
-        <svg className="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg className="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
           <polyline points="17 8 12 3 7 8"></polyline>
           <line x1="12" y1="3" x2="12" y2="15"></line>
@@ -1259,48 +1359,76 @@ function TransferView({
             <tbody>
               {transfers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: "center", padding: "28px", color: "var(--sm-text-3)" }}>
-                    No active transfers in queue. Drag files into the dropzone above to begin.
+                  <td colSpan={7} style={{ textAlign: "center", padding: "32px", color: "var(--sm-text-3)", fontSize: "0.92rem" }}>
+                    No active transfers in queue. Click "+ Stage Sample Archive" or drop files into the dropzone above to begin.
                   </td>
                 </tr>
               ) : (
                 transfers.map((t) => {
                   const pct = t.totalBytes > 0 ? Math.round((t.bytesTransferred / t.totalBytes) * 100) : 0;
+                  const itemPriority = priorities[t.transferId] || "Normal";
+                  const isPaused = t.state === "Paused";
                   return (
                     <tr key={t.transferId}>
                       <td style={{ fontWeight: 600, color: "var(--sm-text-1)" }}>{t.fileName}</td>
                       <td>{formatBytes(t.totalBytes)}</td>
-                      <td style={{ minWidth: "160px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.7rem" }}>
+                      <td style={{ minWidth: "170px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", marginBottom: "4px" }}>
                           <span>{pct}%</span>
-                          <span>42.8 MB/s • ETA 00:12</span>
+                          <span style={{ color: "var(--sm-text-2)" }}>42.8 MB/s • ETA 00:12</span>
                         </div>
                         <div className="progress-bar-container">
-                          <div className="progress-bar-fill" style={{ width: `${pct}%` }}></div>
+                          <div className="progress-bar-fill" style={{ width: `${Math.max(pct, 5)}%` }}></div>
                         </div>
                       </td>
                       <td>
-                        <span style={{ fontSize: "0.72rem", color: "var(--sm-brand-300)" }}>Normal</span>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{
+                            fontSize: "0.78rem",
+                            padding: "3px 8px",
+                            color: itemPriority === "High" ? "var(--sm-brand-300)" : itemPriority === "Low" ? "var(--sm-text-3)" : "var(--sm-text-2)",
+                            borderColor: itemPriority === "High" ? "var(--sm-brand-400)" : "var(--sm-line)"
+                          }}
+                          onClick={() => togglePriority(t.transferId)}
+                          title="Click to cycle priority (High / Normal / Low)"
+                        >
+                          {itemPriority}
+                        </button>
                       </td>
                       <td>
-                        <span style={{ fontFamily: "JetBrains Mono", fontSize: "0.68rem", color: "var(--sm-success)" }}>
-                          SHA-256 ✓
+                        <span style={{ fontFamily: "JetBrains Mono", fontSize: "0.82rem", color: "var(--sm-success)", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                          <CheckIcon size={13} />
+                          SHA-256
                         </span>
                       </td>
                       <td>
-                        <span className="device-status-badge badge-connected">{t.state}</span>
+                        <span className={`device-status-badge ${isPaused ? "badge-idle" : "badge-connected"}`} style={{ display: "inline-flex", alignItems: "center" }}>
+                          <StatusDot status={isPaused ? "standby" : "connected"} />
+                          {t.state}
+                        </span>
                       </td>
                       <td>
                         <div style={{ display: "flex", gap: "6px" }}>
                           <button
                             className="btn btn-secondary btn-sm"
-                            onClick={() => invoke("pause_transfer", { transferId: t.transferId })}
+                            onClick={async () => {
+                              if (isPaused) {
+                                await invoke("resume_transfer", { transferId: t.transferId, fromChunk: t.nextExpectedChunk ?? t.chunksCompleted ?? t.chunksTransferred ?? 0 });
+                              } else {
+                                await invoke("pause_transfer", { transferId: t.transferId });
+                              }
+                              loadTransfers();
+                            }}
                           >
-                            Pause
+                            {isPaused ? "Resume" : "Pause"}
                           </button>
                           <button
                             className="btn btn-danger btn-sm"
-                            onClick={() => invoke("cancel_transfer", { transferId: t.transferId })}
+                            onClick={async () => {
+                              await invoke("cancel_transfer", { transferId: t.transferId });
+                              loadTransfers();
+                            }}
                           >
                             Cancel
                           </button>
@@ -1417,7 +1545,9 @@ function RemoteControlView({
         <div className="remote-toolbar">
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <span style={{ fontWeight: 600, color: "#ffffff" }}>Remote Stream Session</span>
-            <span className="device-status-badge badge-connected">● 1080p 60 FPS</span>
+            <span className="device-status-badge badge-connected" style={{ display: "inline-flex", alignItems: "center" }}>
+              <StatusDot status="connected" /> 1080p 60 FPS
+            </span>
           </div>
 
           <div className="remote-hud-stats">
@@ -1584,7 +1714,12 @@ function HistoryView({ status }: { status: HostStatus }) {
                   </td>
                   <td style={{ fontSize: "0.75rem" }}>{item.detail}</td>
                   <td>
-                    <span className="device-status-badge badge-connected">✓ {item.status}</span>
+                    <span className="device-status-badge badge-connected" style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      {item.status}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -1726,27 +1861,51 @@ function DiagnosticsView({
           <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Automated Diagnostic Results</h3>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
             <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)" }}>✓</span>
+              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </span>
               <span>UDP 7889 Discovery Protocol — Responsive</span>
             </div>
             <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)" }}>✓</span>
+              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </span>
               <span>DPAPI Hardware Fingerprint — Verified</span>
             </div>
             <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)" }}>✓</span>
+              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </span>
               <span>SMP/1 Wire Framing & Replay Defense — Passed</span>
             </div>
             <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)" }}>✓</span>
+              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </span>
               <span>Direct LAN P2P Socket (Port 7890) — Reachable (0.4 ms)</span>
             </div>
             <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)" }}>✓</span>
+              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </span>
               <span>TURN Relayed Fallback Gateway — Standby Ready</span>
             </div>
             <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)" }}>✓</span>
+              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </span>
               <span>Hardware Video Encoder (NVENC) — Available</span>
             </div>
           </div>

@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -378,33 +380,33 @@ fun SmartMigrateStartupScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 4.dp)
+                        .padding(horizontal = 6.dp)
                 ) {
                     Text(
                         text = "HOST",
-                        color = HighlightLavender.copy(alpha = 0.85f),
-                        fontSize = 8.sp,
+                        color = HighlightLavender.copy(alpha = 0.90f),
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
                     )
                     Text(
                         text = "MIGRATION",
                         color = GlowWhite.copy(alpha = 0.95f),
-                        fontSize = 8.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = 1.2.sp
                     )
                     Text(
                         text = "CLIENT",
-                        color = HighlightLavender.copy(alpha = 0.85f),
-                        fontSize = 8.sp,
+                        color = HighlightLavender.copy(alpha = 0.90f),
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
                     )
                 }
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(20.dp))
 
             // Typography: "SMART MIGRATE" with upward motion and clean font
             Column(
@@ -416,17 +418,17 @@ fun SmartMigrateStartupScreen(
                 Text(
                     text = "SMART MIGRATE",
                     color = Color(0xFFF6F4FF),
-                    fontSize = 21.sp,
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 3.5.sp,
                     fontFamily = FontFamily.SansSerif,
                     textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     text = "POWERED BY MIGROUTE",
-                    color = HighlightLavender.copy(alpha = 0.80f),
-                    fontSize = 9.sp,
+                    color = HighlightLavender.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 2.4.sp,
                     textAlign = TextAlign.Center
@@ -438,20 +440,21 @@ fun SmartMigrateStartupScreen(
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 28.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
                 .alpha(textAlpha * 0.75f)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(5.dp)
+                        .size(6.dp)
                         .background(VividPurple, CircleShape)
                 )
-                Spacer(Modifier.width(7.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
                     text = "SECURE CROSS-DEVICE CONNECTIVITY",
-                    color = Color(0xFF8A84B0),
-                    fontSize = 9.sp,
+                    color = Color(0xFF9E98C5),
+                    fontSize = 11.sp,
                     letterSpacing = 1.5.sp,
                     fontWeight = FontWeight.Medium
                 )
