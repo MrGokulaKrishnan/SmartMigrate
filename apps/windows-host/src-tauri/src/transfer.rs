@@ -22,6 +22,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::SystemTime;
 
 // ─── Lightweight Base64 Implementation ───────────────────────────────────────
 
@@ -420,6 +421,110 @@ impl TransferManager {
         let sessions = self.sessions.lock().unwrap();
         sessions.values().map(TransferSessionDto::from).collect()
     }
+
+    /// Recursively scans a local folder directory to build an authoritative SMP/1 migration manifest.
+    pub fn scan_folder_recursive(&self, folder_path: &Path) -> Result<FolderScanResult, String> {
+        if !folder_path.exists() || !folder_path.is_dir() {
+            return Err("specified path does not exist or is not a directory".to_string());
+        }
+
+        let folder_name = folder_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("folder")
+            .to_string();
+
+        let mut entries = Vec::new();
+        let mut total_bytes = 0u64;
+
+        Self::walk_dir_collect(folder_path, folder_path, &mut entries, &mut total_bytes)?;
+
+        Ok(FolderScanResult {
+            root_folder_name: folder_name,
+            root_path: folder_path.to_string_lossy().to_string(),
+            total_files: entries.len(),
+            total_bytes,
+            entries,
+        })
+    }
+
+    fn walk_dir_collect(
+        root: &Path,
+        current: &Path,
+        entries: &mut Vec<FolderManifestEntry>,
+        total_bytes: &mut u64,
+    ) -> Result<(), String> {
+        let read_dir = fs::read_dir(current).map_err(|e| format!("failed to read directory: {}", e))?;
+        for entry in read_dir {
+            let entry = entry.map_err(|e| format!("failed to read directory entry: {}", e))?;
+            let path = entry.path();
+            let metadata = entry.metadata().map_err(|e| format!("failed to read metadata: {}", e))?;
+
+            if metadata.is_dir() {
+                Self::walk_dir_collect(root, &path, entries, total_bytes)?;
+            } else if metadata.is_file() {
+                let rel = path.strip_prefix(root).map_err(|e| e.to_string())?;
+                let rel_str = rel.to_string_lossy().replace('\\', "/");
+                let size = metadata.len();
+
+                // Read and compute quick SHA-256 for delta checking
+                let mut f = File::open(&path).map_err(|e| format!("failed to open file: {}", e))?;
+                let mut buf = Vec::with_capacity(size.min(16 * 1024 * 1024) as usize);
+                f.read_to_end(&mut buf).map_err(|e| format!("read error: {}", e))?;
+                let hash = compute_sha256(&buf);
+
+                let mod_time = metadata
+                    .modified()
+                    .unwrap_or(SystemTime::UNIX_EPOCH)
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+
+                *total_bytes += size;
+                entries.push(FolderManifestEntry {
+                    relative_path: rel_str,
+                    file_size: size,
+                    sha256: hash,
+                    modified_epoch_ms: mod_time,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Computes differential sync requirements given a source folder scan and remote target hashes.
+    pub fn compute_delta_sync(
+        &self,
+        scan: FolderScanResult,
+        target_known_hashes: &HashMap<String, String>,
+    ) -> DeltaSyncSummary {
+        let mut delta = Vec::new();
+        let mut skipped_files = 0;
+        let mut bytes_saved = 0u64;
+        let mut bytes_to_tx = 0u64;
+
+        for entry in scan.entries {
+            if let Some(target_hash) = target_known_hashes.get(&entry.relative_path) {
+                if target_hash.eq_ignore_ascii_case(&entry.sha256) {
+                    skipped_files += 1;
+                    bytes_saved += entry.file_size;
+                    continue;
+                }
+            }
+            bytes_to_tx += entry.file_size;
+            delta.push(entry);
+        }
+
+        DeltaSyncSummary {
+            total_scanned_files: scan.total_files,
+            total_scanned_bytes: scan.total_bytes,
+            files_to_transfer: delta.len(),
+            bytes_to_transfer: bytes_to_tx,
+            files_skipped_identical: skipped_files,
+            bytes_saved,
+            delta_entries: delta,
+        }
+    }
 }
 
 // ─── Collision Resolution ───────────────────────────────────────────────────
@@ -521,3 +626,35 @@ pub struct FinalizeResultDto {
     pub sha256_verified: bool,
     pub saved_to_folder: String,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderManifestEntry {
+    pub relative_path: String,
+    pub file_size: u64,
+    pub sha256: String,
+    pub modified_epoch_ms: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderScanResult {
+    pub root_folder_name: String,
+    pub root_path: String,
+    pub total_files: usize,
+    pub total_bytes: u64,
+    pub entries: Vec<FolderManifestEntry>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DeltaSyncSummary {
+    pub total_scanned_files: usize,
+    pub total_scanned_bytes: u64,
+    pub files_to_transfer: usize,
+    pub bytes_to_transfer: u64,
+    pub files_skipped_identical: usize,
+    pub bytes_saved: u64,
+    pub delta_entries: Vec<FolderManifestEntry>,
+}
+

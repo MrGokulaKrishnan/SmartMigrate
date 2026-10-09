@@ -26,7 +26,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use stream::{StreamSessionState, StreamTelemetry};
 use tauri::{State, Window};
 use transfer::{
-    FinalizeResultDto, OutgoingChunkDto, TransferManager, TransferProgressDto, TransferSessionDto,
+    DeltaSyncSummary, FinalizeResultDto, FolderScanResult, OutgoingChunkDto, TransferManager,
+    TransferProgressDto, TransferSessionDto,
 };
 
 
@@ -628,6 +629,28 @@ fn create_sample_migration_file(name: String, size_kb: u32) -> Result<String, St
     Ok(path.to_string_lossy().to_string())
 }
 
+/// Recursively scans a local folder directory and generates an authoritative SMP/1 migration manifest.
+#[tauri::command]
+fn scan_folder_for_migration(
+    state: State<'_, AppState>,
+    folder_path: String,
+) -> Result<FolderScanResult, String> {
+    let path = PathBuf::from(&folder_path);
+    state.transfer.scan_folder_recursive(&path)
+}
+
+/// Computes delta sync requirements between a folder and remote target hashes.
+#[tauri::command]
+fn compute_folder_delta_sync(
+    state: State<'_, AppState>,
+    folder_path: String,
+    target_hashes: std::collections::HashMap<String, String>,
+) -> Result<DeltaSyncSummary, String> {
+    let path = PathBuf::from(&folder_path);
+    let scan = state.transfer.scan_folder_recursive(&path)?;
+    Ok(state.transfer.compute_delta_sync(scan, &target_hashes))
+}
+
 /// Minimize the main application window.
 #[tauri::command]
 fn minimize_window(window: Window) -> Result<(), String> {
@@ -704,6 +727,8 @@ pub fn run() {
             list_transfers,
             open_transfers_folder,
             create_sample_migration_file,
+            scan_folder_for_migration,
+            compute_folder_delta_sync,
             minimize_window,
             toggle_maximize,
             close_window,
