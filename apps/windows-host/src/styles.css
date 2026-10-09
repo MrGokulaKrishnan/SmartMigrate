@@ -997,6 +997,17 @@ input:focus, select:focus, textarea:focus {
   font-size: 0.84rem;
   color: var(--sm-text-3);
   z-index: 40;
+  transition: border-radius 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-frame.windowed .bottom-statusbar {
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+}
+
+.app-frame.maximized .bottom-statusbar {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .statusbar-left, .statusbar-right {
