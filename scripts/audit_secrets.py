@@ -26,6 +26,12 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
                 content = f.read()
                 for pat, label in PATTERNS:
                     for m in pat.finditer(content):
+                        start_line = content.rfind('\n', 0, m.start()) + 1
+                        end_line = content.find('\n', m.end())
+                        if end_line == -1: end_line = len(content)
+                        line_str = content[start_line:end_line]
+                        if 'publickeytoken' in line_str.lower():
+                            continue
                         line_no = content[:m.start()].count('\n') + 1
                         findings.append((fpath, line_no, label, m.group(0)[:60]))
         except Exception:
