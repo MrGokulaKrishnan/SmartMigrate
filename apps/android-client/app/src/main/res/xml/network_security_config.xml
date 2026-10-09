@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Enforce HTTPS/TLS for all general network traffic (OWASP MASVS-NETWORK-1) -->
-    <base-config cleartextTrafficPermitted="false">
+    <!-- Permit cleartext HTTP/TCP traffic for Direct LAN P2P connections to Windows Host -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
 
-    <!-- Scoped exemption: local host display stream on private loopback/emulator bridges -->
+    <!-- Scoped domain exemptions -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">10.0.2.2</domain>

@@ -25,7 +25,7 @@
       <!-- ─── Topbar Navbar ────────────────────────────────────────────────── -->
       <header class="topbar sm-glass-nav" aria-label="Primary navigation">
         <a class="brand" href="#top" aria-label="Smart Migrate home">
-          <img src="public/media/smart-migrate-logo.jpg" alt="Smart Migrate" />
+          <img src="smart_migrate_logo.png" alt="Smart Migrate" />
           <span>Smart Migrate</span>
         </a>
         <button class="menu-button" aria-controls="navigation" aria-expanded="false">Menu</button>
@@ -69,8 +69,41 @@
             </dl>
           </div>
           <div class="hero-visual" aria-label="Smart Migrate product identity">
-            <div class="logo-stage sm-glass">
-              <img src="public/media/smart-migrate-logo.jpg" alt="Smart Migrate Emblem" />
+            <div class="logo-stage sm-glass" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px;">
+              <svg width="220" height="220" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="120" cy="120" r="100" fill="url(#heroGlow)" opacity="0.15" />
+                <circle cx="120" cy="120" r="88" stroke="url(#heroBorder)" stroke-width="1.5" stroke-dasharray="6 6" />
+                
+                <rect x="40" y="45" width="160" height="100" rx="10" fill="#0c0a1a" stroke="#7C4DFF" stroke-width="2.5" />
+                <rect x="48" y="53" width="144" height="84" rx="6" fill="#050508" />
+                
+                <path d="M105 145L95 175H145L135 145" stroke="#7C4DFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                <line x1="80" y1="175" x2="160" y2="175" stroke="#7C4DFF" stroke-width="3" stroke-linecap="round" />
+
+                <path d="M70 95C90 75 150 75 170 95" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" opacity="0.7" />
+                <path d="M85 105C100 90 140 90 155 105" stroke="#A78BFA" stroke-width="2" stroke-linecap="round" opacity="0.9" />
+
+                <rect x="145" y="90" width="55" height="95" rx="9" fill="#080714" stroke="#38BDF8" stroke-width="2.5" />
+                <rect x="151" y="100" width="43" height="75" rx="5" fill="#050508" />
+                
+                <circle cx="172.5" cy="137.5" r="8" fill="#7C4DFF" fill-opacity="0.3" stroke="#A78BFA" stroke-width="1.5" />
+                <path d="M172.5 133.5V137.5L175 140" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+
+                <defs>
+                  <radialGradient id="heroGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(120 120) scale(100)">
+                    <stop stop-color="#7C4DFF" />
+                    <stop offset="1" stop-color="#38BDF8" stop-opacity="0" />
+                  </radialGradient>
+                  <linearGradient id="heroBorder" x1="20" y1="20" x2="220" y2="220" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#7C4DFF" />
+                    <stop offset="0.5" stop-color="#38BDF8" />
+                    <stop offset="1" stop-color="#A78BFA" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div style="margin-top: 14px; font-size: 0.82rem; font-weight: 700; color: #A78BFA; letter-spacing: 0.08em; text-transform: uppercase;">
+                60 FPS Direct Stream Engine
+              </div>
             </div>
             <div class="engine-chip"><span class="pulse" aria-hidden="true"></span> Powered by <strong>MigRoute Core</strong></div>
           </div>

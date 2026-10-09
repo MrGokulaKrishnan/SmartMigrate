@@ -1371,20 +1371,33 @@ private suspend fun handleScannedQr(
             port = uri.getQueryParameter("port")?.toIntOrNull() ?: 7890
             pinCode = uri.getQueryParameter("code") ?: ""
             hostName = uri.getQueryParameter("name") ?: "Windows Host"
-        } else if (raw.length == 6 && raw.all { it.isDigit() }) {
-            pinCode = raw
-            val disc = SmpClient.discoverHosts()
-            host = disc?.ip ?: "${SmpClient.getLocalSubnetPrefix()}33"
-        } else {
-            val ipMatch = Regex("""\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b""").find(raw)?.value
-            val pinMatch = Regex("""\b\d{6}\b""").find(raw)?.value
-            if (ipMatch != null) host = ipMatch
-            if (pinMatch != null) pinCode = pinMatch
+
+            if (pinCode.isEmpty()) {
+                pinCode = Regex("""[?&]code=([^&]+)""").find(raw)?.groupValues?.get(1) ?: ""
+            }
+            if (host.isEmpty()) {
+                host = Regex("""[?&]host=([^&]+)""").find(raw)?.groupValues?.get(1) ?: ""
+            }
+        }
+
+        if (pinCode.isEmpty()) {
+            if (raw.length == 6 && raw.all { it.isDigit() }) {
+                pinCode = raw
+            } else {
+                pinCode = Regex("""\b\d{6}\b""").find(raw)?.value
+                    ?: Regex("""\b\d{3}\s*-\s*\d{3}\b""").find(raw)?.value?.replace("-", "")?.replace(" ", "")
+                    ?: ""
+            }
         }
 
         if (host.isEmpty()) {
-            val disc = SmpClient.discoverHosts()
-            host = disc?.ip ?: "${SmpClient.getLocalSubnetPrefix()}33"
+            val ipMatch = Regex("""\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b""").find(raw)?.value
+            if (ipMatch != null) {
+                host = ipMatch
+            } else {
+                val disc = SmpClient.discoverHosts()
+                host = disc?.ip ?: "${SmpClient.getLocalSubnetPrefix()}33"
+            }
         }
 
         if (pinCode.isEmpty()) {
