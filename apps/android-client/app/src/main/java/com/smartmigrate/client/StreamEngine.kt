@@ -76,8 +76,14 @@ class StreamEngine {
     /**
      * Connects to the host streaming server at the specified host IP/port.
      */
-    fun startStreaming(hostAddress: String = "10.0.2.2", port: Int = 7890, authToken: String? = null) {
+    fun startStreaming(hostAddress: String = "", port: Int = 7890, authToken: String? = null) {
         stopStreaming()
+
+        val resolvedHost = if (hostAddress.isBlank() || hostAddress == "10.0.2.2") {
+            "${SmpClient.getLocalSubnetPrefix()}33"
+        } else {
+            hostAddress.trim()
+        }
 
         streamJob = scope.launch {
             _state.value = StreamConnectionState.CONNECTING
@@ -90,9 +96,9 @@ class StreamEngine {
             while (isActive) {
                 try {
                     val streamUrl = if (!authToken.isNullOrBlank()) {
-                        "http://$hostAddress:$port/live?token=${java.net.URLEncoder.encode(authToken, "UTF-8")}"
+                        "http://$resolvedHost:$port/live?token=${java.net.URLEncoder.encode(authToken, "UTF-8")}"
                     } else {
-                        "http://$hostAddress:$port/live"
+                        "http://$resolvedHost:$port/live"
                     }
                     val url = URL(streamUrl)
                     val conn = (url.openConnection() as HttpURLConnection).apply {

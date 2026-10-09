@@ -30,6 +30,20 @@ fn now_ms() -> u64 {
 pub const SMP_CONTROL_PORT: u16 = 7890;
 pub const SMP_DISCOVERY_PORT: u16 = 7889;
 
+pub fn get_primary_lan_ip() -> String {
+    if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
+        if socket.connect("8.8.8.8:80").is_ok() {
+            if let Ok(addr) = socket.local_addr() {
+                let ip_str = addr.ip().to_string();
+                if !ip_str.starts_with("127.") && !ip_str.starts_with("169.254.") {
+                    return ip_str;
+                }
+            }
+        }
+    }
+    "192.168.31.33".to_string()
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceHelloResponse {
@@ -172,9 +186,10 @@ fn run_discovery_responder(
             Ok((len, peer_addr)) => {
                 let msg = String::from_utf8_lossy(&buf[..len]);
                 if msg.contains("SM_DISCOVERY_PROBE") {
+                    let host_ip = get_primary_lan_ip();
                     let resp = format!(
-                        "SM_DISCOVERY_RESPONSE:port={}:id={}:name={}:platform=Windows\n",
-                        control_port, state.identity.id, state.identity.name
+                        "SM_DISCOVERY_RESPONSE:port={}:ip={}:id={}:name={}:platform=Windows\n",
+                        control_port, host_ip, state.identity.id, state.identity.name
                     );
                     let _ = socket.send_to(resp.as_bytes(), peer_addr);
                 }
@@ -275,7 +290,6 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     "VIDEO_ENCODE".to_string(),
                     "REMOTE_MOUSE".to_string(),
                     "REMOTE_KEYBOARD".to_string(),
-                    "FILE_TRANSFER".to_string(),
                     "CLIPBOARD".to_string(),
                 ],
                 timestamp_ms: now_ms(),

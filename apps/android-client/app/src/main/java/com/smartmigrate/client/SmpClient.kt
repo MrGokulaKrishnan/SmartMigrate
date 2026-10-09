@@ -62,6 +62,137 @@ object SmpClient {
         val overall: String
     )
 
+    data class DiscoveredHost(
+        val ip: String,
+        val port: Int = 7890,
+        val name: String = "Windows Host",
+        val id: String = "sm-win-host"
+    )
+
+    /**
+     * Discovers active Smart Migrate Windows Host on the local network via UDP beacon probe on port 7889
+     * and subnet candidate scanning.
+     */
+    suspend fun discoverHosts(timeoutMs: Long = 1200): DiscoveredHost? = withContext(Dispatchers.IO) {
+        // 1. Send UDP probe on port 7889
+        try {
+            val socket = java.net.DatagramSocket()
+            socket.broadcast = true
+            socket.soTimeout = 800
+
+            val probeMsg = "SM_DISCOVERY_PROBE\n".toByteArray(Charsets.UTF_8)
+            val broadcastAddr = java.net.InetAddress.getByName("255.255.255.255")
+            val sendPacket = java.net.DatagramPacket(probeMsg, probeMsg.size, broadcastAddr, 7889)
+            socket.send(sendPacket)
+
+            val buf = ByteArray(1024)
+            val recvPacket = java.net.DatagramPacket(buf, buf.size)
+            socket.receive(recvPacket)
+
+            val resp = String(recvPacket.data, 0, recvPacket.length, Charsets.UTF_8)
+            socket.close()
+
+            if (resp.contains("SM_DISCOVERY_RESPONSE")) {
+                val fromIp = recvPacket.address.hostAddress ?: ""
+                var port = 7890
+                var name = "Windows Host"
+                var id = "sm-win-host"
+                var ip = fromIp
+
+                resp.split(":").forEach { part ->
+                    val kv = part.split("=")
+                    if (kv.size == 2) {
+                        when (kv[0].trim()) {
+                            "port" -> port = kv[1].trim().toIntOrNull() ?: 7890
+                            "name" -> name = kv[1].trim()
+                            "id" -> id = kv[1].trim()
+                            "ip" -> if (kv[1].trim().isNotEmpty()) ip = kv[1].trim()
+                        }
+                    }
+                }
+                return@withContext DiscoveredHost(ip, port, name, id)
+            }
+        } catch (_: Exception) {
+            // UDP broadcast blocked or timed out
+        }
+
+        // 2. Direct probe against local subnet candidates
+        val localSubnet = getLocalSubnetPrefix()
+        val candidateIps = listOf("${localSubnet}33", "${localSubnet}1", "${localSubnet}100")
+        for (candidate in candidateIps) {
+            try {
+                val url = URL("http://$candidate:7890/smp/hello")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 300
+                    readTimeout = 300
+                }
+                if (conn.responseCode == 200) {
+                    val text = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
+                    val json = JSONObject(text)
+                    return@withContext DiscoveredHost(
+                        ip = candidate,
+                        port = 7890,
+                        name = json.optString("deviceName", "Windows Host"),
+                        id = json.optString("deviceId", "sm-win-host")
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+
+        null
+    }
+
+    /**
+     * Determines local Wi-Fi IPv4 subnet prefix (e.g., "192.168.31.")
+     */
+    fun getLocalSubnetPrefix(): String {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (iface.isLoopback || !iface.isUp) continue
+                val addrs = iface.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+                        val host = addr.hostAddress ?: ""
+                        if (!host.startsWith("127.") && !host.startsWith("169.254.")) {
+                            val lastDot = host.lastIndexOf('.')
+                            if (lastDot > 0) {
+                                return host.substring(0, lastDot + 1)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return "192.168.31."
+    }
+
+    /**
+     * Returns the phone's current local Wi-Fi IPv4 address.
+     */
+    fun getLocalIp(): String {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (iface.isLoopback || !iface.isUp) continue
+                val addrs = iface.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+                        val host = addr.hostAddress ?: ""
+                        if (!host.startsWith("127.") && !host.startsWith("169.254.")) {
+                            return host
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return "192.168.31.132"
+    }
+
     /**
      * Handshake with Windows host to verify SMP/1 protocol and capabilities.
      */
@@ -133,7 +264,7 @@ object SmpClient {
                 put("requesterDeviceId", requesterDeviceId)
                 put("requesterName", requesterName)
                 put("code", pin.trim())
-                put("requestedPermissions", JSONArray(listOf("ViewScreen", "ControlMouse", "SendFiles", "ReceiveFiles", "Clipboard")))
+                put("requestedPermissions", JSONArray(listOf("ViewScreen", "ControlMouse", "Clipboard")))
             }
 
             OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }

@@ -1,11 +1,29 @@
 package com.smartmigrate.client
 
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.compose.ui.viewinterop.AndroidView
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.MultiFormatReader
+import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.common.HybridBinarizer
+import java.util.concurrent.Executors
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -47,6 +65,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -109,9 +128,8 @@ private val Info = Color(0xFF60A5FA)
 
 private enum class AppDestination(val label: String, val symbol: String) {
     Home("Home", "⌂"),
+    Remote("Stream", "⌁"),
     Devices("Devices", "◇"),
-    Transfers("Transfers", "⇄"),
-    Remote("Remote", "⌁"),
     Security("Security", "⛊")
 }
 
@@ -155,11 +173,20 @@ private fun SmartMigrateApp() {
     var destination by rememberSaveable { mutableStateOf(AppDestination.Home) }
     var pairingDialog by rememberSaveable { mutableStateOf(false) }
     var qrScannerOpen by rememberSaveable { mutableStateOf(false) }
-    var shareSheetOpen by rememberSaveable { mutableStateOf(false) }
     var notice by rememberSaveable { mutableStateOf("Smart Migrate Core online. Direct LAN active.") }
     var batterySaverMode by rememberSaveable { mutableStateOf(false) }
-    var targetHostAddress by rememberSaveable { mutableStateOf("10.0.2.2") }
+    val initialHost = remember { "${SmpClient.getLocalSubnetPrefix()}33" }
+    var targetHostAddress by rememberSaveable { mutableStateOf(initialHost) }
     var currentSessionToken by rememberSaveable { mutableStateOf("") }
+
+    // Auto-discover Windows Host on LAN at startup
+    LaunchedEffect(Unit) {
+        val discovered = SmpClient.discoverHosts()
+        if (discovered != null) {
+            targetHostAddress = discovered.ip
+            notice = "Discovered Windows Host '${discovered.name}' at ${discovered.ip}:7890"
+        }
+    }
 
     MaterialTheme(
         colorScheme = MaterialTheme.colorScheme.copy(
@@ -186,7 +213,6 @@ private fun SmartMigrateApp() {
                 // Top App Bar
                 AppBar(
                     onScanQR = { qrScannerOpen = true },
-                    onShareSheet = { shareSheetOpen = true },
                     batterySaver = batterySaverMode
                 )
 
@@ -200,6 +226,7 @@ private fun SmartMigrateApp() {
                 ) { target ->
                     when (target) {
                         AppDestination.Home -> HomeScreen(
+                            hostAddress = targetHostAddress,
                             onPair = { pairingDialog = true },
                             onScanQR = { qrScannerOpen = true },
                             onNavigate = { destination = it },
@@ -209,9 +236,6 @@ private fun SmartMigrateApp() {
                         )
                         AppDestination.Devices -> DevicesScreen(
                             onPair = { pairingDialog = true },
-                            onNotice = { notice = it }
-                        )
-                        AppDestination.Transfers -> TransfersScreen(
                             onNotice = { notice = it }
                         )
                         AppDestination.Remote -> RemoteScreen(
@@ -239,13 +263,20 @@ private fun SmartMigrateApp() {
                 Spacer(Modifier.height(12.dp))
             }
 
-            // QR Scanner Dialog
+            // Real Camera QR Scanner Dialog
             if (qrScannerOpen) {
                 QrScannerModal(
                     onDismiss = { qrScannerOpen = false },
-                    onPaired = {
+                    onManualPin = {
                         qrScannerOpen = false
-                        notice = "Scanned QR code! Windows PC verified and connected."
+                        pairingDialog = true
+                    },
+                    onPaired = { host, token, hostId ->
+                        qrScannerOpen = false
+                        targetHostAddress = host
+                        currentSessionToken = token
+                        notice = "Paired with $hostId at $host! Session verified."
+                        destination = AppDestination.Remote
                     }
                 )
             }
@@ -255,28 +286,19 @@ private fun SmartMigrateApp() {
                 PairingPinModal(
                     initialHost = targetHostAddress,
                     onDismiss = { pairingDialog = false },
-                    onVerified = { token, hostId ->
+                    onVerified = { host, token, hostId ->
                         pairingDialog = false
+                        targetHostAddress = host
                         currentSessionToken = token
-                        notice = "Paired with $hostId! Session token secured."
-                    }
-                )
-            }
-
-            // Android Share Sheet Simulation Modal
-            if (shareSheetOpen) {
-                ShareSheetModal(
-                    onDismiss = { shareSheetOpen = false },
-                    onSent = {
-                        shareSheetOpen = false
-                        destination = AppDestination.Transfers
-                        notice = "File dispatched via Android Share Sheet to Windows PC!"
+                        notice = "Paired with $hostId at $host! Session verified."
+                        destination = AppDestination.Remote
                     }
                 )
             }
         }
     }
 }
+
 
 // ─── Professional Vector Icons & Badges ─────────────────────────────────────
 @Composable
@@ -353,24 +375,6 @@ private fun DestinationVectorIcon(destination: AppDestination, isSelected: Boole
                     style = Stroke(s)
                 )
             }
-            AppDestination.Transfers -> {
-                val p1 = Path().apply {
-                    moveTo(w * 0.2f, h * 0.36f)
-                    lineTo(w * 0.8f, h * 0.36f)
-                    moveTo(w * 0.62f, h * 0.18f)
-                    lineTo(w * 0.82f, h * 0.36f)
-                    lineTo(w * 0.62f, h * 0.54f)
-                }
-                val p2 = Path().apply {
-                    moveTo(w * 0.8f, h * 0.64f)
-                    lineTo(w * 0.2f, h * 0.64f)
-                    moveTo(w * 0.38f, h * 0.46f)
-                    lineTo(w * 0.18f, h * 0.64f)
-                    lineTo(w * 0.38f, h * 0.82f)
-                }
-                drawPath(p1, color, style = Stroke(s, cap = StrokeCap.Round, join = StrokeJoin.Round))
-                drawPath(p2, color, style = Stroke(s, cap = StrokeCap.Round, join = StrokeJoin.Round))
-            }
             AppDestination.Remote -> {
                 drawRoundRect(
                     color = color,
@@ -437,27 +441,24 @@ private fun KeypadVector(modifier: Modifier = Modifier, color: Color = Brand300,
 }
 
 @Composable
-private fun ShareSheetVector(modifier: Modifier = Modifier, color: Color = Brand300, size: Dp = 16.dp) {
+private fun ShieldVector(modifier: Modifier = Modifier, color: Color = Brand300, size: Dp = 16.dp) {
     Canvas(modifier = modifier.size(size)) {
         val s = 1.8.dp.toPx()
         val w = this.size.width
         val h = this.size.height
-        val box = Path().apply {
-            moveTo(w * 0.2f, h * 0.45f)
-            lineTo(w * 0.2f, h * 0.85f)
-            lineTo(w * 0.8f, h * 0.85f)
-            lineTo(w * 0.8f, h * 0.45f)
+        val shield = Path().apply {
+            moveTo(w * 0.50f, h * 0.14f)
+            lineTo(w * 0.82f, h * 0.28f)
+            lineTo(w * 0.82f, h * 0.55f)
+            cubicTo(w * 0.82f, h * 0.74f, w * 0.50f, h * 0.88f, w * 0.50f, h * 0.88f)
+            cubicTo(w * 0.50f, h * 0.88f, w * 0.18f, h * 0.74f, w * 0.18f, h * 0.55f)
+            lineTo(w * 0.18f, h * 0.28f)
+            close()
         }
-        drawPath(box, color, style = Stroke(s, cap = StrokeCap.Round, join = StrokeJoin.Round))
-        drawLine(color, Offset(w * 0.5f, h * 0.65f), Offset(w * 0.5f, h * 0.16f), strokeWidth = s, cap = StrokeCap.Round)
-        val arr = Path().apply {
-            moveTo(w * 0.32f, h * 0.34f)
-            lineTo(w * 0.50f, h * 0.16f)
-            lineTo(w * 0.68f, h * 0.34f)
-        }
-        drawPath(arr, color, style = Stroke(s, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawPath(shield, color, style = Stroke(s, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
+
 
 @Composable
 private fun DesktopDeviceVector(modifier: Modifier = Modifier, color: Color = Brand300, size: Dp = 22.dp) {
@@ -544,7 +545,7 @@ private fun SkipNextVector(modifier: Modifier = Modifier, color: Color = TextPri
 
 // ─── App Bar ─────────────────────────────────────────────────────────────────
 @Composable
-private fun AppBar(onScanQR: () -> Unit, onShareSheet: () -> Unit, batterySaver: Boolean) {
+private fun AppBar(onScanQR: () -> Unit, batterySaver: Boolean) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = Surface1,
@@ -566,28 +567,19 @@ private fun AppBar(onScanQR: () -> Unit, onShareSheet: () -> Unit, batterySaver:
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("Smart Migrate", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                Text(if (batterySaver) "Battery Saver Mode Active" else "Direct LAN • 14 ms", color = if (batterySaver) Warning else TextMuted, fontSize = 12.sp)
+                Text(if (batterySaver) "Battery Saver Mode Active" else "Direct LAN • 60 FPS Stream", color = if (batterySaver) Warning else TextMuted, fontSize = 12.sp)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Surface2)
-                        .border(1.dp, Line, RoundedCornerShape(8.dp))
-                        .clickable { onShareSheet() }
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
-                ) {
-                    Text("Share", color = Brand300, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Surface2)
-                        .border(1.dp, Line, RoundedCornerShape(8.dp))
-                        .clickable { onScanQR() }
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
-                ) {
-                    Text("QR", color = Brand300, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Brand600.copy(alpha = 0.25f))
+                    .border(1.dp, Brand400.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                    .clickable { onScanQR() }
+                    .padding(horizontal = 12.dp, vertical = 7.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    QrCodeVector(size = 14.dp, color = Brand300)
+                    Text("Scan QR", color = Brand300, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -597,6 +589,7 @@ private fun AppBar(onScanQR: () -> Unit, onShareSheet: () -> Unit, batterySaver:
 // ─── 02 Home Screen ──────────────────────────────────────────────────────────
 @Composable
 private fun HomeScreen(
+    hostAddress: String = "",
     onPair: () -> Unit,
     onScanQR: () -> Unit,
     onNavigate: (AppDestination) -> Unit,
@@ -626,24 +619,24 @@ private fun HomeScreen(
                             .border(1.dp, Success.copy(alpha = 0.3f), CircleShape)
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
-                        Text("● HOST CONNECTED", color = Success, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("● HOST DISCOVERED", color = Success, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                     Spacer(Modifier.weight(1f))
                     Text("SMP/1 • MigRoute", color = Brand300, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
 
                 Spacer(Modifier.height(14.dp))
-                Text("Windows PC Hub", color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("PC Display Stream", color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("Direct P2P LAN • 14 ms latency • 42.8 MB/s verified throughput", color = TextSecondary, fontSize = 14.sp)
+                Text("Direct LAN • Host: $hostAddress:7890 • 60 FPS Hardware Video", color = TextSecondary, fontSize = 13.5.sp)
 
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Box(Modifier.weight(1f)) {
-                        PrimaryButton("Send Files") { onNavigate(AppDestination.Transfers) }
+                    Box(Modifier.weight(1.2f)) {
+                        PrimaryButton("Live Stream") { onNavigate(AppDestination.Remote) }
                     }
                     Box(Modifier.weight(1f)) {
-                        SecondaryButton("Remote PC") { onNavigate(AppDestination.Remote) }
+                        SecondaryButton("Scan QR") { onScanQR() }
                     }
                 }
             }
@@ -653,8 +646,8 @@ private fun HomeScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             QuickActionPill("Scan QR", Modifier.weight(1f), icon = { QrCodeVector() }) { onScanQR() }
             QuickActionPill("Enter PIN", Modifier.weight(1f), icon = { KeypadVector() }) { onPair() }
-            QuickActionPill("Share Sheet", Modifier.weight(1f), icon = { ShareSheetVector() }) {
-                onNotice("Long-press files in Android Files or Photos to Send with Smart Migrate.")
+            QuickActionPill("Security", Modifier.weight(1f), icon = { ShieldVector() }) {
+                onNavigate(AppDestination.Security)
             }
         }
 
@@ -772,281 +765,6 @@ private fun DevicesScreen(onPair: () -> Unit, onNotice: (String) -> Unit) {
 
         Spacer(Modifier.height(8.dp))
         SecondaryButton("+ Pair via 6-Digit PIN") { onPair() }
-    }
-}
-
-// ─── 08, 09, 10 Transfers Screen ─────────────────────────────────────────────
-private data class TransferQueueItem(
-    val id: String,
-    val name: String,
-    val totalSize: String,
-    val progress: Float,
-    val speed: String,
-    val eta: String,
-    val priority: String,
-    val isPaused: Boolean,
-    val sha256Preview: String,
-    val chunkInfo: String
-)
-
-@Composable
-private fun TransfersScreen(onNotice: (String) -> Unit) {
-    var selectedCategory by rememberSaveable { mutableStateOf("Photos") }
-    var speedLimit by rememberSaveable { mutableStateOf("Unlimited") }
-    var queueItems by remember {
-        mutableStateOf(
-            listOf(
-                TransferQueueItem(
-                    id = "tx-1",
-                    name = "Photos_Archive_2026.zip",
-                    totalSize = "2.4 GB",
-                    progress = 0.74f,
-                    speed = "42.8 MB/s",
-                    eta = "00:14",
-                    priority = "High",
-                    isPaused = false,
-                    sha256Preview = "8f4b...3c91",
-                    chunkInfo = "Chunk 1,776 / 2,400 (1 MiB chunks)"
-                ),
-                TransferQueueItem(
-                    id = "tx-2",
-                    name = "Project_Design_Assets.tar.gz",
-                    totalSize = "680 MB",
-                    progress = 0.15f,
-                    speed = "Waiting slot",
-                    eta = "00:48",
-                    priority = "Normal",
-                    isPaused = false,
-                    sha256Preview = "a29d...e810",
-                    chunkInfo = "Chunk 102 / 680 (1 MiB chunks)"
-                )
-            )
-        )
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        // Send Files Category Picker & Header
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = Surface1,
-            shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("SEND FILES TO WINDOWS PC", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.weight(1f))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Surface2)
-                            .border(1.dp, Line, RoundedCornerShape(6.dp))
-                            .clickable {
-                                speedLimit = when (speedLimit) {
-                                    "Unlimited" -> "50 MB/s"
-                                    "50 MB/s" -> "20 MB/s"
-                                    else -> "Unlimited"
-                                }
-                                onNotice("Transfer speed limit set to $speedLimit")
-                            }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text("Speed: $speedLimit", color = Brand300, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    listOf("Photos", "Videos", "Docs", "Music").forEach { cat ->
-                        val isSel = selectedCategory == cat
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSel) Brand600 else Surface2)
-                                .border(1.dp, if (isSel) Brand500 else Line, RoundedCornerShape(8.dp))
-                                .clickable { selectedCategory = cat }
-                                .padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(cat, color = if (isSel) Color.White else TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Box(Modifier.weight(1.2f)) {
-                        PrimaryButton("Choose $selectedCategory & Send") {
-                            onNotice("Staged $selectedCategory files into resumable transfer queue.")
-                        }
-                    }
-                    Box(Modifier.weight(0.8f)) {
-                        SecondaryButton("+ Add File") {
-                            val newId = "tx-${System.currentTimeMillis() % 1000}"
-                            queueItems = queueItems + TransferQueueItem(
-                                id = newId,
-                                name = "Staged_${selectedCategory}_File.bin",
-                                totalSize = "128 MB",
-                                progress = 0.05f,
-                                speed = "38.2 MB/s",
-                                eta = "00:04",
-                                priority = "Normal",
-                                isPaused = false,
-                                sha256Preview = "c18f...92e1",
-                                chunkInfo = "Chunk 6 / 128 (1 MiB chunks)"
-                            )
-                            onNotice("Added Staged_${selectedCategory}_File.bin to queue.")
-                        }
-                    }
-                }
-            }
-        }
-
-        // Active Transfer Queue Header
-        Text(
-            "ACTIVE TRANSFER QUEUE (${queueItems.size})",
-            color = Brand300,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 2.dp)
-        )
-
-        // Queue Items
-        queueItems.forEach { item ->
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Surface1,
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(item.name, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Spacer(Modifier.width(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(
-                                    when (item.priority) {
-                                        "High" -> Brand500.copy(alpha = 0.2f)
-                                        "Low" -> Surface3
-                                        else -> Surface2
-                                    }
-                                )
-                                .border(1.dp, if (item.priority == "High") Brand400 else Line, RoundedCornerShape(6.dp))
-                                .clickable {
-                                    val nextPri = when (item.priority) {
-                                        "High" -> "Normal"
-                                        "Normal" -> "Low"
-                                        else -> "High"
-                                    }
-                                    queueItems = queueItems.map { if (it.id == item.id) it.copy(priority = nextPri) else it }
-                                    onNotice("${item.name} priority changed to $nextPri")
-                                }
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Text(
-                                "Pri: ${item.priority}",
-                                color = if (item.priority == "High") Brand300 else TextSecondary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "${item.totalSize} • ${item.chunkInfo}",
-                        color = TextMuted,
-                        fontSize = 12.sp
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-                    // Progress Bar
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Surface3)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(if (item.isPaused) item.progress else item.progress.coerceIn(0.02f, 1f))
-                                .fillMaxHeight()
-                                .background(Brush.horizontalGradient(listOf(Brand500, Brand400)))
-                        )
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (item.isPaused) "PAUSED" else "${(item.progress * 100).toInt()}% • ${item.speed} • ETA ${item.eta}",
-                            color = if (item.isPaused) Warning else Success,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            ProfessionalCheckBadge(size = 14.dp)
-                            Spacer(Modifier.width(4.dp))
-                            Text("SHA-256: ${item.sha256Preview}", color = Success, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                        }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(Modifier.weight(1f)) {
-                            SecondaryButton(if (item.isPaused) "Resume" else "Pause") {
-                                queueItems = queueItems.map {
-                                    if (it.id == item.id) it.copy(isPaused = !it.isPaused) else it
-                                }
-                                onNotice(if (item.isPaused) "Resumed ${item.name}" else "Paused ${item.name}")
-                            }
-                        }
-                        Box(Modifier.weight(1f)) {
-                            SecondaryButton("Cancel") {
-                                queueItems = queueItems.filter { it.id != item.id }
-                                onNotice("Cancelled and purged partial file for ${item.name}")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // History Snippet
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = Surface1,
-            shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("RECENT COMPLETED TRANSFERS", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ProfessionalCheckBadge(size = 18.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text("Codebase_Backup.tar.gz (845 MB)", color = TextPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
-                        Text("Direct LAN • Today 09:21 AM • Verified", color = TextMuted, fontSize = 11.5.sp)
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ProfessionalCheckBadge(size = 18.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text("System_Update.apk (42 MB)", color = TextPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
-                        Text("Direct LAN • Yesterday • Verified", color = TextMuted, fontSize = 11.5.sp)
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -1635,38 +1353,376 @@ private fun SecurityScreen(hostAddress: String = "10.0.2.2", onNotice: (String) 
 }
 
 // ─── Modal Dialogs ───────────────────────────────────────────────────────────
+private suspend fun handleScannedQr(
+    raw: String,
+    onStatus: (String, Boolean) -> Unit,
+    onSuccess: (String, String, String) -> Unit,
+    onFail: () -> Unit
+) {
+    try {
+        var host = ""
+        var port = 7890
+        var pinCode = ""
+        var hostName = "Windows Host"
+
+        if (raw.startsWith("smp://") || raw.contains("host=") || raw.contains("code=")) {
+            val uri = android.net.Uri.parse(raw)
+            host = uri.getQueryParameter("host") ?: ""
+            port = uri.getQueryParameter("port")?.toIntOrNull() ?: 7890
+            pinCode = uri.getQueryParameter("code") ?: ""
+            hostName = uri.getQueryParameter("name") ?: "Windows Host"
+        } else if (raw.length == 6 && raw.all { it.isDigit() }) {
+            pinCode = raw
+            val disc = SmpClient.discoverHosts()
+            host = disc?.ip ?: "${SmpClient.getLocalSubnetPrefix()}33"
+        } else {
+            val ipMatch = Regex("""\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b""").find(raw)?.value
+            val pinMatch = Regex("""\b\d{6}\b""").find(raw)?.value
+            if (ipMatch != null) host = ipMatch
+            if (pinMatch != null) pinCode = pinMatch
+        }
+
+        if (host.isEmpty()) {
+            val disc = SmpClient.discoverHosts()
+            host = disc?.ip ?: "${SmpClient.getLocalSubnetPrefix()}33"
+        }
+
+        if (pinCode.isEmpty()) {
+            onStatus("Invalid QR code format. Missing pairing PIN.", true)
+            onFail()
+            return
+        }
+
+        onStatus("Pairing with $hostName ($host:$port)...", false)
+        val res = SmpClient.pair(host, port, pinCode)
+        if (res.isSuccess) {
+            val p = res.getOrNull()!!
+            onStatus("Pairing verified! Launching stream...", false)
+            onSuccess(host, p.sessionToken, p.hostDeviceId)
+        } else {
+            onStatus("Pairing failed: ${res.exceptionOrNull()?.message ?: "Host rejected PIN"}", true)
+            onFail()
+        }
+    } catch (e: Exception) {
+        onStatus("Error reading QR: ${e.message}", true)
+        onFail()
+    }
+}
+
 @Composable
-private fun QrScannerModal(onDismiss: () -> Unit, onPaired: () -> Unit) {
+private fun QrScannerModal(
+    onDismiss: () -> Unit,
+    onManualPin: () -> Unit,
+    onPaired: (String, String, String) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val lifecycleOwner = context as androidx.lifecycle.LifecycleOwner
+    val scope = rememberCoroutineScope()
+
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasCameraPermission = isGranted
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (!hasCameraPermission) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    var isPairing by remember { mutableStateOf(false) }
+    var statusText by remember { mutableStateOf<String?>("Align Windows Host QR inside viewfinder") }
+    var isError by remember { mutableStateOf(false) }
+    var scanCompleted by remember { mutableStateOf(false) }
+
+    val scanTransition = rememberInfiniteTransition(label = "laser")
+    val laserProgress by scanTransition.animateFloat(
+        initialValue = 0.05f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "laser_y"
+    )
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
             color = Surface1,
-            shape = RoundedCornerShape(14.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, LineStrong)
         ) {
-            Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("SCAN TO CONNECT", color = Brand300, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                Text("Point camera at Smart Migrate Windows QR code", color = TextSecondary, fontSize = 12.sp, textAlign = TextAlign.Center)
-
-                Spacer(Modifier.height(16.dp))
-                // Simulated Camera Viewfinder
-                Box(
-                    modifier = Modifier
-                        .size(200.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.Black)
-                        .border(2.dp, Brand500, RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(Modifier.size(140.dp).border(1.dp, Brand300.copy(alpha = 0.5f)))
-                    Text("ALIGNING QR...", color = Brand300, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Brand600.copy(alpha = 0.25f), CircleShape)
+                            .border(1.dp, Brand400.copy(alpha = 0.5f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        QrCodeVector(size = 16.dp, color = Brand300)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("SCAN WINDOWS HOST QR", color = Brand300, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("Instant P2P Display and Control", color = TextSecondary, fontSize = 12.sp)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Surface2)
+                            .clickable { onDismiss() }
+                            .padding(6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("✕", color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 Spacer(Modifier.height(16.dp))
-                PrimaryButton("Simulate QR Match") { onPaired() }
-                Spacer(Modifier.height(6.dp))
-                SecondaryButton("Cancel") { onDismiss() }
+
+                if (hasCameraPermission) {
+                    Box(
+                        modifier = Modifier
+                            .size(240.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.Black)
+                            .border(2.dp, if (isPairing) Success else Brand500, RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AndroidView(
+                            factory = { ctx ->
+                                val previewView = PreviewView(ctx).apply {
+                                    layoutParams = ViewGroup.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                        ViewGroup.LayoutParams.MATCH_PARENT
+                                    )
+                                    scaleType = PreviewView.ScaleType.FILL_CENTER
+                                }
+
+                                val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+                                val executor = Executors.newSingleThreadExecutor()
+
+                                cameraProviderFuture.addListener({
+                                    val cameraProvider = cameraProviderFuture.get()
+                                    val preview = Preview.Builder().build().also {
+                                        it.setSurfaceProvider(previewView.surfaceProvider)
+                                    }
+
+                                    val imageAnalysis = ImageAnalysis.Builder()
+                                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                        .build()
+
+                                    val reader = MultiFormatReader()
+
+                                    imageAnalysis.setAnalyzer(executor) { imageProxy ->
+                                        if (scanCompleted || isPairing) {
+                                            imageProxy.close()
+                                            return@setAnalyzer
+                                        }
+
+                                        val yBuffer = imageProxy.planes[0].buffer
+                                        val ySize = yBuffer.remaining()
+                                        val yData = ByteArray(ySize)
+                                        yBuffer.get(yData)
+
+                                        val width = imageProxy.width
+                                        val height = imageProxy.height
+                                        val rotation = imageProxy.imageInfo.rotationDegrees
+
+                                        val rotatedData: ByteArray
+                                        val finalW: Int
+                                        val finalH: Int
+
+                                        if (rotation == 90) {
+                                            rotatedData = ByteArray(width * height)
+                                            for (y in 0 until height) {
+                                                for (x in 0 until width) {
+                                                    rotatedData[x * height + (height - y - 1)] = yData[y * width + x]
+                                                }
+                                            }
+                                            finalW = height
+                                            finalH = width
+                                        } else if (rotation == 270) {
+                                            rotatedData = ByteArray(width * height)
+                                            for (y in 0 until height) {
+                                                for (x in 0 until width) {
+                                                    rotatedData[(width - x - 1) * height + y] = yData[y * width + x]
+                                                }
+                                            }
+                                            finalW = height
+                                            finalH = width
+                                        } else {
+                                            rotatedData = yData
+                                            finalW = width
+                                            finalH = height
+                                        }
+
+                                        val source = PlanarYUVLuminanceSource(
+                                            rotatedData, finalW, finalH,
+                                            0, 0, finalW, finalH, false
+                                        )
+                                        val bitmap = BinaryBitmap(HybridBinarizer(source))
+
+                                        try {
+                                            val result = reader.decodeWithState(bitmap)
+                                            val qrText = result.text
+                                            if (!qrText.isNullOrEmpty() && !scanCompleted) {
+                                                scanCompleted = true
+                                                isPairing = true
+                                                scope.launch {
+                                                    handleScannedQr(
+                                                        raw = qrText,
+                                                        onStatus = { msg, err ->
+                                                            statusText = msg
+                                                            isError = err
+                                                        },
+                                                        onSuccess = { host, token, id ->
+                                                            onPaired(host, token, id)
+                                                        },
+                                                        onFail = {
+                                                            scanCompleted = false
+                                                            isPairing = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        } catch (_: Exception) {
+                                        } finally {
+                                            reader.reset()
+                                            imageProxy.close()
+                                        }
+                                    }
+
+                                    try {
+                                        cameraProvider.unbindAll()
+                                        cameraProvider.bindToLifecycle(
+                                            lifecycleOwner,
+                                            CameraSelector.DEFAULT_BACK_CAMERA,
+                                            preview,
+                                            imageAnalysis
+                                        )
+                                    } catch (_: Exception) {
+                                    }
+                                }, ContextCompat.getMainExecutor(ctx))
+
+                                previewView
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        Canvas(modifier = Modifier.size(190.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            val arm = 26.dp.toPx()
+                            val stroke = 3.dp.toPx()
+                            val cornerColor = if (isPairing) Success else Brand400
+
+                            drawLine(cornerColor, Offset(0f, 0f), Offset(arm, 0f), strokeWidth = stroke)
+                            drawLine(cornerColor, Offset(0f, 0f), Offset(0f, arm), strokeWidth = stroke)
+                            drawLine(cornerColor, Offset(w, 0f), Offset(w - arm, 0f), strokeWidth = stroke)
+                            drawLine(cornerColor, Offset(w, 0f), Offset(w, arm), strokeWidth = stroke)
+                            drawLine(cornerColor, Offset(0f, h), Offset(arm, h), strokeWidth = stroke)
+                            drawLine(cornerColor, Offset(0f, h), Offset(0f, h - arm), strokeWidth = stroke)
+                            drawLine(cornerColor, Offset(w, h), Offset(w - arm, h), strokeWidth = stroke)
+                            drawLine(cornerColor, Offset(w, h), Offset(w, h - arm), strokeWidth = stroke)
+                        }
+
+                        if (!isPairing) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.85f)
+                                    .fillMaxHeight(laserProgress)
+                                    .align(Alignment.TopCenter)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(2.dp)
+                                        .align(Alignment.BottomCenter)
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                listOf(Color.Transparent, Brand300, Color.White, Brand300, Color.Transparent)
+                                            )
+                                        )
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Surface2)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Camera Permission Required", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(6.dp))
+                            Text("Smart Migrate needs camera access to scan the pairing QR code from your PC.", color = TextMuted, fontSize = 12.sp, textAlign = TextAlign.Center)
+                            Spacer(Modifier.height(12.dp))
+                            PrimaryButton("Grant Camera Access") {
+                                permissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isError) Danger.copy(alpha = 0.15f) else Surface2)
+                        .border(1.dp, if (isError) Danger.copy(alpha = 0.3f) else Line, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        statusText ?: "Point camera directly at the QR code",
+                        color = if (isError) Danger else if (isPairing) Success else TextSecondary,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        fontWeight = if (isPairing) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(Modifier.weight(1f)) {
+                        SecondaryButton("Cancel") { onDismiss() }
+                    }
+                    Box(Modifier.weight(1.3f)) {
+                        PrimaryButton("Enter PIN Manually") { onManualPin() }
+                    }
+                }
             }
         }
     }
@@ -1676,11 +1732,12 @@ private fun QrScannerModal(onDismiss: () -> Unit, onPaired: () -> Unit) {
 private fun PairingPinModal(
     initialHost: String,
     onDismiss: () -> Unit,
-    onVerified: (String, String) -> Unit
+    onVerified: (String, String, String) -> Unit
 ) {
     var hostAddress by rememberSaveable { mutableStateOf(initialHost) }
     var enteredPin by rememberSaveable { mutableStateOf("") }
     var isPairing by remember { mutableStateOf(false) }
+    var isDetecting by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -1697,14 +1754,13 @@ private fun PairingPinModal(
                 Text("Enter the 6-digit PIN displayed on your PC", color = TextSecondary, fontSize = 12.sp, textAlign = TextAlign.Center)
 
                 Spacer(Modifier.height(10.dp))
-                // Host IP field
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(6.dp))
                         .background(Surface2)
                         .border(1.dp, Line, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("HOST IP: ", color = Brand300, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -1716,6 +1772,31 @@ private fun PairingPinModal(
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Brand600.copy(alpha = 0.35f))
+                            .clickable {
+                                if (!isDetecting) {
+                                    scope.launch {
+                                        isDetecting = true
+                                        statusMessage = "Probing LAN for Windows host..."
+                                        val d = SmpClient.discoverHosts()
+                                        isDetecting = false
+                                        if (d != null) {
+                                            hostAddress = d.ip
+                                            statusMessage = "Found '${d.name}' at ${d.ip}"
+                                        } else {
+                                            statusMessage = "Host not found. Check PC is on same Wi-Fi."
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(if (isDetecting) "Scanning..." else "Auto-Detect", color = Brand300, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -1732,14 +1813,13 @@ private fun PairingPinModal(
                     Spacer(Modifier.height(6.dp))
                     Text(
                         statusMessage!!,
-                        color = if (statusMessage!!.startsWith("Error")) Brand300 else Success,
+                        color = if (statusMessage!!.startsWith("Error") || statusMessage!!.contains("not found")) Color(0xFFFF6B6B) else Success,
                         fontSize = 11.sp,
                         textAlign = TextAlign.Center
                     )
                 }
 
                 Spacer(Modifier.height(14.dp))
-                // Numeric Keypad
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(
                         listOf("1", "2", "3"),
@@ -1788,7 +1868,7 @@ private fun PairingPinModal(
                                     isPairing = false
                                     if (res.isSuccess) {
                                         val p = res.getOrNull()!!
-                                        onVerified(p.sessionToken, p.hostDeviceId)
+                                        onVerified(hostAddress.trim(), p.sessionToken, p.hostDeviceId)
                                     } else {
                                         statusMessage = "Error: " + (res.exceptionOrNull()?.message ?: "Pairing failed")
                                     }
@@ -1802,55 +1882,6 @@ private fun PairingPinModal(
     }
 }
 
-@Composable
-private fun ShareSheetModal(onDismiss: () -> Unit, onSent: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = Surface1,
-            shape = RoundedCornerShape(14.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text("ANDROID SHARE SHEET", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                Text("Share with Smart Migrate", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("Direct destination selection from system share menu", color = TextMuted, fontSize = 13.sp)
-
-                Spacer(Modifier.height(16.dp))
-                Surface(
-                    modifier = Modifier.fillMaxWidth().clickable { onSent() },
-                    color = Surface2,
-                    shape = RoundedCornerShape(10.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-                ) {
-                    Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Brand600.copy(alpha = 0.20f))
-                                .border(1.dp, Brand400.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            DesktopDeviceVector(size = 24.dp)
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Windows PC (Host)", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.height(2.dp))
-                            Text("Direct LAN • Resumable", color = Success, fontSize = 12.sp)
-                        }
-                        Text("Send", color = Brand300, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Spacer(Modifier.height(14.dp))
-                SecondaryButton("Dismiss") { onDismiss() }
-            }
-        }
-    }
-}
 
 // ─── Reusable UI Atoms ───────────────────────────────────────────────────────
 @Composable

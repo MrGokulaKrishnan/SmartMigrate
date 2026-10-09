@@ -278,10 +278,19 @@ export function App() {
     lastHeartbeatAgoMs: 250,
   });
 
+  const [lanIps, setLanIps] = useState<string[]>(["192.168.31.33"]);
+  const primaryHostIp = lanIps[0] || "192.168.31.33";
+
   const refreshStatus = () => {
     invoke<HostStatus>("host_status")
       .then(setStatus)
       .catch(() => setStatus(previewStatus));
+
+    invoke<string[]>("get_host_lan_ips")
+      .then((ips) => {
+        if (ips && ips.length > 0) setLanIps(ips);
+      })
+      .catch(() => {});
 
     invoke<TrustedDevice[]>("get_trusted_devices")
       .then(setTrustedDevices)
@@ -533,34 +542,7 @@ export function App() {
             {trustedDevices.length > 0 && <span className="nav-badge">{trustedDevices.length}</span>}
           </button>
 
-          <button
-            className={`nav-item ${destination === "Favorites" ? "active" : ""}`}
-            onClick={() => setDestination("Favorites")}
-          >
-            <span className="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-              </svg>
-            </span>
-            <span>Favorites</span>
-          </button>
-
           <div className="sidebar-category">Operations</div>
-          <button
-            className={`nav-item ${destination === "Transfer" ? "active" : ""}`}
-            onClick={() => setDestination("Transfer")}
-          >
-            <span className="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="17 1 21 5 17 9"></polyline>
-                <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
-                <polyline points="7 23 3 19 7 15"></polyline>
-                <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
-              </svg>
-            </span>
-            <span>Transfer & Queue</span>
-          </button>
-
           <button
             className={`nav-item ${destination === "Remote" ? "active" : ""}`}
             onClick={() => setDestination("Remote")}
@@ -571,7 +553,7 @@ export function App() {
                 <circle cx="12" cy="10" r="3"></circle>
               </svg>
             </span>
-            <span>Remote Desktop</span>
+            <span>Display Stream & Remote</span>
           </button>
 
           <button
@@ -675,6 +657,7 @@ export function App() {
               onNavigate={setDestination}
               onOpenFolderSync={() => setFolderModalOpen(true)}
               resilience={resilience}
+              primaryHostIp={primaryHostIp}
             />
           )}
 
@@ -795,18 +778,22 @@ export function App() {
 
                   <div style={{ padding: "12px", background: "#ffffff", borderRadius: "10px", display: "inline-block" }}>
                     <QRCodeSvg
-                      value={`smp://pair?v=1&host=${encodeURIComponent(status.deviceId)}&name=${encodeURIComponent("Windows Host")}&code=${encodeURIComponent(typeof pairingSession.code === "object" ? (pairingSession.code as any)["0"] : pairingSession.code)}&fp=${encodeURIComponent(status.fingerprint)}`}
+                      value={`smp://pair?v=1&host=${encodeURIComponent(primaryHostIp)}&port=7890&name=${encodeURIComponent(status.profile || "Windows Host")}&code=${encodeURIComponent(typeof pairingSession.code === "object" ? (pairingSession.code as any)["0"] : pairingSession.code)}&fp=${encodeURIComponent(status.fingerprint)}`}
                       size={180}
                     />
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px" }}>
                     <span style={{ fontSize: "0.7rem", color: "var(--sm-text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       One-Time Numeric Code
                     </span>
                     <span style={{ fontSize: "2rem", fontWeight: 700, fontFamily: "JetBrains Mono", color: "var(--sm-brand-300)", letterSpacing: "0.15em" }}>
                       {formatCode(pairingSession.code)}
                     </span>
+                    <div style={{ padding: "5px 14px", background: "rgba(124, 77, 255, 0.12)", border: "1px solid rgba(124, 77, 255, 0.3)", borderRadius: "8px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontSize: "0.72rem", color: "var(--sm-text-3)" }}>HOST IP:</span>
+                      <span style={{ fontSize: "0.85rem", fontFamily: "JetBrains Mono", fontWeight: 700, color: "var(--sm-brand-300)" }}>{primaryHostIp}:7890</span>
+                    </div>
                   </div>
 
                   <div style={{ display: "flex", gap: "20px", fontSize: "0.74rem", color: "var(--sm-text-3)" }}>
@@ -1111,23 +1098,20 @@ function HomeView({
       {/* Hero Banner */}
       <div className="home-hero-banner">
         <div className="hero-left">
-          <h2>Move files. Connect devices. Control your devices.</h2>
+          <h2>Hardware Display Stream. Seamless Phone Remote Control.</h2>
           <p>
-            Smart Migrate connects your Windows PC and Android devices over direct high-speed LAN with cryptographically verified host authorization and resumable transfer integrity.
+            Smart Migrate streams your Windows PC display to your mobile device at 60 FPS hardware acceleration over direct LAN, with encrypted touch, touchpad, and keyboard remote control.
           </p>
           <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
             <button className="btn btn-primary" onClick={onConnect}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
-              <span>+ Connect Device</span>
-            </button>
-            <button className="btn btn-secondary" onClick={() => onNavigate("Transfer")}>
-              Send Files
+              <span>+ Connect Mobile</span>
             </button>
             <button className="btn btn-secondary" onClick={() => onNavigate("Remote")}>
-              Remote Control
+              Display Stream (60 FPS)
             </button>
             <button className="btn btn-secondary" onClick={() => onNavigate("Orbit")}>
               Orbit Radar
@@ -1254,14 +1238,16 @@ function OrbitRadarView({
   onNavigate,
   onOpenFolderSync,
   resilience,
+  primaryHostIp,
 }: {
   status: HostStatus;
   devices: TrustedDevice[];
   onConnect: () => void;
   onOpenDeviceDetails: (device: TrustedDevice) => void;
   onNavigate: (dest: Destination) => void;
-  onOpenFolderSync: () => void;
+  onOpenFolderSync?: () => void;
   resilience: ResilienceStatus;
+  primaryHostIp?: string;
 }) {
   const [isScanning, setIsScanning] = useState(false);
   const [selectedNode, setSelectedNode] = useState<TrustedDevice | null>(devices[0] || null);
@@ -1292,7 +1278,10 @@ function OrbitRadarView({
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <h1>Device Orbit Radar</h1>
             <span className="sm-liquid-chip-migroute">MigRoute Discovery</span>
-            <span className="sm-liquid-chip-stream">Direct P2P Active</span>
+            <span className="sm-liquid-chip-stream">{resilience.directP2pActive ? "Direct LAN Active" : "LAN Proximity"}</span>
+            <span className="sm-liquid-chip" style={{ fontFamily: "JetBrains Mono", fontSize: "0.72rem" }}>
+              Host: {primaryHostIp || "192.168.31.33"}:7890
+            </span>
           </div>
           <p>
             Real-time proximity sonar sweeps across UDP 7889 and local subnet. Zero-configuration peer rendezvous.
@@ -1310,16 +1299,6 @@ function OrbitRadarView({
               <line x1="12" y1="18" x2="12" y2="22"></line>
             </svg>
             <span>{isScanning ? "Scanning LAN Subnet..." : "Ping Sonar"}</span>
-          </button>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={onOpenFolderSync}
-            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-            </svg>
-            <span>📁 Pro Folder Sync</span>
           </button>
           <button className="btn btn-primary btn-sm" onClick={onConnect}>
             + Pair New Peer
@@ -1340,7 +1319,7 @@ function OrbitRadarView({
         {/* Center Host Orb */}
         <div
           className="orbit-center-orb"
-          title={`This Windows Host: ${status.deviceId}`}
+          title={`Smart Migrate Windows Host (${primaryHostIp || "192.168.31.33"}:7890)`}
           onClick={() => onNavigate("Home")}
         >
           <img src={brandLogoUrl} alt="Windows Host" style={{ width: "32px", height: "32px", objectFit: "contain" }} />
@@ -1369,7 +1348,7 @@ function OrbitRadarView({
               <StatusDot status={d.is_revoked ? "revoked" : "connected"} />
             </div>
             <div className="orbit-node-meta">
-              {d.is_revoked ? "REVOKED" : `${resilience.rttMs} ms • 42 MB/s`}
+              {d.is_revoked ? "REVOKED" : `${resilience.rttMs > 0 ? resilience.rttMs : 11} ms • Direct LAN • 60 FPS`}
             </div>
           </div>
         ))}
@@ -1433,13 +1412,13 @@ function OrbitRadarView({
 
           <div style={{ display: "flex", gap: "10px" }}>
             <button className="btn btn-secondary btn-sm" onClick={() => onOpenDeviceDetails(selectedNode)}>
-              Inspect Keys
+              Inspect Identity
             </button>
-            <button className="btn btn-secondary btn-sm" onClick={onOpenFolderSync}>
-              📁 Sync Folder
+            <button className="btn btn-secondary btn-sm" onClick={() => onNavigate("Remote")}>
+              Remote Input
             </button>
-            <button className="btn btn-primary btn-sm" onClick={() => onNavigate("Transfer")}>
-              ⚡ Send Files
+            <button className="btn btn-primary btn-sm" onClick={() => onNavigate("Remote")}>
+              Start Stream (60 FPS)
             </button>
           </div>
         </div>

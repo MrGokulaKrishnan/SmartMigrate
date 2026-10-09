@@ -118,11 +118,23 @@ button {
   font: inherit;
 }
 
+/* ─── Interactive Particle Canvas ─────────────────────────────────────────── */
+#particle-field {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* ─── Ambient Shell ─────────────────────────────────────────────────────────── */
 .site-shell {
   position: relative;
   isolation: isolate;
   overflow: hidden;
+  z-index: 1;
   background-color: #000000;
 }
 

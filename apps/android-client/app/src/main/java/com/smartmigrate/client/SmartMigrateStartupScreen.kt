@@ -1,79 +1,65 @@
 package com.smartmigrate.client
 
 import android.provider.Settings
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.cos
-import kotlin.math.sin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-// Smart Migrate Official Purple / Violet Palette
-private val AmoledBlack = Color(0xFF000000)
-private val DeepPurple = Color(0xFF30127A)
-private val MidnightViolet = Color(0xFF4526B8)
-private val ElectricViolet = Color(0xFF5B35D5)
-private val VividPurple = Color(0xFF725CFF)
-private val HighlightLavender = Color(0xFF927CFF)
-private val GlowWhite = Color(0xFFF2EFFF)
-private val GlassBorder = Color(0x55BDB4FF)
+// ─── Smart Migrate AMOLED Color Foundation ───────────────────────────────────
+private val SmBlack = Color(0xFF050508)
+private val ElectricViolet = Color(0xFF7C4DFF)
+private val BrandVioletLight = Color(0xFFA78BFA)
+private val CyanAccent = Color(0xFF38BDF8)
+private val GlowWhite = Color(0xFFFFFFFF)
 
 /**
- * Premium cinematic Android startup experience for Smart Migrate.
- * Pure AMOLED black foundation with a smooth purple/violet ambient reveal,
- * emerging Smart Migrate emblem, illuminated migration paths, clean typography,
- * subtle violet light sweep, and smooth transition into the application.
+ * Premium Smart Migrate Cinematic Startup Motion Sequence.
+ *
+ * 10-Phase Hardware-Accelerated Motion Graphics ported from KnowToMigrate engine:
+ * PHASE 1: Pure AMOLED Black foundation (#050508) & ambient violet initialization.
+ * PHASE 2: Vibrant central electric violet energy ignition point pulses.
+ * PHASE 3: Energy ripple shockwave radiates outward.
+ * PHASE 4: Rounded container (15% corner radius) fades and scales in (92% -> 100%).
+ * PHASE 5: Approved Smart Migrate logo powers on with dynamic violet-cyan glow.
+ * PHASE 6: Violet/Cyan laser border draws progressively from 0% to 100% around the container.
+ * PHASE 7: High-energy particle orbits the perimeter with glowing comet tail.
+ * PHASE 8: Soft glowing violet-cyan pulse blooms outward.
+ * PHASE 9: Diagonal glossy light sweep travels left -> right across the logo face.
+ * PHASE 10: Smooth settle and seamless application reveal crossfade into Home.
  */
 @Composable
 fun SmartMigrateStartupScreen(
     onStartupFinished: () -> Unit
 ) {
     val context = LocalContext.current
+
+    // Detect system reduced-motion preference safely
     val isReducedMotion = remember {
         try {
             val scale = Settings.Global.getFloat(
@@ -82,382 +68,394 @@ fun SmartMigrateStartupScreen(
                 1.0f
             )
             scale == 0f
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             false
         }
     }
 
-    // Animation progress from 0f to 1f over 1800ms (or 600ms for reduced motion)
-    val animProgress = remember { Animatable(0f) }
-    val exitAlpha = remember { Animatable(1f) }
+    // Phase 1 & 2: Ambient glow & ignition point
+    val ambientGlowAlpha = remember { Animatable(0f) }
+    val ignitionPointAlpha = remember { Animatable(0f) }
+    val ignitionPointScale = remember { Animatable(0.2f) }
+
+    // Phase 3: Energy ripple wave
+    val waveRadius = remember { Animatable(0f) }
+    val waveAlpha = remember { Animatable(0f) }
+
+    // Phase 4 & 5: Logo container & logo reveal
+    val logoContainerAlpha = remember { Animatable(0f) }
+    val logoScale = remember { Animatable(if (isReducedMotion) 1f else 0.92f) }
+    val dynamicGlowAlpha = remember { Animatable(0f) }
+    val dynamicGlowRadius = remember { Animatable(0.85f) }
+
+    // Phase 6: Perimeter border drawing (0f -> 1f)
+    val borderDrawProgress = remember { Animatable(0f) }
+
+    // Phase 7: Orbiting energy trail particle (0f -> 1f)
+    val orbitParticleProgress = remember { Animatable(0f) }
+    val orbitParticleAlpha = remember { Animatable(0f) }
+
+    // Phase 9: Diagonal light sweep sheen (-0.5f -> 1.5f)
+    val sweepProgress = remember { Animatable(-0.5f) }
+
+    // Phase 10: Application reveal crossfade
+    val exitScale = remember { Animatable(1.0f) }
+    val exitAlpha = remember { Animatable(1.0f) }
 
     LaunchedEffect(Unit) {
         if (isReducedMotion) {
-            animProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 600, easing = LinearEasing)
-            )
-            exitAlpha.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 200, easing = LinearEasing)
-            )
+            logoContainerAlpha.animateTo(1f, tween(250, easing = LinearEasing))
+            delay(200)
+            exitAlpha.animateTo(0f, tween(150, easing = LinearEasing))
             onStartupFinished()
         } else {
-            animProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 1800, easing = FastOutSlowInEasing)
-            )
-            exitAlpha.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
-            )
+            // PHASE 1 — BLACK INITIALIZATION & AMBIENT GLOW (0ms)
+            launch {
+                ambientGlowAlpha.animateTo(
+                    targetValue = 0.45f,
+                    animationSpec = tween(durationMillis = 400, easing = EaseOutCubic)
+                )
+            }
+
+            // PHASE 2 — ENERGY IGNITION POINT (60ms - 320ms)
+            launch {
+                delay(60)
+                launch {
+                    ignitionPointAlpha.animateTo(1f, tween(160, easing = FastOutSlowInEasing))
+                    delay(80)
+                    ignitionPointAlpha.animateTo(0f, tween(140, easing = LinearEasing))
+                }
+                launch {
+                    ignitionPointScale.animateTo(1.6f, tween(300, easing = FastOutSlowInEasing))
+                }
+            }
+
+            // PHASE 3 — ENERGY RIPPLE WAVE (180ms - 540ms)
+            launch {
+                delay(180)
+                waveAlpha.animateTo(0.85f, tween(120, easing = FastOutSlowInEasing))
+                launch {
+                    waveRadius.animateTo(2.0f, tween(380, easing = EaseOutCubic))
+                }
+                waveAlpha.animateTo(0f, tween(260, easing = EaseOutCubic))
+            }
+
+            // PHASE 4 & 5 — LOGO CONTAINER & ARTWORK REVEAL (260ms - 640ms)
+            launch {
+                delay(240)
+                launch {
+                    logoContainerAlpha.animateTo(1.0f, tween(320, easing = FastOutSlowInEasing))
+                }
+                launch {
+                    logoScale.animateTo(1.0f, tween(360, easing = FastOutSlowInEasing))
+                }
+                // Dynamic glow pulse: low -> medium -> settle
+                launch {
+                    dynamicGlowAlpha.animateTo(0.75f, tween(240, easing = FastOutSlowInEasing))
+                    dynamicGlowRadius.animateTo(1.35f, tween(320, easing = EaseOutCubic))
+                    dynamicGlowAlpha.animateTo(0.35f, tween(300, easing = FastOutSlowInEasing))
+                    dynamicGlowRadius.animateTo(1.10f, tween(300, easing = FastOutSlowInEasing))
+                }
+            }
+
+            // PHASE 6 — VIOLET/CYAN BORDER LASER DRAW (420ms - 880ms)
+            launch {
+                delay(400)
+                borderDrawProgress.animateTo(
+                    targetValue = 1.0f,
+                    animationSpec = tween(durationMillis = 460, easing = FastOutSlowInEasing)
+                )
+            }
+
+            // PHASE 7 — ORBITING ENERGY PARTICLE (700ms - 1160ms)
+            launch {
+                delay(680)
+                launch {
+                    orbitParticleAlpha.animateTo(1.0f, tween(120, easing = FastOutSlowInEasing))
+                    delay(300)
+                    orbitParticleAlpha.animateTo(0f, tween(160, easing = FastOutLinearInEasing))
+                }
+                orbitParticleProgress.animateTo(
+                    targetValue = 1.0f,
+                    animationSpec = tween(durationMillis = 480, easing = FastOutSlowInEasing)
+                )
+            }
+
+            // PHASE 9 — DIAGONAL GLOSSY LIGHT SWEEP (960ms - 1320ms)
+            launch {
+                delay(940)
+                sweepProgress.animateTo(
+                    targetValue = 1.5f,
+                    animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing)
+                )
+            }
+
+            // PHASE 10 — APPLICATION REVEAL (1420ms - 1640ms)
+            delay(1420)
+            launch {
+                exitScale.animateTo(0.96f, tween(220, easing = FastOutSlowInEasing))
+            }
+            launch {
+                exitAlpha.animateTo(0f, tween(220, easing = FastOutSlowInEasing))
+            }
+
+            delay(220)
             onStartupFinished()
         }
     }
 
-    val progress = animProgress.value
-
-    // Stage 1: Ambient purple center glow (0.00s - 0.35s)
-    val ambientGlowAlpha = (progress / 0.30f).coerceIn(0f, 1f) * 0.65f
-    val ambientGlowRadiusScale = 0.6f + (progress * 0.4f)
-
-    // Stage 2: Logo emergence (0.35s - 0.65s)
-    val logoEmergence = ((progress - 0.35f) / 0.30f).coerceIn(0f, 1f)
-    val logoAlpha = logoEmergence
-    val logoScale = 0.80f + (logoEmergence * 0.20f)
-    val logoOffsetY = ((1f - logoEmergence) * 14f).dp
-
-    // Stage 3: Migration arrows / connection stream (0.60s - 0.90s)
-    val arrowsProgress = ((progress - 0.60f) / 0.30f).coerceIn(0f, 1f)
-    val arrowsAlpha = arrowsProgress
-
-    // Stage 4: Typography reveal (0.90s - 1.20s)
-    val textProgress = ((progress - 0.90f) / 0.30f).coerceIn(0f, 1f)
-    val textAlpha = textProgress
-    val textOffsetY = ((1f - textProgress) * 10f).dp
-
-    // Stage 5: Violet light sweep (1.20s - 1.50s)
-    val sweepProgress = ((progress - 1.20f) / 0.30f).coerceIn(0f, 1f)
-    val sweepAlpha = if (progress in 1.20f..1.55f && !isReducedMotion) {
-        val p = (progress - 1.20f) / 0.35f
-        if (p < 0.5f) p * 2f else (1f - p) * 2f
-    } else 0f
-
-    BoxWithConstraints(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AmoledBlack)
-            .alpha(exitAlpha.value)
+            .background(SmBlack),
+        contentAlignment = Alignment.Center
     ) {
-        val screenWidth = maxWidth
+        val containerSizeDp = 176.dp
+        val cornerRadiusDp = 26.dp // Exactly 15% corner radius for 176dp
 
-        // 1. Cinematic Background Glow Layer (AMOLED Black + Soft Radial Purple Glows)
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val centerOffset = Offset(size.width * 0.5f, size.height * 0.44f)
-            val maxRadius = size.minDimension * 0.85f * ambientGlowRadiusScale
-
-            // Primary deep velvet purple core glow
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        ElectricViolet.copy(alpha = 0.38f * ambientGlowAlpha),
-                        MidnightViolet.copy(alpha = 0.24f * ambientGlowAlpha),
-                        DeepPurple.copy(alpha = 0.12f * ambientGlowAlpha),
-                        Color.Transparent
-                    ),
-                    center = centerOffset,
-                    radius = maxRadius
-                ),
-                center = centerOffset,
-                radius = maxRadius
-            )
-
-            // Dynamic secondary highlight accent at top right
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        VividPurple.copy(alpha = 0.18f * ambientGlowAlpha),
-                        Color.Transparent
-                    ),
-                    center = Offset(size.width * 0.82f, size.height * 0.25f),
-                    radius = maxRadius * 0.7f
-                ),
-                center = Offset(size.width * 0.82f, size.height * 0.25f),
-                radius = maxRadius * 0.7f
-            )
-        }
-
-        // 2. Subtle Micro-Particles (Gentle ambient technical dust, suppressed in reduced motion)
-        if (!isReducedMotion && progress > 0.12f) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val particleAlpha = ((progress - 0.12f) / 0.25f).coerceIn(0f, 1f) * 0.28f
-                val count = 10
-                for (i in 0 until count) {
-                    val angle = (i * (360f / count) + (progress * 40f)) * (Math.PI / 180f).toFloat()
-                    val dist = (size.minDimension * 0.28f) + (i * 12f)
-                    val px = (size.width * 0.5f) + cos(angle) * dist
-                    val py = (size.height * 0.44f) + sin(angle) * (dist * 0.7f)
-                    drawCircle(
-                        color = HighlightLavender.copy(alpha = particleAlpha * (0.4f + (i % 3) * 0.2f)),
-                        radius = (1.5f + (i % 2) * 1.0f).dp.toPx(),
-                        center = Offset(px, py)
-                    )
-                }
-            }
-        }
-
-        // 3. Central Brand Stage: Emblem + Migration Paths + Typography
-        Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(y = (-20).dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            // Responsive emblem size: 28% of screen width, clamped between 96.dp and 130.dp
-            val emblemSize = (screenWidth * 0.30f).coerceIn(96.dp, 130.dp)
-
-            Box(
+        // Radial ambient violet & cyan bloom behind logo
+        if (!isReducedMotion && (ambientGlowAlpha.value > 0.01f || dynamicGlowAlpha.value > 0.01f)) {
+            Canvas(
                 modifier = Modifier
-                    .size(emblemSize)
-                    .offset(y = logoOffsetY)
-                    .scale(logoScale)
-                    .alpha(logoAlpha),
-                contentAlignment = Alignment.Center
+                    .size(360.dp)
+                    .scale(dynamicGlowRadius.value)
             ) {
-                // Outer soft halo
-                Box(
-                    modifier = Modifier
-                        .size(emblemSize + 24.dp)
-                        .blur(20.dp)
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    ElectricViolet.copy(alpha = 0.50f),
-                                    VividPurple.copy(alpha = 0.25f),
-                                    Color.Transparent
-                                )
-                            ),
-                            shape = CircleShape
-                        )
+                val centerOffset = Offset(size.width / 2f, size.height / 2f)
+                val radius = size.minDimension / 2f
+                val effectiveAlpha = (ambientGlowAlpha.value * 0.45f + dynamicGlowAlpha.value * 0.55f).coerceIn(0f, 1f)
+
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            ElectricViolet.copy(alpha = effectiveAlpha * 0.70f),
+                            CyanAccent.copy(alpha = effectiveAlpha * 0.25f),
+                            BrandVioletLight.copy(alpha = effectiveAlpha * 0.10f),
+                            Color.Transparent
+                        ),
+                        center = centerOffset,
+                        radius = radius
+                    ),
+                    radius = radius,
+                    center = centerOffset
                 )
-
-                // Glass squircle container
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(26.dp, 8.dp, 26.dp, 8.dp))
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF140F2D).copy(alpha = 0.85f),
-                                    Color(0xFF090616).copy(alpha = 0.95f)
-                                )
-                            )
-                        )
-                        .border(
-                            width = 1.5.dp,
-                            brush = Brush.linearGradient(
-                                colors = listOf(
-                                    HighlightLavender.copy(alpha = 0.85f),
-                                    ElectricViolet.copy(alpha = 0.45f),
-                                    GlassBorder
-                                )
-                            ),
-                            shape = RoundedCornerShape(26.dp, 8.dp, 26.dp, 8.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Smart Migrate official brand logo image
-                    Image(
-                        painter = painterResource(R.drawable.smart_migrate_logo),
-                        contentDescription = "Smart Migrate Logo",
-                        modifier = Modifier
-                            .size(emblemSize * 0.72f)
-                            .clip(RoundedCornerShape(14.dp, 5.dp, 14.dp, 5.dp))
-                    )
-
-                    // Light sweep effect (passes across the emblem from left to right)
-                    if (sweepAlpha > 0.01f) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val sweepX = size.width * (sweepProgress * 2.2f - 0.6f)
-                            drawRect(
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        GlowWhite.copy(alpha = 0.40f * sweepAlpha),
-                                        HighlightLavender.copy(alpha = 0.55f * sweepAlpha),
-                                        Color.Transparent
-                                    ),
-                                    startX = sweepX - 50.dp.toPx(),
-                                    endX = sweepX + 50.dp.toPx()
-                                ),
-                                blendMode = BlendMode.Screen
-                            )
-                        }
-                    }
-                }
             }
+        }
 
-            Spacer(Modifier.height(20.dp))
+        // Energy Ignition Point & Expanding Shockwave
+        if (!isReducedMotion && (ignitionPointAlpha.value > 0.01f || waveAlpha.value > 0.01f)) {
+            Canvas(modifier = Modifier.size(260.dp)) {
+                val centerOffset = Offset(size.width / 2f, size.height / 2f)
 
-            // Migration Paths & Connectivity Indicators (Device A ⇄ Device B)
-            Box(
-                modifier = Modifier
-                    .width(emblemSize * 1.35f)
-                    .height(24.dp)
-                    .alpha(arrowsAlpha),
-                contentAlignment = Alignment.Center
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val w = size.width
-                    val h = size.height
-                    val centerY = h * 0.5f
-
-                    // Stream track
-                    drawLine(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                MidnightViolet.copy(alpha = 0.45f),
-                                ElectricViolet.copy(alpha = 0.60f),
-                                MidnightViolet.copy(alpha = 0.45f),
-                                Color.Transparent
-                            )
-                        ),
-                        start = Offset(0f, centerY),
-                        end = Offset(w, centerY),
-                        strokeWidth = 2.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-
-                    // Traveling pulse light along migration path
-                    val pulseCenter = w * ((arrowsProgress * 1.5f) % 1f)
+                // Central ignition point
+                if (ignitionPointAlpha.value > 0.01f) {
+                    val pRadius = 18.dp.toPx() * ignitionPointScale.value
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                GlowWhite,
-                                HighlightLavender,
+                                GlowWhite.copy(alpha = ignitionPointAlpha.value),
+                                CyanAccent.copy(alpha = ignitionPointAlpha.value * 0.9f),
+                                ElectricViolet.copy(alpha = ignitionPointAlpha.value * 0.6f),
                                 Color.Transparent
                             ),
-                            center = Offset(pulseCenter, centerY),
-                            radius = 12.dp.toPx()
+                            center = centerOffset,
+                            radius = pRadius
                         ),
-                        center = Offset(pulseCenter, centerY),
-                        radius = 12.dp.toPx()
-                    )
-
-                    // Left & Right Arrow Heads (Device A ⇄ Device B)
-                    val arrowSize = 5.dp.toPx()
-                    // Left Arrow (<)
-                    val leftPath = Path().apply {
-                        moveTo(10.dp.toPx() + arrowSize, centerY - arrowSize)
-                        lineTo(10.dp.toPx(), centerY)
-                        lineTo(10.dp.toPx() + arrowSize, centerY + arrowSize)
-                    }
-                    drawPath(
-                        path = leftPath,
-                        color = VividPurple.copy(alpha = arrowsAlpha),
-                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                    )
-
-                    // Right Arrow (>)
-                    val rightPath = Path().apply {
-                        moveTo(w - 10.dp.toPx() - arrowSize, centerY - arrowSize)
-                        lineTo(w - 10.dp.toPx(), centerY)
-                        lineTo(w - 10.dp.toPx() - arrowSize, centerY + arrowSize)
-                    }
-                    drawPath(
-                        path = rightPath,
-                        color = VividPurple.copy(alpha = arrowsAlpha),
-                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                        radius = pRadius,
+                        center = centerOffset
                     )
                 }
 
-                // Sub-label for directional migration connectivity
-                Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 6.dp)
-                ) {
-                    Text(
-                        text = "HOST",
-                        color = HighlightLavender.copy(alpha = 0.90f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
+                // Expanding energy wave
+                if (waveAlpha.value > 0.01f && waveRadius.value > 0.05f) {
+                    val wRadius = 75.dp.toPx() * waveRadius.value
+                    drawCircle(
+                        color = ElectricViolet.copy(alpha = waveAlpha.value * 0.75f),
+                        radius = wRadius,
+                        center = centerOffset,
+                        style = Stroke(width = 2.5.dp.toPx())
                     )
-                    Text(
-                        text = "MIGRATION",
-                        color = GlowWhite.copy(alpha = 0.95f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 1.2.sp
-                    )
-                    Text(
-                        text = "CLIENT",
-                        color = HighlightLavender.copy(alpha = 0.90f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                CyanAccent.copy(alpha = waveAlpha.value * 0.35f),
+                                Color.Transparent
+                            ),
+                            center = centerOffset,
+                            radius = wRadius
+                        ),
+                        radius = wRadius,
+                        center = centerOffset
                     )
                 }
             }
+        }
 
-            Spacer(Modifier.height(20.dp))
-
-            // Typography: "SMART MIGRATE" with upward motion and clean font
-            Column(
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Master Logo Container (15% Rounded Corners, AMOLED Black Surface, Artwork)
+            Box(
                 modifier = Modifier
-                    .offset(y = textOffsetY)
-                    .alpha(textAlpha),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .size(containerSizeDp)
+                    .alpha(logoContainerAlpha.value * exitAlpha.value)
+                    .scale(logoScale.value * exitScale.value)
+                    .background(SmBlack, shape = RoundedCornerShape(cornerRadiusDp))
+                    .padding(14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                // Official Smart Migrate Logo
+                Image(
+                    painter = painterResource(id = R.drawable.smart_migrate_logo),
+                    contentDescription = "Smart Migrate Logo",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                // Diagonal Glossy Light Sweep across the logo
+                if (!isReducedMotion && sweepProgress.value > -0.4f && sweepProgress.value < 1.4f) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(cornerRadiusDp))
+                    ) {
+                        val w = size.width
+                        val h = size.height
+                        val sweepX = w * sweepProgress.value
+                        val sweepWidth = w * 0.45f
+
+                        drawRect(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color(0x22FFFFFF),
+                                    Color(0x55A78BFA),
+                                    Color(0x3338BDF8),
+                                    Color(0x22FFFFFF),
+                                    Color.Transparent
+                                ),
+                                start = Offset(sweepX - sweepWidth / 2f, 0f),
+                                end = Offset(sweepX + sweepWidth / 2f, h)
+                            )
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Subtitle typography reveal
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .alpha(logoContainerAlpha.value * exitAlpha.value)
+                    .scale(logoScale.value * exitScale.value)
             ) {
                 Text(
-                    text = "SMART MIGRATE",
-                    color = Color(0xFFF6F4FF),
-                    fontSize = 24.sp,
+                    text = "Smart Migrate",
+                    color = Color.White,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 3.5.sp,
                     fontFamily = FontFamily.SansSerif,
-                    textAlign = TextAlign.Center
+                    letterSpacing = 0.5.sp
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "POWERED BY MIGROUTE",
-                    color = HighlightLavender.copy(alpha = 0.85f),
-                    fontSize = 12.sp,
+                    text = "PC Display Stream & Remote Controller",
+                    color = BrandVioletLight,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
-                    letterSpacing = 2.4.sp,
-                    textAlign = TextAlign.Center
+                    letterSpacing = 0.8.sp
                 )
             }
         }
 
-        // 4. Subtle Bottom Security / Platform Pillar
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 24.dp)
-                .alpha(textAlpha * 0.75f)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .background(VividPurple, CircleShape)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "SECURE CROSS-DEVICE CONNECTIVITY",
-                    color = Color(0xFF9E98C5),
-                    fontSize = 11.sp,
-                    letterSpacing = 1.5.sp,
-                    fontWeight = FontWeight.Medium
-                )
+        // Perimeter Laser Border Drawing & Orbiting Energy Particle
+        if (!isReducedMotion && logoContainerAlpha.value > 0.05f) {
+            Canvas(
+                modifier = Modifier
+                    .size(containerSizeDp)
+                    .offset(y = (-24).dp) // Align exactly with container above text
+                    .alpha(exitAlpha.value)
+                    .scale(logoScale.value * exitScale.value)
+            ) {
+                val cornerRadiusPx = cornerRadiusDp.toPx()
+                val rectPath = Path().apply {
+                    addRoundRect(
+                        RoundRect(
+                            rect = Rect(Offset.Zero, size),
+                            cornerRadius = CornerRadius(cornerRadiusPx, cornerRadiusPx)
+                        )
+                    )
+                }
+
+                val pathMeasure = PathMeasure()
+                pathMeasure.setPath(rectPath, forceClosed = true)
+                val totalLength = pathMeasure.length
+
+                if (totalLength > 10f) {
+                    // PHASE 6: Draw the perimeter border progressively (0% -> 100%)
+                    val currentDrawDist = totalLength * borderDrawProgress.value.coerceIn(0f, 1f)
+                    if (currentDrawDist > 1f) {
+                        val drawnSegment = Path()
+                        pathMeasure.getSegment(0f, currentDrawDist, drawnSegment, startWithMoveTo = true)
+                        drawPath(
+                            path = drawnSegment,
+                            brush = Brush.linearGradient(
+                                colors = listOf(ElectricViolet, CyanAccent, BrandVioletLight, ElectricViolet)
+                            ),
+                            style = Stroke(width = 2.0.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+
+                    // Static subtle base border after drawing finishes
+                    if (borderDrawProgress.value >= 0.99f) {
+                        drawPath(
+                            path = rectPath,
+                            color = ElectricViolet.copy(alpha = 0.85f),
+                            style = Stroke(width = 1.5.dp.toPx())
+                        )
+                    }
+
+                    // PHASE 7: Orbiting energy particle traveling along the border
+                    if (orbitParticleAlpha.value > 0.01f && orbitParticleProgress.value > 0.01f) {
+                        val currentPosDistance = totalLength * orbitParticleProgress.value
+                        val headOffset = pathMeasure.getPosition(currentPosDistance)
+
+                        // Glowing head particle
+                        drawCircle(
+                            color = Color.White,
+                            radius = 3.5.dp.toPx(),
+                            center = headOffset
+                        )
+                        drawCircle(
+                            color = CyanAccent,
+                            radius = 7.dp.toPx(),
+                            center = headOffset
+                        )
+                        drawCircle(
+                            color = ElectricViolet.copy(alpha = orbitParticleAlpha.value * 0.7f),
+                            radius = 14.dp.toPx(),
+                            center = headOffset
+                        )
+
+                        // Trailing arc
+                        val tailLength = totalLength * 0.16f
+                        val tailStartDist = (currentPosDistance - tailLength).coerceAtLeast(0f)
+                        val tailPath = Path()
+                        pathMeasure.getSegment(tailStartDist, currentPosDistance, tailPath, startWithMoveTo = true)
+
+                        drawPath(
+                            path = tailPath,
+                            brush = Brush.linearGradient(
+                                colors = listOf(Color.Transparent, CyanAccent.copy(alpha = orbitParticleAlpha.value)),
+                                start = pathMeasure.getPosition(tailStartDist),
+                                end = headOffset
+                            ),
+                            style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+                }
             }
         }
     }

@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <canvas id="particle-field" aria-hidden="true"></canvas>
     <a class="skip-link" href="#main">Skip to content</a>
     <div class="site-shell">
       <!-- ─── Topbar Navbar ────────────────────────────────────────────────── -->
@@ -44,10 +45,10 @@
         <!-- ─── 01 Hero Section ────────────────────────────────────────────── -->
         <section id="top" class="hero" aria-labelledby="hero-title">
           <div class="hero-copy">
-            <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Professional Device Connectivity</p>
-            <h1 id="hero-title">Move files.<br />Connect devices.<br /><em>Stay in control.</em></h1>
+            <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> 60 FPS Low-Latency Display Stream</p>
+            <h1 id="hero-title">Display Stream.<br />Mobile Remote.<br /><em>Stay in control.</em></h1>
             <p class="lede">
-              Fast, secure device-to-device connectivity for Windows and Android. Built on the memory-safe MigRoute Rust engine and Smart Migrate Protocol (SMP/1) with host-authoritative security.
+              Hardware-accelerated 60 FPS Windows display streaming directly to your phone over LAN. Control your PC with encrypted touchpad, keyboard, and presentation remote. Powered by MigRoute and SMP/1.
             </p>
             <div class="hero-actions">
               <a class="button primary" href="/downloads/windows/SmartMigrate-Setup-x64.exe" download="SmartMigrate-Setup-x64.exe">
@@ -63,8 +64,8 @@
             </div>
             <dl class="trust-line" aria-label="Platform principles">
               <div><dt>01</dt><dd>Host-approved access</dd></div>
-              <div><dt>02</dt><dd>Local-first zero cloud</dd></div>
-              <div><dt>03</dt><dd>Resumable SHA-256</dd></div>
+              <div><dt>02</dt><dd>Direct LAN 60 FPS</dd></div>
+              <div><dt>03</dt><dd>Zero Cloud Reliance</dd></div>
             </dl>
           </div>
           <div class="hero-visual" aria-label="Smart Migrate product identity">
@@ -78,36 +79,36 @@
         <!-- ─── 02 Features Section ────────────────────────────────────────── -->
         <section id="features" class="platform section" aria-labelledby="features-title">
           <div class="section-heading">
-            <p class="eyebrow">Comprehensive Platform</p>
-            <h2 id="features-title">A unified device bridge, not just file transfer.</h2>
+            <p class="eyebrow">Low-Latency Capabilities</p>
+            <h2 id="features-title">Hardware Display Streaming & Precision Remote Control</h2>
           </div>
           <div class="route-grid">
             <article class="route-card sm-glass">
               <div class="route-number">01</div>
-              <h3>Smart Connection Engine</h3>
-              <p>Intelligently chooses the best connection: Direct LAN (fastest) → P2P (internet) → TURN (reliable fallback) with 14 ms latency.</p>
-              <span class="tag active">Zero Manual Config</span>
+              <h3>60 FPS Display Stream</h3>
+              <p>Hardware-accelerated 1080p 60 FPS display mirroring from Windows to Android. Dynamic adaptive bitrate and hardware GPU decoding for ultra-low latency.</p>
+              <span class="tag active">Direct LAN • 60 FPS</span>
             </article>
 
             <article class="route-card sm-glass">
               <div class="route-number">02</div>
-              <h3>Smart Transfer Engine</h3>
-              <p>Resumable chunked file transfers, transfer queue with High/Normal/Low priority, pause/resume, and cryptographic SHA-256 verification.</p>
-              <span class="tag active">Chunked & Verified</span>
+              <h3>Precision Phone Remote</h3>
+              <p>Turn your phone into a multi-touch trackpad, physical keyboard dispatcher, media controller, presentation clicker, or game pad with sub-millisecond response.</p>
+              <span class="tag active">Sub-ms Latency</span>
             </article>
 
             <article class="route-card sm-glass">
               <div class="route-number">03</div>
-              <h3>Remote Desktop 2.0</h3>
-              <p>Hardware-accelerated 1080p 60 FPS streaming, adaptive bitrate, privacy mode screen curtain, sub-millisecond input, and multi-monitor support.</p>
-              <span class="tag active">1080p @ 60 FPS</span>
+              <h3>Orbit Radar Discovery</h3>
+              <p>Real-time LAN sonar sweeps across UDP 7889 beacon signals. Instantly discovers your Windows PC without typing IP addresses or complex routing.</p>
+              <span class="tag active">Instant Auto-Discovery</span>
             </article>
 
             <article class="route-card sm-glass">
               <div class="route-number">04</div>
-              <h3>Mobile Device Control</h3>
-              <p>Turn your Android phone into a wireless PC trackpad, keyboard, media remote, presentation slide clicker, or game controller.</p>
-              <span class="tag active">Multi-Mode Control</span>
+              <h3>Host-Authoritative Security</h3>
+              <p>End-to-end encrypted with AES-256-GCM and ephemeral session tokens. Host PC retains absolute authorization; no cloud relays or central servers.</p>
+              <span class="tag active">AES-256-GCM • DPAPI</span>
             </article>
           </div>
         </section>

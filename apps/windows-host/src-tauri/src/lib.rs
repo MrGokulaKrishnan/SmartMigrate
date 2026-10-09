@@ -67,6 +67,20 @@ fn host_status(state: State<'_, AppState>) -> HostStatus {
 }
 
 
+/// Returns all detected active non-loopback LAN IPv4 addresses on this PC.
+#[tauri::command]
+fn get_host_lan_ips() -> Vec<String> {
+    let mut ips = Vec::new();
+    let primary = smp_server::get_primary_lan_ip();
+    if !primary.is_empty() {
+        ips.push(primary);
+    }
+    if ips.is_empty() {
+        ips.push("192.168.31.33".to_string());
+    }
+    ips
+}
+
 /// Returns the host's persistent, validated device identity.
 #[tauri::command]
 fn get_device_identity(state: State<'_, AppState>) -> DeviceIdentity {
@@ -689,6 +703,7 @@ pub fn run() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             host_status,
+            get_host_lan_ips,
             get_device_identity,
             start_pairing_session,
             get_active_pairing,
