@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "beforeBundleCommand": "src-tauri\\embed_manifest.exe",
+    "beforeBundleCommand": "powershell -ExecutionPolicy Bypass -File src-tauri\\embed_manifest.ps1",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
