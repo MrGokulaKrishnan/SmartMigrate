@@ -14,12 +14,12 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
   min-width: 920px;
   min-height: 100vh;
   margin: 0;
   overflow: hidden;
-  background: var(--sm-bg-0);
+  background: transparent !important;
   user-select: none;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
@@ -75,23 +75,50 @@ input:focus, select:focus, textarea:focus {
     radial-gradient(circle at 82% 88%, rgba(56, 189, 248, 0.06) 0%, transparent 40%),
     var(--sm-bg-0);
   overflow: hidden;
+  transition: border-radius 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.app-frame.windowed {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 
+    0 20px 60px rgba(0, 0, 0, 0.85),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.app-frame.maximized {
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
 }
 
 /* ─── Windows Titlebar & Header (Liquid Frosted Glass) ─────────────────────── */
 .titlebar {
   position: relative;
   z-index: 50;
-  height: 48px;
-  min-height: 48px;
+  height: 50px;
+  min-height: 50px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 0 0 16px;
-  background: linear-gradient(180deg, rgba(20, 20, 28, 0.85) 0%, rgba(12, 12, 18, 0.9) 100%);
+  padding: 0 14px 0 18px;
+  background: linear-gradient(180deg, rgba(22, 22, 30, 0.94) 0%, rgba(14, 14, 20, 0.96) 100%);
   backdrop-filter: var(--sm-glass-blur);
   -webkit-backdrop-filter: var(--sm-glass-blur);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+  transition: border-radius 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-frame.windowed .titlebar {
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+}
+
+.app-frame.maximized .titlebar {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
 }
 
 .titlebar-left {
@@ -220,6 +247,67 @@ input:focus, select:focus, textarea:focus {
   font-family: "JetBrains Mono", monospace;
   font-size: 0.84rem;
   color: var(--sm-text-2);
+}
+
+/* ─── Proprietary Desktop Window Controls (Capsule & Rounded Buttons) ─────── */
+.window-controls-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 8px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  user-select: none;
+}
+
+.custom-win-btn {
+  width: 32px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--sm-text-2);
+  cursor: pointer;
+  transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.custom-win-btn:hover {
+  transform: translateY(-1px);
+}
+
+.custom-win-btn:active {
+  transform: scale(0.92);
+}
+
+/* Minimize button */
+.custom-win-btn.minimize:hover {
+  background: rgba(124, 77, 255, 0.18);
+  border-color: rgba(124, 77, 255, 0.4);
+  color: #c4b5fd;
+  box-shadow: 0 2px 10px rgba(124, 77, 255, 0.28);
+}
+
+/* Maximize / Restore button */
+.custom-win-btn.maximize:hover {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #7dd3fc;
+  box-shadow: 0 2px 10px rgba(56, 189, 248, 0.28);
+}
+
+/* Close button */
+.custom-win-btn.close:hover {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.9) 0%, rgba(220, 38, 38, 0.96) 100%);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  box-shadow: 0 3px 12px rgba(239, 68, 68, 0.5);
 }
 
 .window-controls {

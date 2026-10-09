@@ -218,6 +218,40 @@ export function CloseIcon({ size = 13 }: { size?: number }) {
   );
 }
 
+export function WindowMinimizeIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <line x1="3" y1="8" x2="13" y2="8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function WindowMaximizeIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <rect x="2.75" y="2.75" width="10.5" height="10.5" rx="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
+    </svg>
+  );
+}
+
+export function WindowRestoreIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <path d="M5.5 3H11C12.38 3 13.5 4.12 13.5 5.5V11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <rect x="2.5" y="5" width="8.5" height="8.5" rx="2.5" stroke="currentColor" strokeWidth="1.6" fill="var(--sm-surface-2)" />
+    </svg>
+  );
+}
+
+export function WindowCloseIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <line x1="3.5" y1="3.5" x2="12.5" y2="12.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <line x1="12.5" y1="3.5" x2="3.5" y2="12.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function ZapIcon({ size = 13, color = "currentColor" }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline-block", verticalAlign: "middle" }}>
@@ -430,9 +464,31 @@ export function App() {
     }
   };
 
-  // Window control buttons
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    invoke<boolean>("is_window_maximized")
+      .then(setIsMaximized)
+      .catch(() => {});
+    const onResize = () => {
+      invoke<boolean>("is_window_maximized")
+        .then(setIsMaximized)
+        .catch(() => {});
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Window control buttons with state tracking
   const handleMinimize = () => invoke("minimize_window").catch(() => {});
-  const handleMaximize = () => invoke("toggle_maximize").catch(() => {});
+  const handleMaximize = async () => {
+    try {
+      const state = await invoke<boolean>("toggle_maximize");
+      setIsMaximized(state);
+    } catch {
+      invoke("toggle_maximize").catch(() => {});
+    }
+  };
   const handleClose = () => invoke("close_window").catch(() => {});
 
   // Start connection stepper flow
@@ -451,7 +507,7 @@ export function App() {
 
   return (
     <div
-      className="app-frame"
+      className={`app-frame ${isMaximized ? "maximized" : "windowed"}`}
       onDragEnter={(e) => {
         e.preventDefault();
         setDragActive(true);
@@ -473,9 +529,9 @@ export function App() {
       }}
     >
       {/* ─── Window Titlebar ─────────────────────────────────────────────────── */}
-      <header className="titlebar" data-tauri-drag-region>
+      <header className="titlebar" data-tauri-drag-region onDoubleClick={handleMaximize}>
         <div className="titlebar-left" data-tauri-drag-region>
-          <div className="brand-lockup">
+          <div className="brand-lockup" data-tauri-drag-region>
             <div className="brand-emblem-container">
               <img src={brandLogoUrl} alt="Smart Migrate" className="brand-logo-img" />
             </div>
@@ -486,7 +542,7 @@ export function App() {
           </div>
 
           <div className="titlebar-search">
-            <svg className="search-icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg className="search-icon-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
@@ -500,24 +556,36 @@ export function App() {
           </div>
         </div>
 
-        <div className="titlebar-right">
+        <div className="titlebar-right" data-tauri-drag-region>
           <div className="host-identity-pill" title="Host hardware fingerprint verified by Windows DPAPI">
             <span className="status-indicator-dot"></span>
             <span className="host-fingerprint-text">{status.fingerprint}</span>
           </div>
 
-          <div className="window-controls">
-            <button className="win-btn" onClick={handleMinimize} title="Minimize" aria-label="Minimize">
-              <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+          <div className="window-controls-capsule" role="group" aria-label="Window Controls">
+            <button
+              className="custom-win-btn minimize"
+              onClick={handleMinimize}
+              title="Minimize Smart Migrate"
+              aria-label="Minimize"
+            >
+              <WindowMinimizeIcon size={12} />
             </button>
-            <button className="win-btn" onClick={handleMaximize} title="Maximize" aria-label="Maximize">
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"><rect x="0.5" y="0.5" width="9" height="9"/></svg>
+            <button
+              className="custom-win-btn maximize"
+              onClick={handleMaximize}
+              title={isMaximized ? "Restore Window" : "Maximize Window"}
+              aria-label={isMaximized ? "Restore Window" : "Maximize Window"}
+            >
+              {isMaximized ? <WindowRestoreIcon size={12} /> : <WindowMaximizeIcon size={12} />}
             </button>
-            <button className="win-btn close" onClick={handleClose} title="Close" aria-label="Close">
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2">
-                <line x1="0" y1="0" x2="10" y2="10"></line>
-                <line x1="10" y1="0" x2="0" y2="10"></line>
-              </svg>
+            <button
+              className="custom-win-btn close"
+              onClick={handleClose}
+              title="Close Smart Migrate"
+              aria-label="Close"
+            >
+              <WindowCloseIcon size={12} />
             </button>
           </div>
         </div>
