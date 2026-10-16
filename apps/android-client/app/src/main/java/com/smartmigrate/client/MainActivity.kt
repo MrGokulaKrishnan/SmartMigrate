@@ -1,6 +1,10 @@
 package com.smartmigrate.client
 
 import android.os.Bundle
+import android.os.Build
+import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.Manifest
 import android.content.pm.PackageManager
 import android.view.ViewGroup
@@ -139,7 +143,8 @@ private enum class AppDestination(val label: String, val symbol: String) {
     Home("Home", "⌂"),
     Remote("Stream", "⌁"),
     Devices("Devices", "◇"),
-    Security("Security", "⛊")
+    Security("Security", "⛊"),
+    About("About", "ⓘ")
 }
 
 class MainActivity : ComponentActivity() {
@@ -348,6 +353,12 @@ private fun SmartMigrateApp() {
                                 onNotice = { notice = it },
                                 onCheckUpdates = checkUpdatesManual
                             )
+                            AppDestination.About -> AboutScreen(
+                                updateInfo = updateInfo,
+                                onCheckUpdates = checkUpdatesManual,
+                                onOpenUpdateModal = { updateModalOpen = true },
+                                onNotice = { notice = it }
+                            )
                         }
                     }
 
@@ -517,6 +528,26 @@ private fun DestinationVectorIcon(destination: AppDestination, isSelected: Boole
                     close()
                 }
                 drawPath(shield, color, style = Stroke(s, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            }
+            AppDestination.About -> {
+                drawCircle(
+                    color = color,
+                    radius = w * 0.38f,
+                    center = Offset(w * 0.5f, h * 0.5f),
+                    style = Stroke(s)
+                )
+                drawCircle(
+                    color = color,
+                    radius = s * 0.55f,
+                    center = Offset(w * 0.5f, h * 0.33f)
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(w * 0.5f, h * 0.46f),
+                    end = Offset(w * 0.5f, h * 0.70f),
+                    strokeWidth = s,
+                    cap = StrokeCap.Round
+                )
             }
         }
     }
@@ -2637,6 +2668,371 @@ private fun SecurityScreen(
     }
 }
 
+// ─── 05 About & Software Updates Screen ──────────────────────────────────────
+@Composable
+private fun AboutScreen(
+    updateInfo: UpdateInfo?,
+    onCheckUpdates: () -> Unit,
+    onOpenUpdateModal: () -> Unit,
+    onNotice: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val versionName = remember { AppUpdater.getInstalledVersionName(context) }
+    val versionCode = remember { AppUpdater.getInstalledVersionCode(context) }
+    val packageName = context.packageName
+    var isCheckingUpdates by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // ── 01. Application Identity Hero Header ────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Surface1,
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, LineStrong)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(1.5.dp, LineStrong, RoundedCornerShape(16.dp))
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.smart_migrate_logo),
+                        contentDescription = "Smart Migrate Emblem",
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                Text(
+                    "Smart Migrate",
+                    color = TextPrimary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+
+                Spacer(Modifier.height(4.dp))
+
+                Text(
+                    "MigRoute Systems Engine • Smart Migrate Protocol (SMP/1)",
+                    color = TextMuted,
+                    fontSize = 11.5.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Brand600.copy(alpha = 0.25f))
+                            .border(1.dp, Brand400.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            "Version $versionName",
+                            color = Brand300,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Surface2)
+                            .border(1.dp, Line, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            "Build $versionCode",
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    val hasUpdate = updateInfo?.hasUpdate == true
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (hasUpdate) Warning.copy(alpha = 0.18f) else Success.copy(alpha = 0.16f))
+                            .border(1.dp, if (hasUpdate) Warning.copy(alpha = 0.5f) else Success.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            if (hasUpdate) "Update Available" else "Production Stable",
+                            color = if (hasUpdate) Warning else Success,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── 02. Version & Build Specifications ──────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Surface1,
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "VERSION & BUILD SPECIFICATIONS",
+                    color = Brand300,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+
+                AboutMetaRow("Application Version", "v$versionName")
+                AboutMetaRow("Build Number (versionCode)", "$versionCode")
+                AboutMetaRow("Package Identifier", packageName, isMono = true)
+                AboutMetaRow("Systems Engine", "MigRoute v1.4.0 (Rust)")
+                AboutMetaRow("Network Protocol", "SMP/1 (Smart Migrate Protocol)")
+                AboutMetaRow("Native Target SDK", "API 35 (Android 15)")
+                AboutMetaRow("Minimum Supported OS", "API 26 (Android 8.0 Oreo)")
+                AboutMetaRow("Native Architecture", Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a", isMono = true)
+            }
+        }
+
+        // ── 03. Software Updates & CDN Delivery ──────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Surface1,
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "SOFTWARE UPDATES & CDN DELIVERY",
+                        color = Brand300,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+
+                    if (updateInfo?.hasUpdate == true) {
+                        ProfessionalCheckBadge(size = 16.dp, badgeColor = Warning.copy(alpha = 0.2f), iconColor = Warning)
+                    } else {
+                        ProfessionalCheckBadge(size = 16.dp)
+                    }
+                }
+
+                if (updateInfo?.hasUpdate == true) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Brand600.copy(alpha = 0.15f))
+                            .border(1.dp, Brand400.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("New Version Ready:", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.width(6.dp))
+                                Text("v${updateInfo.latestVersion} (Build ${updateInfo.latestVersionCode})", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            if (updateInfo.releaseNotes.isNotBlank()) {
+                                Text(
+                                    updateInfo.releaseNotes.trim(),
+                                    color = TextSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    PrimaryButton("Install Update (v${updateInfo.latestVersion})") {
+                        onOpenUpdateModal()
+                    }
+                } else {
+                    AboutMetaRow("Update Status", "Up to Date (v$versionName)", valueColor = Success)
+                }
+
+                AboutMetaRow("Release Channel", "Official Production Channel")
+                AboutMetaRow("Distribution CDN", "smartmigrate.web.app", isMono = true)
+                AboutMetaRow("Integrity Verification", "Cryptographic SHA-256")
+
+                Spacer(Modifier.height(4.dp))
+
+                SecondaryButton(if (isCheckingUpdates) "Checking Official CDN..." else "Check for Updates") {
+                    if (!isCheckingUpdates) {
+                        scope.launch {
+                            isCheckingUpdates = true
+                            onNotice("Querying official Smart Migrate CDN...")
+                            val res = AppUpdater.checkForUpdate(context)
+                            isCheckingUpdates = false
+                            res.onSuccess { info ->
+                                if (info.hasUpdate) {
+                                    onOpenUpdateModal()
+                                    onNotice("New release available: Smart Migrate v${info.latestVersion} (Build ${info.latestVersionCode})")
+                                } else {
+                                    onNotice("Smart Migrate v${info.currentVersion} (Build ${info.currentVersionCode}) is up to date.")
+                                }
+                            }.onFailure { err ->
+                                onNotice("Update check failed: ${err.message}")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 04. Security Architecture & Host Authority ──────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Surface1,
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "SECURITY ARCHITECTURE & SYSTEM INTEGRITY",
+                    color = Brand300,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+
+                listOf(
+                    "Host Authority" to "Windows DPAPI Host Authorization Source of Truth",
+                    "Transport Encryption" to "AES-256-GCM Hardware-Accelerated",
+                    "Anti-Replay Defense" to "Strict Monotonic Sequence Protection",
+                    "Zero Credential Leakage" to "Keys and tokens excluded from persistent logs"
+                ).forEach { (title, detail) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ProfessionalCheckBadge(size = 16.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(title, color = TextPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                            Text(detail, color = TextMuted, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 05. Device Runtime & Hardware Diagnostics ───────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Surface1,
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "DEVICE RUNTIME & HARDWARE DIAGNOSTICS",
+                    color = Brand300,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+
+                AboutMetaRow("Device Model", "${Build.MANUFACTURER.uppercase()} ${Build.MODEL}")
+                AboutMetaRow("Android Version", "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+                AboutMetaRow("Hardware Board", Build.HARDWARE)
+                AboutMetaRow("Supported ABIs", Build.SUPPORTED_ABIS.joinToString(", "), isMono = true)
+
+                Spacer(Modifier.height(4.dp))
+
+                SecondaryButton("Copy System Diagnostics") {
+                    val diagSummary = buildString {
+                        appendLine("Smart Migrate System Diagnostics")
+                        appendLine("================================")
+                        appendLine("Application Version: v$versionName (Build $versionCode)")
+                        appendLine("Package Identifier: $packageName")
+                        appendLine("Protocol Version: Smart Migrate Protocol (SMP/1)")
+                        appendLine("Engine: MigRoute v1.4.0 (Rust Core)")
+                        appendLine("Target SDK: API 35 (Android 15)")
+                        appendLine("Min SDK: API 26 (Android 8.0 Oreo)")
+                        appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
+                        appendLine("OS: Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+                        appendLine("Hardware: ${Build.HARDWARE}")
+                        appendLine("ABIs: ${Build.SUPPORTED_ABIS.joinToString(", ")}")
+                        appendLine("CDN Status: ${if (updateInfo?.hasUpdate == true) "Update Available (v${updateInfo.latestVersion})" else "Verified Stable"}")
+                    }
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    val clip = ClipData.newPlainText("Smart Migrate Diagnostics", diagSummary)
+                    clipboard?.setPrimaryClip(clip)
+                    onNotice("System diagnostics copied to clipboard.")
+                }
+            }
+        }
+
+        // ── 06. Footer & Legal ──────────────────────────────────────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                "Smart Migrate Client • MigRoute Systems Core",
+                color = TextMuted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                "Host-side authorization is the source of truth for every requested capability.",
+                color = TextMuted.copy(alpha = 0.7f),
+                fontSize = 10.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun AboutMetaRow(
+    label: String,
+    value: String,
+    isMono: Boolean = false,
+    valueColor: Color = TextPrimary
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = TextSecondary, fontSize = 12.sp)
+        Text(
+            value,
+            color = valueColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = if (isMono) FontFamily.Monospace else FontFamily.Default
+        )
+    }
+}
+
 // ─── Modal Dialogs ───────────────────────────────────────────────────────────
 private suspend fun handleScannedQr(
     raw: String,
@@ -3511,7 +3907,7 @@ private fun BottomNavBar(selected: AppDestination, onSelect: (AppDestination) ->
         border = androidx.compose.foundation.BorderStroke(1.dp, Line)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceAround
         ) {
             AppDestination.entries.forEach { dest ->
@@ -3521,14 +3917,14 @@ private fun BottomNavBar(selected: AppDestination, onSelect: (AppDestination) ->
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable { onSelect(dest) }
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
                 ) {
                     DestinationVectorIcon(destination = dest, isSelected = isSel)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         dest.label,
                         color = if (isSel) Brand300 else TextMuted,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
                     )
                 }

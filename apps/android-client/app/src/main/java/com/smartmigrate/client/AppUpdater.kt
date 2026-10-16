@@ -2,6 +2,7 @@ package com.smartmigrate.client
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -23,12 +24,25 @@ import java.security.MessageDigest
 data class UpdateInfo(
     val hasUpdate: Boolean,
     val currentVersion: String,
+    val currentVersionCode: Long,
     val latestVersion: String,
+    val latestVersionCode: Long,
     val releaseNotes: String,
     val downloadUrl: String,
     val sizeBytes: Long,
     val sha256: String,
     val isMandatory: Boolean = false
+)
+
+/**
+ * Inspection result of an uninstalled APK archive.
+ */
+data class ApkInspectionResult(
+    val isValid: Boolean,
+    val packageName: String,
+    val versionName: String,
+    val versionCode: Long,
+    val failureReason: String? = null
 )
 
 /**
@@ -38,8 +52,9 @@ data class UpdateInfo(
  * 1. HTTPS manifest verification from official Smart Migrate CDN.
  * 2. Background download with accurate byte and percentage progress.
  * 3. Cryptographic SHA-256 integrity verification before staging.
- * 4. Android package identity and signature matching defense.
+ * 4. Android package identity and versionCode verification on downloaded binary.
  * 5. Official Android FileProvider + PackageInstaller flow without silent compromise.
+ * 6. Dynamic querying of installed package metadata via PackageManager.
  */
 object AppUpdater {
     private const val TAG = "SmartMigrate-Updater"
@@ -47,28 +62,65 @@ object AppUpdater {
     private const val BACKUP_MANIFEST_URL = "https://smartmigrated.web.app/releases/manifest.json"
 
     /**
+     * Retrieves the installed package info safely across Android API versions.
+     */
+    fun getInstalledPackageInfo(context: Context): PackageInfo? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to get installed package info: ${e.message}")
+            null
+        }
+    }
+
+    fun getInstalledVersionName(context: Context): String {
+        return getInstalledPackageInfo(context)?.versionName ?: "1.4.0"
+    }
+
+    fun getInstalledVersionCode(context: Context): Long {
+        val info = getInstalledPackageInfo(context) ?: return 4L
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            info.versionCode.toLong()
+        }
+    }
+
+    /**
+     * Inspects a downloaded APK archive's internal metadata before installation.
+     */
+    fun inspectApk(context: Context, apkFile: File): ApkInspectionResult {
+        if (!apkFile.exists() || apkFile.length() == 0L) {
+            return ApkInspectionResult(false, "", "", 0L, "File does not exist or is empty")
+        }
+        val archiveInfo = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+            ?: return ApkInspectionResult(false, "", "", 0L, "Corrupted or non-APK file")
+
+        val pkgName = archiveInfo.packageName ?: ""
+        val vName = archiveInfo.versionName ?: ""
+        val vCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            archiveInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            archiveInfo.versionCode.toLong()
+        }
+
+        return ApkInspectionResult(true, pkgName, vName, vCode)
+    }
+
+    /**
      * Checks the official release manifest for newer versions.
      */
     suspend fun checkForUpdate(context: Context): Result<UpdateInfo> = withContext(Dispatchers.IO) {
         try {
-            val currentPkgInfo = try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
-                } else {
-                    @Suppress("DEPRECATION")
-                    context.packageManager.getPackageInfo(context.packageName, 0)
-                }
-            } catch (e: Exception) {
-                null
-            }
-
-            val currentVersion = currentPkgInfo?.versionName ?: "1.4.0"
-            val currentVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                currentPkgInfo?.longVersionCode ?: 1L
-            } else {
-                @Suppress("DEPRECATION")
-                currentPkgInfo?.versionCode?.toLong() ?: 1L
-            }
+            val currentVersion = getInstalledVersionName(context)
+            val currentVersionCode = getInstalledVersionCode(context)
 
             val manifestJson = fetchManifestJson()
                 ?: return@withContext Result.failure(IllegalStateException("Unable to fetch update manifest from official servers."))
@@ -82,7 +134,9 @@ object AppUpdater {
                     UpdateInfo(
                         hasUpdate = false,
                         currentVersion = currentVersion,
+                        currentVersionCode = currentVersionCode,
                         latestVersion = currentVersion,
+                        latestVersionCode = currentVersionCode,
                         releaseNotes = "You are on the latest verified release.",
                         downloadUrl = "",
                         sizeBytes = 0L,
@@ -94,7 +148,7 @@ object AppUpdater {
             val latestVersion = androidPlatform.optString("version", currentVersion)
             val latestVersionCode = androidPlatform.optLong("versionCode", currentVersionCode)
             val downloadUrl = androidPlatform.optString("url")
-            val sizeBytes = androidPlatform.optLong("size", 14033899L)
+            val sizeBytes = androidPlatform.optLong("size", 14033967L)
             val sha256 = androidPlatform.optString("sha256")
             val mandatory = androidPlatform.optBoolean("mandatory", false)
             val releaseNotes = rootObj.optString(
@@ -102,15 +156,19 @@ object AppUpdater {
                 "• Real-time 60 FPS remote desktop pipeline\n• Viewport touch normalization & display scaling\n• Automated in-app update system"
             )
 
-            val hasUpdate = latestVersionCode > currentVersionCode || (latestVersion != currentVersion && latestVersion.isNotBlank())
+            // Update is available if remote versionCode > current versionCode, or remote version string is newer
+            val hasUpdate = latestVersionCode > currentVersionCode ||
+                    (latestVersion != currentVersion && latestVersion.isNotBlank())
 
-            Log.i(TAG, "Update check result: current=$currentVersion (code $currentVersionCode), latest=$latestVersion (code $latestVersionCode), available=$hasUpdate")
+            Log.i(TAG, "Update check: current=$currentVersion (code $currentVersionCode), latest=$latestVersion (code $latestVersionCode), available=$hasUpdate")
 
             Result.success(
                 UpdateInfo(
                     hasUpdate = hasUpdate,
                     currentVersion = currentVersion,
+                    currentVersionCode = currentVersionCode,
                     latestVersion = latestVersion,
+                    latestVersionCode = latestVersionCode,
                     releaseNotes = releaseNotes,
                     downloadUrl = downloadUrl,
                     sizeBytes = sizeBytes,
@@ -189,12 +247,15 @@ object AppUpdater {
     }
 
     /**
-     * Verifies SHA-256 and package signature identity, then launches official Android package installer.
+     * Verifies SHA-256 and package signature identity, inspects internal metadata,
+     * then launches official Android package installer.
      */
     fun verifyAndTriggerInstall(
         context: Context,
         apkFile: File,
-        expectedSha256: String
+        expectedSha256: String,
+        expectedVersion: String = "",
+        expectedVersionCode: Long = 0L
     ): Result<Unit> {
         try {
             if (!apkFile.exists() || apkFile.length() == 0L) {
@@ -213,14 +274,40 @@ object AppUpdater {
                 Log.i(TAG, "SHA-256 verified successfully: $computedSha256")
             }
 
-            // 2. Validate Android Package Identity
-            val archiveInfo = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
-            if (archiveInfo == null || archiveInfo.packageName != context.packageName) {
+            // 2. Validate Android Package Identity and embedded version
+            val inspection = inspectApk(context, apkFile)
+            if (!inspection.isValid) {
+                apkFile.delete()
+                return Result.failure(SecurityException("Corrupt package archive: ${inspection.failureReason}"))
+            }
+
+            if (inspection.packageName != context.packageName) {
                 apkFile.delete()
                 return Result.failure(
-                    SecurityException("Untrusted APK: Package identity '${archiveInfo?.packageName}' does not match official '${context.packageName}'")
+                    SecurityException("Untrusted APK: Package identity '${inspection.packageName}' does not match official '${context.packageName}'")
                 )
             }
+
+            val installedCode = getInstalledVersionCode(context)
+            if (inspection.versionCode < installedCode) {
+                apkFile.delete()
+                return Result.failure(
+                    IllegalStateException(
+                        "Downloaded APK has older version code (${inspection.versionCode}) than currently installed ($installedCode)."
+                    )
+                )
+            }
+
+            if (expectedVersionCode > 0L && inspection.versionCode < expectedVersionCode) {
+                apkFile.delete()
+                return Result.failure(
+                    IllegalStateException(
+                        "Downloaded APK version code (${inspection.versionCode}) does not match expected target ($expectedVersionCode)."
+                    )
+                )
+            }
+
+            Log.i(TAG, "Validated update binary: v${inspection.versionName} (code ${inspection.versionCode})")
 
             // 3. Check Unknown App Sources permission on Android 8.0+ (Oreo+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
@@ -244,7 +331,7 @@ object AppUpdater {
             }
 
             context.startActivity(installIntent)
-            Log.i(TAG, "Package installer intent dispatched for ${apkFile.name}")
+            Log.i(TAG, "Package installer intent dispatched for ${apkFile.name} (v${inspection.versionName})")
             return Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch package installer: ${e.message}", e)

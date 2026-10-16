@@ -19,6 +19,9 @@
         android:theme="@style/Theme.SmartMigrate">
         <activity
             android:name=".MainActivity"
+            android:label="Smart Migrate"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
