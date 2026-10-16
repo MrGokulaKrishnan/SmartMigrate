@@ -5,7 +5,7 @@
 //! - TCP control and streaming server on port 7890
 //! - Full protocol state machine: Discovery -> Hello -> Pairing -> Session -> Transport -> Heartbeat -> Stream
 
-use crate::capture::{capture_primary_display, SoftwareJpegEncoder, VideoEncoder};
+use crate::capture::{capture_primary_display, DesktopCaptureSession, SoftwareJpegEncoder};
 use crate::state::AppState;
 use crate::storage::{generate_crypto_token, save_trust_store};
 use migroute::identity::DevicePlatform;
@@ -700,8 +700,15 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 return;
             }
 
+            let mut capture_session = match DesktopCaptureSession::new() {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[SMP/1 Stream] Failed to initialize desktop capture session: {e}");
+                    return;
+                }
+            };
             let mut encoder = SoftwareJpegEncoder::new(65);
-            let frame_interval = Duration::from_millis(33); // ~30 fps target
+            let frame_interval = Duration::from_millis(16); // Up to ~60 fps target with adaptive sleep
 
             // Rolling 1-second FPS and bitrate measurement window
             let mut fps_window_start = Instant::now();
@@ -716,14 +723,15 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 }
 
                 let loop_start = Instant::now();
+                let now_ms = now_ms();
 
-                if let Ok(raw_frame) = capture_primary_display() {
+                if let Ok((bgra_data, width, height, cap_duration_ms)) = capture_session.capture_frame() {
                     // Count every capture attempt
                     if let Ok(mut sl) = state.active_stream.lock() {
                         sl.frames_captured += 1;
                     }
 
-                    if let Ok(encoded) = encoder.encode(&raw_frame, 65) {
+                    if let Ok((encoded_slice, enc_duration_ms)) = encoder.encode_slice(bgra_data, width, height, 65) {
                         let frame_head = format!(
                             "--smartmigrate\r\n\
                             Content-Type: image/jpeg\r\n\
@@ -731,13 +739,13 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                             X-Timestamp: {}\r\n\
                             X-Width: {}\r\n\
                             X-Height: {}\r\n\r\n",
-                            encoded.payload.len(), encoded.timestamp_ms, encoded.width, encoded.height
+                            encoded_slice.len(), now_ms, width, height
                         );
 
-                        let frame_bytes = frame_head.len() as u64 + encoded.payload.len() as u64 + 2;
+                        let frame_bytes = frame_head.len() as u64 + encoded_slice.len() as u64 + 2;
 
                         if socket.write_all(frame_head.as_bytes()).is_err()
-                            || socket.write_all(&encoded.payload).is_err()
+                            || socket.write_all(encoded_slice).is_err()
                             || socket.write_all(b"\r\n").is_err()
                             || socket.flush().is_err()
                         {
@@ -749,9 +757,9 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
 
                         if let Ok(mut stream_lock) = state.active_stream.lock() {
                             stream_lock.frames_sent += 1;
-                            stream_lock.capture_latency_ms = encoded.encode_duration_ms;
-                            stream_lock.width = encoded.width;
-                            stream_lock.height = encoded.height;
+                            stream_lock.capture_latency_ms = cap_duration_ms + enc_duration_ms;
+                            stream_lock.width = width;
+                            stream_lock.height = height;
 
                             // Update rolling measurement window every ~1 second
                             let window_elapsed = fps_window_start.elapsed();
@@ -762,7 +770,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                                     / (elapsed_secs * 1000.0);
                                 stream_lock.fps_window_frames = fps_window_frames;
                                 stream_lock.bytes_window = fps_window_bytes;
-                                stream_lock.fps_window_start_ms = now_ms();
+                                stream_lock.fps_window_start_ms = now_ms;
 
                                 fps_window_frames = 0;
                                 fps_window_bytes = 0;

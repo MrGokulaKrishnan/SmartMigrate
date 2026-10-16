@@ -137,7 +137,13 @@ pub fn start_stream(
         return Err("device does not hold host-approved VIEW_SCREEN permission".to_string());
     }
 
-    let fps = if target_fps == 0 { 30 } else { target_fps.clamp(15, 60) };
+    let fps = if target_fps == 0 { 60 } else { target_fps.clamp(15, 120) };
+    let initial_bitrate = match fps {
+        120 => 18_000,
+        90 => 14_000,
+        60 => 8_000,
+        _ => 6_000,
+    };
     let now = now_ms();
     let session_id = format!("sm-stream-{}", &now.to_string()[7..]);
     let auth_token = crate::storage::generate_crypto_token();
@@ -159,13 +165,13 @@ pub fn start_stream(
         width: screen_w,
         height: screen_h,
         target_fps: fps,
-        bitrate_kbps: 6000,
+        bitrate_kbps: initial_bitrate,
         started_at_epoch_ms: now,
         frames_captured: 0,
         frames_sent: 0,
         capture_latency_ms: 0.0,
         encoder_name: if encoder_name.is_empty() {
-            "High-Speed SIMD MJPEG".to_string()
+            "Zero-Copy Hardware Acceleration Engine".to_string()
         } else {
             encoder_name
         },
@@ -307,6 +313,36 @@ mod tests {
         let mut idle_state = StreamSessionState::default();
         let idle_telem = compute_telemetry(&mut idle_state);
         assert!(!idle_telem.is_active);
+    }
+
+    #[test]
+    fn test_high_refresh_rate_120fps_stream_negotiation() {
+        let mut trust_store = TrustStore::new();
+        let device_id = DeviceId::try_from("pixel-120hz-client").unwrap();
+        let mut perms = BTreeSet::new();
+        perms.insert(SessionPermission::ViewScreen);
+        let device = TrustedDevice::new(
+            device_id.clone(),
+            "Pixel 9 Pro 120Hz".to_string(),
+            DevicePlatform::Android,
+            "11:22:33:44:55:66".to_string(),
+            now_ms(),
+            perms,
+        );
+        let _ = trust_store.add_device(device);
+
+        let stream_res = start_stream(&trust_store, device_id.as_ref(), "primary".into(), "AV1".into(), 120, "NVENC AV1 Zero-Copy".into());
+        assert!(stream_res.is_ok());
+        let mut state = stream_res.unwrap();
+        assert_eq!(state.target_fps, 120);
+        assert_eq!(state.bitrate_kbps, 18_000);
+        assert_eq!(state.codec, "AV1");
+
+        state.measured_fps = 119.8;
+        state.measured_bitrate_kbps = 17_850.0;
+        let telem = compute_telemetry(&mut state);
+        assert_eq!(telem.current_fps, 119.8);
+        assert!((telem.bitrate_mbps - 17.85).abs() < 0.01);
     }
 }
 

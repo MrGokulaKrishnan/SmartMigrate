@@ -27,6 +27,9 @@ import com.google.zxing.BinaryBitmap
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
+import android.graphics.Bitmap
+import android.graphics.Rect
+import androidx.compose.ui.graphics.nativeCanvas
 import java.util.concurrent.Executors
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.RepeatMode
@@ -1223,6 +1226,48 @@ private fun RemoteLandingScreen(
 }
 
 // ─── 13 Dedicated Fullscreen Remote Desktop Session Screen ───────────────────
+/**
+ * Isolated GPU-accelerated surface that renders desktop video frames directly.
+ * Decoupled from parent UI state to prevent Compose tree recompositions on 60 FPS frame flow.
+ */
+@Composable
+private fun DesktopStreamSurface(
+    bitmapState: State<Bitmap?>,
+    displayScalingMode: String,
+    modifier: Modifier = Modifier
+) {
+    val bitmap = bitmapState.value ?: return
+
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val containerW = size.width
+        val containerH = size.height
+        val imgW = bitmap.width.toFloat()
+        val imgH = bitmap.height.toFloat()
+
+        if (containerW > 0f && containerH > 0f && imgW > 0f && imgH > 0f) {
+            val dstRect = if (displayScalingMode == "Fill") {
+                Rect(0, 0, containerW.toInt(), containerH.toInt())
+            } else {
+                val containerAspect = containerW / containerH
+                val imgAspect = imgW / imgH
+                if (containerAspect > imgAspect) {
+                    val dH = containerH
+                    val dW = containerH * imgAspect
+                    val dX = (containerW - dW) / 2f
+                    Rect(dX.toInt(), 0, (dX + dW).toInt(), dH.toInt())
+                } else {
+                    val dW = containerW
+                    val dH = containerW / imgAspect
+                    val dY = (containerH - dH) / 2f
+                    Rect(0, dY.toInt(), dW.toInt(), (dY + dH).toInt())
+                }
+            }
+
+            drawContext.canvas.nativeCanvas.drawBitmap(bitmap, null, dstRect, null)
+        }
+    }
+}
+
 @Composable
 private fun DedicatedRemoteSessionScreen(
     hostAddress: String,
@@ -1235,7 +1280,6 @@ private fun DedicatedRemoteSessionScreen(
     val scope = rememberCoroutineScope()
     val streamEngine = remember { StreamEngine() }
     val connState by streamEngine.state
-    val latestBitmap by streamEngine.latestBitmap
     val streamDiag by streamEngine.diagnostics
     fun nextSeq(): Long = streamEngine.nextSeq()
 
@@ -1410,21 +1454,17 @@ private fun DedicatedRemoteSessionScreen(
                     .fillMaxWidth()
                     .background(Color.Black)
             ) {
-                val frame = latestBitmap
-
-                if (frame != null && connState != StreamConnectionState.FAILED && connState != StreamConnectionState.DISCONNECTED) {
+                if (connState != StreamConnectionState.FAILED && connState != StreamConnectionState.DISCONNECTED) {
                     // Continuous Remote Stream Canvas with Viewport Normalization
                     val containerW = viewportSize.width.toFloat()
                     val containerH = viewportSize.height.toFloat()
-                    val imgW = frame.width.toFloat()
-                    val imgH = frame.height.toFloat()
 
-                    val (drawX, drawY, drawW, drawH) = remember(containerW, containerH, imgW, imgH, displayScalingMode) {
-                        if (displayScalingMode == "Fill" || containerW <= 0f || containerH <= 0f || imgW <= 0f || imgH <= 0f) {
+                    val (drawX, drawY, drawW, drawH) = remember(containerW, containerH, displayScalingMode) {
+                        if (displayScalingMode == "Fill" || containerW <= 0f || containerH <= 0f) {
                             floatArrayOf(0f, 0f, containerW.coerceAtLeast(1f), containerH.coerceAtLeast(1f))
                         } else {
                             val containerAspect = containerW / containerH
-                            val imgAspect = imgW / imgH
+                            val imgAspect = 16f / 9f // Default desktop aspect ratio
                             if (containerAspect > imgAspect) {
                                 // Pillarbox: letterboxing on left and right
                                 val dH = containerH
@@ -1575,11 +1615,9 @@ private fun DedicatedRemoteSessionScreen(
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        Image(
-                            bitmap = frame.asImageBitmap(),
-                            contentDescription = "Windows Desktop Display",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = if (displayScalingMode == "Fill") ContentScale.FillBounds else ContentScale.Fit
+                        DesktopStreamSurface(
+                            bitmapState = streamEngine.latestBitmap,
+                            displayScalingMode = displayScalingMode
                         )
 
                         // Virtual Cursor in Cursor Mode positioned precisely over desktop coordinate
