@@ -18,6 +18,7 @@ pub mod identity;
 pub mod message;
 pub mod pairing;
 pub mod session;
+pub mod stream;
 pub mod transfer;
 pub mod trust;
 
@@ -33,6 +34,11 @@ pub use clipboard::{
 };
 pub use pairing::{NumericPairingCode, PairingSession, PairingVerificationError};
 pub use session::{Session, SessionError, SessionState};
+pub use stream::{
+    packetize_frame, AdaptiveBitrateController, DatagramError, DatagramFrameReassembler,
+    DatagramHeader, ReassembledFrame, DATAGRAM_HEADER_SIZE, DATAGRAM_MAGIC,
+    MAX_DATAGRAM_PAYLOAD_SIZE,
+};
 pub use transfer::{
     compute_sha256, sanitize_file_name, TransferDirection, TransferError, TransferSession,
     TransferState, DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE, MAX_FILE_SIZE,

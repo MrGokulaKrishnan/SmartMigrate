@@ -13,8 +13,8 @@
       "version": "1.4.0",
       "url": "https://smartmigrate.web.app/downloads/windows/SmartMigrate-Setup-x64.exe",
       "fileName": "SmartMigrate-Setup-x64.exe",
-      "size": 4377266,
-      "sha256": "881f3f44070890fe52b9e7ae8787d9e212182beac2ca734fa22086895ff617c4",
+      "size": 4380678,
+      "sha256": "c0940409fed30ff21075e4e2fbac34751c24d383c95b73bf9d6ecb6016454f97",
       "signature": "SMP-SIG-WIN-1.4.0-VERIFIED-AUTH",
       "mandatory": false
     },
