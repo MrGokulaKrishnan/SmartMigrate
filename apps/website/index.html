@@ -3,400 +3,952 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Smart Migrate — professional, secure cross-device connectivity and resumable file migration for Windows and Android." />
-    <meta name="theme-color" content="#050505" />
+    <meta name="description" content="Smart Migrate — professional, secure cross-device display streaming, precision remote control, and resumable file migration for Windows and Android." />
+    <meta name="theme-color" content="#000000" />
     <meta name="color-scheme" content="dark" />
-    <title>Smart Migrate — Move files. Connect devices. Stay in control.</title>
+    <title>Smart Migrate — Display Stream. Mobile Remote. Stay in control.</title>
 
-    <!-- Unique Favicon -->
+    <!-- Unique Favicons -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <link rel="apple-touch-icon" href="smart_migrate_logo.png" />
 
-    <!-- Style Tokens & Unified Design System -->
+    <!-- Style Tokens & AMOLED Black Design System -->
     <link rel="stylesheet" href="tokens.css" />
     <link rel="stylesheet" href="liquid-glass.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <!-- Background Animated Particle Canvas -->
     <canvas id="particle-field" aria-hidden="true"></canvas>
+
     <a class="skip-link" href="#main">Skip to content</a>
+
     <div class="site-shell">
-      <!-- ─── Topbar Navbar ────────────────────────────────────────────────── -->
-      <header class="topbar sm-glass-nav" aria-label="Primary navigation">
-        <a class="brand" href="#top" aria-label="Smart Migrate home">
-          <img src="smart_migrate_logo.png" alt="Smart Migrate" />
+      <!-- ─── 00 Sticky Beta Announcement Banner (KnowToMigrate Pattern) ─────── -->
+      <aside class="announcement-banner" aria-label="Release Announcement">
+        <strong>Smart Migrate 1.4.0</strong> — Standalone 60 FPS low-latency display streaming, mobile remote control, and encrypted local file transfer.
+        <a href="#downloads">Download official release →</a>
+      </aside>
+
+      <!-- ─── Topbar Sticky Glass Navbar ────────────────────────────────────── -->
+      <header class="topbar" id="navbar" role="banner" aria-label="Primary navigation">
+        <a class="brand" href="#hero" aria-label="Smart Migrate home">
+          <img src="smart_migrate_logo.png" alt="Smart Migrate Logo" width="34" height="34" />
           <span>Smart Migrate</span>
         </a>
-        <button class="menu-button" aria-controls="navigation" aria-expanded="false">Menu</button>
+
+        <button class="menu-button" aria-controls="navigation" aria-expanded="false" aria-label="Toggle navigation menu">
+          Menu
+        </button>
+
         <nav id="navigation" class="navigation" aria-label="Main navigation">
-          <a href="#features">Features</a>
-          <a href="#downloads">Downloads</a>
-          <a href="#security">Security</a>
-          <a href="#docs">Documentation</a>
-          <a href="#faq">FAQ</a>
-          <a class="button primary btn-sm-nav" href="#downloads">
+          <a class="nav-link" href="#features">Features</a>
+          <a class="nav-link" href="#preview">App Preview</a>
+          <a class="nav-link" href="#architecture">Architecture</a>
+          <a class="nav-link" href="#connectivity">Connectivity</a>
+          <a class="nav-link" href="#workflow">How It Works</a>
+          <a class="nav-link" href="#security">Security</a>
+          <a class="nav-link" href="#downloads">Downloads</a>
+          <a class="nav-link" href="#faq">FAQ</a>
+          <a class="btn btn-primary btn-sm nav-cta-btn" href="#downloads">
             <span>Download v1.4.0</span>
           </a>
         </nav>
       </header>
 
       <main id="main">
-        <!-- ─── 01 Hero Section ────────────────────────────────────────────── -->
-        <section id="top" class="hero" aria-labelledby="hero-title">
-          <div class="hero-copy">
-            <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> 60 FPS Low-Latency Display Stream</p>
-            <h1 id="hero-title">Display Stream.<br />Mobile Remote.<br /><em>Stay in control.</em></h1>
-            <p class="lede">
+        <!-- ─── 01 Hero Section (KnowToMigrate Layout Pattern) ───────────────── -->
+        <section class="hero-section" id="hero" aria-labelledby="hero-title">
+          <div class="hero-container">
+            <!-- 120px Glowing Emblem -->
+            <div class="hero-emblem-wrap">
+              <img
+                src="smart_migrate_logo.png"
+                alt="Smart Migrate Identity"
+                class="hero-emblem"
+                width="120"
+                height="120"
+              />
+            </div>
+
+            <!-- Public Release Badge -->
+            <div class="pill-badge">
+              PRODUCTION RELEASE v1.4.0
+            </div>
+
+            <!-- Headline -->
+            <h1 class="hero-title" id="hero-title">
+              Display Stream. Mobile Remote.<br />
+              <span class="gradient-text">Stay in control.</span>
+            </h1>
+
+            <!-- Description -->
+            <p class="hero-desc">
               Hardware-accelerated 60 FPS Windows display streaming directly to your phone over LAN. Control your PC with encrypted touchpad, keyboard, and presentation remote. Powered by MigRoute and SMP/1.
             </p>
-            <div class="hero-actions">
-              <a class="button primary" href="/downloads/windows/SmartMigrate-Setup-x64.exe" download="SmartMigrate-Setup-x64.exe">
-                <span>Download for Windows</span>
-                <svg class="icon-arrow-down" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <line x1="7" y1="2" x2="7" y2="12"></line>
-                  <polyline points="3.5 8.5 7 12 10.5 8.5"></polyline>
-                </svg>
-              </a>
-              <a class="button secondary" href="/downloads/android/SmartMigrate.apk" download="SmartMigrate.apk">
-                <span>Get Android App</span>
-              </a>
-            </div>
-            <dl class="trust-line" aria-label="Platform principles">
-              <div><dt>01</dt><dd>Host-approved access</dd></div>
-              <div><dt>02</dt><dd>Direct LAN 60 FPS</dd></div>
-              <div><dt>03</dt><dd>Zero Cloud Reliance</dd></div>
-            </dl>
-          </div>
-          <div class="hero-visual" aria-label="Smart Migrate product identity">
-            <div class="logo-stage sm-glass" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px;">
-              <svg width="220" height="220" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="120" cy="120" r="100" fill="url(#heroGlow)" opacity="0.15" />
-                <circle cx="120" cy="120" r="88" stroke="url(#heroBorder)" stroke-width="1.5" stroke-dasharray="6 6" />
-                
-                <rect x="40" y="45" width="160" height="100" rx="10" fill="#0c0a1a" stroke="#7C4DFF" stroke-width="2.5" />
-                <rect x="48" y="53" width="144" height="84" rx="6" fill="#050508" />
-                
-                <path d="M105 145L95 175H145L135 145" stroke="#7C4DFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-                <line x1="80" y1="175" x2="160" y2="175" stroke="#7C4DFF" stroke-width="3" stroke-linecap="round" />
 
-                <path d="M70 95C90 75 150 75 170 95" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" opacity="0.7" />
-                <path d="M85 105C100 90 140 90 155 105" stroke="#A78BFA" stroke-width="2" stroke-linecap="round" opacity="0.9" />
+            <!-- Actions & Platform Detection -->
+            <div class="hero-actions-container">
+              <div class="hero-btn-row">
+                <a
+                  class="btn btn-primary"
+                  id="hero-primary-cta"
+                  href="/downloads/windows/SmartMigrate-Setup-x64.exe"
+                  download="SmartMigrate-Setup-x64.exe"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span id="hero-cta-text">Download for Windows</span>
+                </a>
 
-                <rect x="145" y="90" width="55" height="95" rx="9" fill="#080714" stroke="#38BDF8" stroke-width="2.5" />
-                <rect x="151" y="100" width="43" height="75" rx="5" fill="#050508" />
-                
-                <circle cx="172.5" cy="137.5" r="8" fill="#7C4DFF" fill-opacity="0.3" stroke="#A78BFA" stroke-width="1.5" />
-                <path d="M172.5 133.5V137.5L175 140" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                <a class="btn btn-secondary" href="#preview">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="3" y1="9" x2="21" y2="9"></line>
+                    <line x1="9" y1="21" x2="9" y2="9"></line>
+                  </svg>
+                  <span>Live App Preview</span>
+                </a>
 
-                <defs>
-                  <radialGradient id="heroGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(120 120) scale(100)">
-                    <stop stop-color="#7C4DFF" />
-                    <stop offset="1" stop-color="#38BDF8" stop-opacity="0" />
-                  </radialGradient>
-                  <linearGradient id="heroBorder" x1="20" y1="20" x2="220" y2="220" gradientUnits="userSpaceOnUse">
-                    <stop stop-color="#7C4DFF" />
-                    <stop offset="0.5" stop-color="#38BDF8" />
-                    <stop offset="1" stop-color="#A78BFA" />
-                  </linearGradient>
-                </defs>
-              </svg>
-              <div style="margin-top: 14px; font-size: 0.82rem; font-weight: 700; color: #A78BFA; letter-spacing: 0.08em; text-transform: uppercase;">
-                60 FPS Direct Stream Engine
+                <a
+                  class="btn btn-ghost"
+                  href="https://github.com/MrGokulaKrishnan/KnowToMigrate"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path>
+                  </svg>
+                  <span>View Source</span>
+                </a>
+              </div>
+
+              <!-- Suggested Platform Pill -->
+              <div class="detected-platform-pill">
+                <span class="status-indicator-dot" aria-hidden="true"></span>
+                <span>Suggested for your device: <strong id="hero-detected-platform">Windows x64</strong></span>
               </div>
             </div>
-            <div class="engine-chip"><span class="pulse" aria-hidden="true"></span> Powered by <strong>MigRoute Core</strong></div>
+
+            <!-- Trust Pills -->
+            <div class="trust-pills-row" aria-label="System Guarantees">
+              <span class="trust-item">
+                <svg class="trust-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                Host-Authorized Access
+              </span>
+              <span class="trust-item">
+                <svg class="trust-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                Direct LAN 60 FPS
+              </span>
+              <span class="trust-item">
+                <svg class="trust-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                AES-256-GCM Encryption
+              </span>
+              <span class="trust-item">
+                <svg class="trust-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                Zero Cloud Reliance
+              </span>
+              <span class="trust-item">
+                <svg class="trust-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                SHA-256 Merkle Integrity
+              </span>
+              <span class="trust-item">
+                <svg class="trust-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                SMP/1 Protocol
+              </span>
+            </div>
           </div>
         </section>
 
-        <!-- ─── 02 Features Section ────────────────────────────────────────── -->
-        <section id="features" class="platform section" aria-labelledby="features-title">
-          <div class="section-heading">
-            <p class="eyebrow">Low-Latency Capabilities</p>
-            <h2 id="features-title">Hardware Display Streaming & Precision Remote Control</h2>
+        <!-- ─── 02 Desktop Product Preview Mock Section ─────────────────────── -->
+        <section class="product-preview-section" id="preview" aria-labelledby="preview-title">
+          <div class="section-heading" style="text-align: center; margin-bottom: 2rem;">
+            <p class="section-eyebrow">Interface Preview</p>
+            <h2 class="section-heading-title" id="preview-title">Native Desktop Experience & Mobile Client</h2>
+            <p class="section-heading-desc">
+              Custom borderless window chrome with precision rounded corners, active transfer queue, and low-latency viewport.
+            </p>
           </div>
-          <div class="route-grid">
-            <article class="route-card sm-glass">
-              <div class="route-number">01</div>
+
+          <div class="preview-window-frame">
+            <!-- Window Titlebar with Custom Controls -->
+            <div class="preview-titlebar">
+              <div class="preview-brand-group">
+                <img src="smart_migrate_logo.png" alt="" class="preview-brand-logo" width="22" height="22" />
+                <span class="preview-brand-name">Smart Migrate</span>
+                <span class="preview-brand-tag">v1.4.0</span>
+              </div>
+              <div class="preview-center-badge">
+                <span class="status-indicator-dot"></span>
+                <span>Direct LAN • 192.168.1.104 • 0.4 ms RTT</span>
+              </div>
+              <div class="preview-window-controls" aria-label="Window management controls">
+                <button type="button" class="preview-control-btn" title="Minimize">−</button>
+                <button type="button" class="preview-control-btn" title="Maximize">□</button>
+                <button type="button" class="preview-control-btn" title="Close" style="color: #ef4444;">×</button>
+              </div>
+            </div>
+
+            <!-- Window Workspace -->
+            <div class="preview-window-body">
+              <!-- Left Navigation Sidebar -->
+              <aside class="preview-sidebar" aria-label="Workspace navigation">
+                <div class="preview-nav-category">Workspaces</div>
+                <div class="preview-nav-item active">
+                  <span>Remote Desktop</span>
+                  <span class="preview-badge-pill">60 FPS</span>
+                </div>
+                <div class="preview-nav-item">
+                  <span>Transfer Queue</span>
+                  <span class="preview-badge-pill">3 Active</span>
+                </div>
+                <div class="preview-nav-item">
+                  <span>Phone Trackpad</span>
+                </div>
+                <div class="preview-nav-item">
+                  <span>Orbit Radar</span>
+                </div>
+
+                <div class="preview-nav-category" style="margin-top: 1rem;">Security</div>
+                <div class="preview-nav-item">
+                  <span>Host Authorizations</span>
+                </div>
+                <div class="preview-nav-item">
+                  <span>DPAPI Keystore</span>
+                </div>
+              </aside>
+
+              <!-- Main Canvas & Stream HUD -->
+              <div class="preview-content-workspace">
+                <div class="preview-hud-bar">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="status-indicator-dot"></span>
+                    <span>Display Mirror: 1920×1080 @ 60 FPS • Bitrate: 18.4 Mbps • Codec: H.264 Hardware</span>
+                  </div>
+                  <span class="preview-badge-pill" style="background: rgba(16, 185, 129, 0.18); color: #34d399;">59.9 FPS STABLE</span>
+                </div>
+
+                <div class="preview-split-stage">
+                  <!-- Stream Viewport Canvas -->
+                  <div class="preview-remote-viewport">
+                    <div class="preview-screen-header">
+                      <span>Primary Display (DP-1) — Hardware Accelerated Low Latency</span>
+                      <span>Input: Touchpad & Keys</span>
+                    </div>
+                    <div class="preview-screen-canvas">
+                      <svg width="240" height="140" viewBox="0 0 240 140" fill="none" opacity="0.35">
+                        <rect x="20" y="20" width="80" height="50" rx="4" fill="#7C4DFF" />
+                        <rect x="110" y="20" width="110" height="90" rx="4" fill="#38BDF8" opacity="0.6" />
+                        <rect x="20" y="80" width="80" height="30" rx="4" fill="#A78BFA" opacity="0.4" />
+                      </svg>
+                      <div class="preview-cursor-indicator" title="Sub-millisecond Remote Pointer"></div>
+                    </div>
+                  </div>
+
+                  <!-- Real-Time Transfer Queue Panel -->
+                  <div class="preview-transfer-panel">
+                    <div class="preview-queue-header">
+                      <span>Transfer Queue (MigRoute Engine)</span>
+                      <span style="color: #a78bfa;">Streaming 1 MB Chunks</span>
+                    </div>
+
+                    <div class="preview-queue-card">
+                      <div style="display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 2px;">
+                        <span>Project_Dataset_Archive.zip</span>
+                        <span style="color: #c4b5fd;">78%</span>
+                      </div>
+                      <div class="preview-progress-bar">
+                        <div class="preview-progress-fill" style="width: 78%;"></div>
+                      </div>
+                      <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--sm-text-3);">
+                        <span>12.4 GB / 15.9 GB</span>
+                        <span>42.8 MB/s • ETA 00:48</span>
+                      </div>
+                    </div>
+
+                    <div class="preview-queue-card" style="opacity: 0.75;">
+                      <div style="display: flex; justify-content: space-between; font-weight: 500;">
+                        <span>Presentation_Deck_4K.mov</span>
+                        <span style="font-size: 0.72rem; color: #fbbf24;">Waiting • High Priority</span>
+                      </div>
+                      <div style="font-size: 0.72rem; color: var(--sm-text-3); margin-top: 4px;">2.4 GB — Scheduled</div>
+                    </div>
+
+                    <div class="preview-queue-card" style="opacity: 0.6;">
+                      <div style="display: flex; justify-content: space-between; font-weight: 500;">
+                        <span>System_Image_Encrypted.tar</span>
+                        <span style="font-size: 0.72rem; color: var(--sm-text-3);">Waiting • Normal</span>
+                      </div>
+                      <div style="font-size: 0.72rem; color: var(--sm-text-3); margin-top: 4px;">8.1 GB — In Queue</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 03 Architecture & System Readiness (KnowToMigrate Pattern) ─── -->
+        <section class="readiness-section" id="architecture" aria-labelledby="readiness-title">
+          <div class="readiness-card">
+            <h2 id="readiness-title">Smart Migrate Architecture & Readiness (MigRoute Core)</h2>
+            <div class="readiness-grid">
+              <div>
+                <p class="readiness-column-title">Production Ready</p>
+                <ul class="readiness-list">
+                  <li>— MigRoute systems engine in 100% memory-safe Rust</li>
+                  <li>— SMP/1 binary envelope protocol framing (monotonic seq)</li>
+                  <li>— AES-256-GCM authenticated session encryption</li>
+                  <li>— SHA-256 Merkle tree chunk verification</li>
+                  <li>— UDP Orbit Radar auto-discovery (port 7889)</li>
+                  <li>— TCP chunk streaming & display transport (port 7890)</li>
+                  <li>— Resumable 1 MB chunk transfer engine with checkpoints</li>
+                  <li>— Windows WPF & Win32 standalone host (.exe & .msi)</li>
+                  <li>— Android Jetpack Compose native client (.apk)</li>
+                </ul>
+              </div>
+
+              <div>
+                <p class="readiness-column-title">In Active Development</p>
+                <ul class="readiness-list">
+                  <li>— Dynamic adaptive bitrate throttling on packet loss</li>
+                  <li>— Zero-touch pairing handshake and trusted keystore</li>
+                  <li>— STUN/TURN encrypted relay for cross-network WAN</li>
+                  <li>— Multi-monitor virtual viewport dynamic switching</li>
+                  <li>— Per-transfer speed limiter & bandwidth priority profiles</li>
+                </ul>
+              </div>
+
+              <div>
+                <p class="readiness-column-title">Planned Platforms</p>
+                <ul class="readiness-list">
+                  <li>— macOS native display client (.dmg)</li>
+                  <li>— Linux headless streaming & file daemon</li>
+                  <li>— Direct Wi-Fi P2P Group Owner peer negotiation</li>
+                  <li>— iOS presentation remote & viewer client</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 04 Device Connectivity Section (How Connections Work) ────────── -->
+        <section class="connectivity-section" id="connectivity" aria-labelledby="connectivity-title">
+          <p class="section-eyebrow">Network Transports</p>
+          <h2 class="section-heading-title" id="connectivity-title">How connections work</h2>
+          <p class="section-heading-desc">
+            Multiple transport layers tailored for high throughput, minimal latency, and zero cloud dependency.
+          </p>
+
+          <div class="connectivity-grid">
+            <div class="connectivity-card">
+              <div class="connectivity-icon-box">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                  <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                  <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                  <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                </svg>
+              </div>
+              <div class="connectivity-card-header">
+                <h3>Same Wi-Fi</h3>
+                <span class="status-pill active">Active</span>
+              </div>
+              <p>Both devices on the same local subnet. UDP broadcast discovers peers automatically at full line speed (0.4 ms RTT). No internet required.</p>
+            </div>
+
+            <div class="connectivity-card">
+              <div class="connectivity-icon-box">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="2"></circle>
+                  <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path>
+                </svg>
+              </div>
+              <div class="connectivity-card-header">
+                <h3>Wi-Fi Hotspot</h3>
+                <span class="status-pill active">Active</span>
+              </div>
+              <p>One device activates a mobile hotspot; the other connects directly. Ideal for field transfers, zero router dependencies, and isolated connections.</p>
+            </div>
+
+            <div class="connectivity-card">
+              <div class="connectivity-icon-box">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                </svg>
+              </div>
+              <div class="connectivity-card-header">
+                <h3>Direct P2P</h3>
+                <span class="status-pill active">Active</span>
+              </div>
+              <p>Peer-to-peer TCP channel negotiates direct socket connectivity without intermediary hops. Maximum transfer rate limited only by device hardware.</p>
+            </div>
+
+            <div class="connectivity-card">
+              <div class="connectivity-icon-box">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                </svg>
+              </div>
+              <div class="connectivity-card-header">
+                <h3>Internet Relay</h3>
+                <span class="status-pill planned">Planned</span>
+              </div>
+              <p>Encrypted STUN/TURN fallback relay for cross-network scenarios. Fully optional — all local network streaming and file transfers function offline.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 05 How It Works (4-Step User Journey) ────────────────────────── -->
+        <section class="workflow-section" id="workflow" aria-labelledby="workflow-title">
+          <div class="section-heading" style="text-align: center; margin-bottom: 2.5rem;">
+            <p class="section-eyebrow">User Workflow</p>
+            <h2 class="section-heading-title" id="workflow-title">Pair device → Connect securely → Control & Transfer</h2>
+            <p class="section-heading-desc">
+              Connect two devices in seconds with zero complicated router port forwarding or cloud sign-in.
+            </p>
+          </div>
+
+          <div class="workflow-grid">
+            <div class="workflow-card">
+              <div class="workflow-step-number">01</div>
+              <h3>Discover Device</h3>
+              <p>Orbit Radar sweeps across UDP port 7889 beacon signals to automatically discover your Windows host PC without typing IP addresses.</p>
+            </div>
+
+            <div class="workflow-card">
+              <div class="workflow-step-number">02</div>
+              <h3>Cryptographic Pair</h3>
+              <p>Confirm the 6-digit numeric token or scan the on-screen QR code. Host PC verifies authorization with a strict 3-attempt brute-force barrier.</p>
+            </div>
+
+            <div class="workflow-card">
+              <div class="workflow-step-number">03</div>
+              <h3>Direct 60 FPS Stream</h3>
+              <p>Experience silky smooth 60 FPS Windows display mirroring on your Android phone with sub-millisecond multi-touch trackpad control.</p>
+            </div>
+
+            <div class="workflow-card">
+              <div class="workflow-step-number">04</div>
+              <h3>Resumable Transfer</h3>
+              <p>Send multi-gigabyte folders and videos with chunk checkpoints. If Wi-Fi flickers, transfer automatically resumes right where it left off.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── 06 Core Capabilities Feature Grid ───────────────────────────── -->
+        <section class="features-section" id="features" aria-labelledby="features-title">
+          <div class="section-heading" style="text-align: center; margin-bottom: 3rem;">
+            <p class="section-eyebrow">Core Capabilities</p>
+            <h2 class="section-heading-title" id="features-title">Hardware Streaming & Resumable File Transfer</h2>
+            <p class="section-heading-desc">
+              Implemented in the MigRoute Rust engine and native platform clients — designed for enterprise reliability.
+            </p>
+          </div>
+
+          <div class="features-grid">
+            <!-- 01 -->
+            <article class="glass-card">
+              <div class="feature-top-row">
+                <div class="feature-icon-box">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                  </svg>
+                </div>
+                <span class="feature-tag-badge">Direct LAN • 60 FPS</span>
+              </div>
               <h3>60 FPS Display Stream</h3>
               <p>Hardware-accelerated 1080p 60 FPS display mirroring from Windows to Android. Dynamic adaptive bitrate and hardware GPU decoding for ultra-low latency.</p>
-              <span class="tag active">Direct LAN • 60 FPS</span>
             </article>
 
-            <article class="route-card sm-glass">
-              <div class="route-number">02</div>
+            <!-- 02 -->
+            <article class="glass-card">
+              <div class="feature-top-row">
+                <div class="feature-icon-box">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                  </svg>
+                </div>
+                <span class="feature-tag-badge">Sub-ms Latency</span>
+              </div>
               <h3>Precision Phone Remote</h3>
-              <p>Turn your phone into a multi-touch trackpad, physical keyboard dispatcher, media controller, presentation clicker, or game pad with sub-millisecond response.</p>
-              <span class="tag active">Sub-ms Latency</span>
+              <p>Turn your phone into a multi-touch trackpad, physical keyboard dispatcher, presentation clicker, or game pad with sub-millisecond response.</p>
             </article>
 
-            <article class="route-card sm-glass">
-              <div class="route-number">03</div>
+            <!-- 03 -->
+            <article class="glass-card">
+              <div class="feature-top-row">
+                <div class="feature-icon-box">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                  </svg>
+                </div>
+                <span class="feature-tag-badge">Resumable • 1 MB</span>
+              </div>
+              <h3>Streaming Chunks & Queue</h3>
+              <p>Files stream in discrete 1 MB chunks without buffering entirely in RAM. Prioritize, pause, resume, and manage large file batches smoothly.</p>
+            </article>
+
+            <!-- 04 -->
+            <article class="glass-card">
+              <div class="feature-top-row">
+                <div class="feature-icon-box">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                </div>
+                <span class="feature-tag-badge">AES-256-GCM</span>
+              </div>
+              <h3>AES-256-GCM Encryption</h3>
+              <p>All display packets, remote keystrokes, and file chunks are encrypted with ephemeral session keys derived via X25519 ECDH key exchange.</p>
+            </article>
+
+            <!-- 05 -->
+            <article class="glass-card">
+              <div class="feature-top-row">
+                <div class="feature-icon-box">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                  </svg>
+                </div>
+                <span class="feature-tag-badge">Bit-Perfect</span>
+              </div>
+              <h3>SHA-256 Integrity Verification</h3>
+              <p>Every chunk carries a SHA-256 digest. A Merkle root over all chunks is cryptographically validated after transmission finishes on both sides.</p>
+            </article>
+
+            <!-- 06 -->
+            <article class="glass-card">
+              <div class="feature-top-row">
+                <div class="feature-icon-box">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="m4.93 4.93 4.24 4.24"></path>
+                    <path d="m14.83 9.17 4.24-4.24"></path>
+                    <path d="m14.83 14.83 4.24 4.24"></path>
+                    <path d="m9.17 14.83-4.24 4.24"></path>
+                    <circle cx="12" cy="12" r="4"></circle>
+                  </svg>
+                </div>
+                <span class="feature-tag-badge">UDP 7889 Auto</span>
+              </div>
               <h3>Orbit Radar Discovery</h3>
               <p>Real-time LAN sonar sweeps across UDP 7889 beacon signals. Instantly discovers your Windows PC without typing IP addresses or complex routing.</p>
-              <span class="tag active">Instant Auto-Discovery</span>
             </article>
 
-            <article class="route-card sm-glass">
-              <div class="route-number">04</div>
+            <!-- 07 -->
+            <article class="glass-card">
+              <div class="feature-top-row">
+                <div class="feature-icon-box">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  </svg>
+                </div>
+                <span class="feature-tag-badge">Host Source of Truth</span>
+              </div>
               <h3>Host-Authoritative Security</h3>
-              <p>End-to-end encrypted with AES-256-GCM and ephemeral session tokens. Host PC retains absolute authorization; no cloud relays or central servers.</p>
-              <span class="tag active">AES-256-GCM • DPAPI</span>
+              <p>The host machine retains ultimate control. Every requested capability (screen, mouse, keyboard, files) must be explicitly approved by the host operator.</p>
+            </article>
+
+            <!-- 08 -->
+            <article class="glass-card">
+              <div class="feature-top-row">
+                <div class="feature-icon-box">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </div>
+                <span class="feature-tag-badge">Zero Secrets in Logs</span>
+              </div>
+              <h3>Strict Privacy Enforcement</h3>
+              <p>Zero device-private keys, pairing tokens, passwords, screen frames, or raw user file paths ever reach application logs or telemetry.</p>
             </article>
           </div>
         </section>
 
-        <!-- ─── 03 Downloads Section ───────────────────────────────────────── -->
-        <section id="downloads" class="downloads section" aria-labelledby="downloads-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Official Releases</p>
-              <h2 id="downloads-title">Production releases for Windows & Android</h2>
-            </div>
-            <div class="os-detect-banner sm-glass">
-              <span class="status-dot" aria-hidden="true"></span>
-              <span id="detected-os-label">Detecting platform...</span>
-            </div>
+        <!-- ─── 07 Enterprise Security Section ──────────────────────────────── -->
+        <section class="security-section" id="security" aria-labelledby="security-title">
+          <div class="section-heading" style="text-align: center; margin-bottom: 2.5rem;">
+            <p class="section-eyebrow">Enterprise Security</p>
+            <h2 class="section-heading-title" id="security-title">Security is the foundation, not an afterthought.</h2>
+            <p class="section-heading-desc">
+              Engineered with zero-trust architecture, host authorization, and robust defensive protocol barriers.
+            </p>
           </div>
 
-          <div class="download-featured sm-glass" id="featured-download">
-            <div class="featured-copy">
-              <span class="badge featured-badge" id="featured-badge">Recommended for your device</span>
-              <h3 id="featured-title">Smart Migrate Windows Host</h3>
-              <p id="featured-desc">Secure, host-authoritative desktop application powered by the MigRoute systems engine. Includes custom borderless window chrome, transfer queue, remote desktop, and DPAPI trust store.</p>
-              <div class="featured-meta">
-                <span><strong>Version:</strong> v1.4.0</span>
-                <span><strong>Arch:</strong> <span id="featured-arch">x86_64</span></span>
-                <span><strong>Size:</strong> <span id="featured-size">4.7 MB</span></span>
-                <span><strong>Date:</strong> October 2026</span>
-              </div>
-              <div class="hash-row">
-                <code>SHA-256: <span id="featured-hash">0a3091a621c9072371834a008c2a744abee6f62119979b72039c4f339d3b2052</span></code>
-              </div>
-              <div class="featured-actions">
-                <a class="button primary" id="featured-action-btn" href="/downloads/windows/SmartMigrate-Setup-x64.exe" download="SmartMigrate-Setup-x64.exe">
-                  <span id="featured-btn-text">Download for Windows (.exe)</span>
-                  <svg class="icon-arrow-down" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <line x1="7" y1="2" x2="7" y2="12"></line>
-                    <polyline points="3.5 8.5 7 12 10.5 8.5"></polyline>
-                  </svg>
-                </a>
-                <span class="build-badge">Official Release v1.4.0</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="platform-filter" role="tablist" aria-label="Filter platforms">
-            <button type="button" class="filter-btn active" data-filter="all">All platforms</button>
-            <button type="button" class="filter-btn" data-filter="windows">Windows</button>
-            <button type="button" class="filter-btn" data-filter="android">Android</button>
-          </div>
-
-          <div class="download-matrix" id="download-matrix">
-            <!-- Windows EXE -->
-            <article class="download-card sm-glass" data-platform="windows">
-              <div class="card-head">
-                <div class="platform-icon windows" aria-hidden="true">
-                  <svg class="platform-vector" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M2 3.55L10.08 2.45V11.23H2V3.55ZM11.45 2.25L22 0.8V11.23H11.45V2.25ZM2 12.63H10.08V21.45L2 20.35V12.63ZM11.45 12.63H22V23.1L11.45 21.65V12.63Z"></path>
-                  </svg>
-                </div>
-                <div>
-                  <h3>Windows Installer</h3>
-                  <span class="file-format">.exe (NSIS Setup)</span>
-                </div>
-              </div>
-              <p>Standard Windows host installer with desktop shortcut, Start Menu integration, and clean uninstaller.</p>
-              <dl class="card-meta">
-                <div><dt>Version</dt><dd>1.4.0</dd></div>
-                <div><dt>Architecture</dt><dd>x64 (64-bit)</dd></div>
-                <div><dt>File Size</dt><dd id="win-exe-size">4.2 MB</dd></div>
-              </dl>
-              <div class="card-hash">
-                <small>SHA-256 Checksum</small>
-                <code id="win-exe-hash">881f3f44070890fe52b9e7ae8787d9e212182beac2ca734fa22086895ff617c4</code>
-              </div>
-              <div class="card-action">
-                <a class="button secondary full-width" id="btn-win-exe" href="/downloads/windows/SmartMigrate-Setup-x64.exe" download="SmartMigrate-Setup-x64.exe">
-                  <span>Download .exe</span>
-                </a>
-              </div>
-            </article>
-
-            <!-- Windows MSI -->
-            <article class="download-card sm-glass" data-platform="windows">
-              <div class="card-head">
-                <div class="platform-icon windows" aria-hidden="true">
-                  <svg class="platform-vector" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M2 3.55L10.08 2.45V11.23H2V3.55ZM11.45 2.25L22 0.8V11.23H11.45V2.25ZM2 12.63H10.08V21.45L2 20.35V12.63ZM11.45 12.63H22V23.1L11.45 21.65V12.63Z"></path>
-                  </svg>
-                </div>
-                <div>
-                  <h3>Windows Enterprise</h3>
-                  <span class="file-format">.msi (Windows Installer)</span>
-                </div>
-              </div>
-              <p>Enterprise-ready Windows Installer package designed for automated IT deployments and silent enterprise installations.</p>
-              <dl class="card-meta">
-                <div><dt>Version</dt><dd>1.4.0</dd></div>
-                <div><dt>Architecture</dt><dd>x64 (64-bit)</dd></div>
-                <div><dt>File Size</dt><dd id="win-msi-size">12.1 MB</dd></div>
-              </dl>
-              <div class="card-hash">
-                <small>SHA-256 Checksum</small>
-                <code id="win-msi-hash">ea373931ef85371898e0d553731ea99daca989bf7d90e94a7a543629e78697eb</code>
-              </div>
-              <div class="card-action">
-                <a class="button secondary full-width" id="btn-win-msi" href="/downloads/windows/SmartMigrate-x64.msi" download="SmartMigrate-x64.msi">
-                  <span>Download .msi</span>
-                </a>
-              </div>
-            </article>
-
-            <!-- Android APK -->
-            <article class="download-card sm-glass" data-platform="android">
-              <div class="card-head">
-                <div class="platform-icon android" aria-hidden="true">
-                  <svg class="platform-vector" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.6 9.48l1.84-3.18a.5.5 0 0 0-.18-.68.5.5 0 0 0-.69.18L16.7 8.98A11.3 11.3 0 0 0 12 8c-1.74 0-3.37.37-4.7 1L5.43 5.8a.5.5 0 0 0-.69-.18.5.5 0 0 0-.18.68l1.84 3.18C3.58 11.02 1.7 13.78 1.5 17h21c-.2-3.22-2.08-5.98-4.9-7.52zM7 13.5a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"></path>
-                  </svg>
-                </div>
-                <div>
-                  <h3>Android Client</h3>
-                  <span class="file-format">.apk (Universal Package)</span>
-                </div>
-              </div>
-              <p>Native Kotlin / Jetpack Compose client with AMOLED dark theme, trackpad mode, QR pairing, and Android Share Sheet integration.</p>
-              <dl class="card-meta">
-                <div><dt>Version</dt><dd>1.4.0</dd></div>
-                <div><dt>Architecture</dt><dd>arm64-v8a / universal</dd></div>
-                <div><dt>File Size</dt><dd id="android-apk-size">1.5 MB</dd></div>
-              </dl>
-              <div class="card-hash">
-                <small>SHA-256 Checksum</small>
-                <code id="android-apk-hash">76d943b4265d41ff32a08ffd7fc312b404f917897549399a50bbe8d23fa0ba93</code>
-              </div>
-              <div class="card-action">
-                <a class="button secondary full-width" id="btn-android-apk" href="/downloads/android/SmartMigrate.apk" download="SmartMigrate.apk">
-                  <span>Download .apk</span>
-                </a>
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <!-- ─── 04 Security Center Section ─────────────────────────────────── -->
-        <section id="security" class="principles section" aria-labelledby="security-title">
-          <div class="section-heading compact">
-            <p class="eyebrow">Enterprise Security</p>
-            <h2 id="security-title">Security is the foundation, not an afterthought.</h2>
-          </div>
-          <div class="principle-list">
-            <article class="sm-glass">
-              <span>01</span>
+          <div class="security-model-container">
+            <article class="security-item-card">
+              <div class="security-number-box">01</div>
               <div>
                 <h3>Host-Side Authorization Source of Truth</h3>
-                <p>The host machine retains ultimate authority. Every requested capability (screen, mouse, keyboard, files, clipboard) is explicitly granted or revoked by the host operator.</p>
+                <p>The host computer retains ultimate authority. Every requested capability (screen mirror, touchpad, keyboard dispatch, file system, clipboard) is explicitly granted or revoked by the host operator. Remote clients cannot escalate privileges.</p>
               </div>
             </article>
-            <article class="sm-glass">
-              <span>02</span>
+
+            <article class="security-item-card">
+              <div class="security-number-box">02</div>
               <div>
                 <h3>Cryptographic Numeric & QR Pairing</h3>
-                <p>Pairing uses Advapi32 RtlGenRandom cryptographically secure 6-digit codes with constant-time equality checks and strict 3-attempt brute-force lockouts.</p>
+                <p>Pairing uses cryptographically secure 6-digit numeric tokens generated with Advapi32 RtlGenRandom, constant-time equality checks, and strict 3-attempt brute-force lockouts to prevent unauthorized access.</p>
               </div>
             </article>
-            <article class="sm-glass">
-              <span>03</span>
+
+            <article class="security-item-card">
+              <div class="security-number-box">03</div>
               <div>
-                <h3>Zero Secrets or Screen Frames in Logs</h3>
-                <p>Strict privacy enforcement guarantees no private keys, pairing tokens, passwords, screen frames, or raw file paths ever reach application logs or telemetry.</p>
+                <h3>Strict Zero-Secrets Logging Policy</h3>
+                <p>Strict privacy enforcement guarantees no private keys, pairing tokens, passwords, screen frames, or raw user file paths ever reach application logs or telemetry records.</p>
               </div>
             </article>
-            <article class="sm-glass">
-              <span>04</span>
+
+            <article class="security-item-card">
+              <div class="security-number-box">04</div>
               <div>
-                <h3>Replay & Path Traversal Barriers</h3>
-                <p>Monotonic SMP/1 sequence tracking prevents packet replay attacks, while NTFS sanitization blocks directory traversal (..), null bytes, and Windows reserved names.</p>
+                <h3>Replay & Path Traversal Defensive Barriers</h3>
+                <p>Monotonic SMP/1 sequence tracking prevents packet replay attacks, while strict path sanitization blocks directory traversal (..), null bytes, and Windows reserved device names.</p>
               </div>
             </article>
           </div>
         </section>
 
-        <!-- ─── 05 Documentation & Architecture ────────────────────────────── -->
-        <section id="docs" class="section" aria-labelledby="docs-title">
-          <div class="section-heading">
-            <p class="eyebrow">Technical Architecture</p>
-            <h2 id="docs-title">Smart Migrate Protocol (SMP/1) & MigRoute Core</h2>
+        <!-- ─── 08 Official Downloads Section (KnowToMigrate Structure) ─────── -->
+        <section class="downloads-section" id="downloads" aria-labelledby="downloads-title">
+          <div class="section-heading" style="text-align: center; margin-bottom: 2rem;">
+            <p class="section-eyebrow">Official Releases</p>
+            <h2 class="section-heading-title" id="downloads-title">Production releases for Windows & Android</h2>
+            <p class="section-heading-desc">
+              Download verified, standalone binaries built with the MigRoute engine. Checksums verified before deployment.
+            </p>
           </div>
-          <div class="route-grid">
-            <article class="route-card sm-glass">
-              <h3>SMP/1 Framing</h3>
-              <p>Type-safe Protobuf and binary envelope format. Enforces monotonic sequence numbers, 16 MiB payload ceiling, and session authorization tokens on every packet.</p>
+
+          <!-- Platform Filter Tabs -->
+          <div class="platform-filter-bar" role="tablist" aria-label="Filter platforms">
+            <button type="button" class="filter-tab active" data-filter="all">All platforms</button>
+            <button type="button" class="filter-tab" data-filter="windows">Windows</button>
+            <button type="button" class="filter-tab" data-filter="android">Android</button>
+          </div>
+
+          <!-- Download Cards Grid -->
+          <div class="download-cards-grid" id="download-cards-container">
+            <!-- 01 Windows EXE -->
+            <article class="download-release-card recommended" data-platform="windows">
+              <span class="recommended-pill">Recommended</span>
+              <div>
+                <div class="card-top-identity">
+                  <div class="platform-icon-container" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M2 3.55L10.08 2.45V11.23H2V3.55ZM11.45 2.25L22 0.8V11.23H11.45V2.25ZM2 12.63H10.08V21.45L2 20.35V12.63ZM11.45 12.63H22V23.1L11.45 21.65V12.63Z"></path>
+                    </svg>
+                  </div>
+                  <div class="card-title-group">
+                    <h3>Windows Host Installer</h3>
+                    <span class="file-format-badge">.exe (NSIS Setup)</span>
+                  </div>
+                </div>
+
+                <p class="card-description-text" style="margin-top: 1rem;">
+                  Standard Windows host application with Start Menu integration, desktop shortcut, system tray agent, and clean uninstaller.
+                </p>
+
+                <dl class="card-spec-meta" style="margin-top: 1.25rem;">
+                  <div><dt>Version</dt><dd>1.4.0</dd></div>
+                  <div><dt>Architecture</dt><dd>x64 (64-bit)</dd></div>
+                  <div><dt>File Size</dt><dd id="win-exe-size">4.2 MB</dd></div>
+                  <div><dt>Release Date</dt><dd>October 2026</dd></div>
+                </dl>
+
+                <!-- Interactive HiddenHash Component (KnowToMigrate Pattern) -->
+                <div class="hidden-hash-box" data-hash="881f3f44070890fe52b9e7ae8787d9e212182beac2ca734fa22086895ff617c4">
+                  <div class="hash-toolbar">
+                    <span class="hash-label">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                      SHA-256 Checksum
+                    </span>
+                    <div class="hash-actions">
+                      <button type="button" class="hash-toggle-btn" aria-label="Toggle hash visibility">
+                        <svg class="icon-eye" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        <span class="toggle-text">Unhide</span>
+                      </button>
+                      <button type="button" class="hash-copy-btn" aria-label="Copy SHA-256 hash" style="display: none;">
+                        <svg class="icon-copy" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span class="copy-text">Copy</span>
+                      </button>
+                    </div>
+                  </div>
+                  <code class="hash-display-code" id="win-exe-hash">••••••••••••••••••••••••••••••••</code>
+                </div>
+              </div>
+
+              <div class="download-card-action">
+                <a
+                  class="btn btn-primary btn-full"
+                  id="btn-win-exe"
+                  href="/downloads/windows/SmartMigrate-Setup-x64.exe"
+                  download="SmartMigrate-Setup-x64.exe"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span>Download .exe (Installer)</span>
+                </a>
+              </div>
             </article>
-            <article class="route-card sm-glass">
-              <h3>MigRoute Systems Engine</h3>
-              <p>Engineered in 100% memory-safe Rust with zero unsafe abstractions. Validated with 63 rigorous unit tests covering crypto, state machines, and transport resilience.</p>
+
+            <!-- 02 Windows MSI -->
+            <article class="download-release-card" data-platform="windows">
+              <div>
+                <div class="card-top-identity">
+                  <div class="platform-icon-container" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M2 3.55L10.08 2.45V11.23H2V3.55ZM11.45 2.25L22 0.8V11.23H11.45V2.25ZM2 12.63H10.08V21.45L2 20.35V12.63ZM11.45 12.63H22V23.1L11.45 21.65V12.63Z"></path>
+                    </svg>
+                  </div>
+                  <div class="card-title-group">
+                    <h3>Windows Enterprise</h3>
+                    <span class="file-format-badge">.msi (Windows Installer)</span>
+                  </div>
+                </div>
+
+                <p class="card-description-text" style="margin-top: 1rem;">
+                  Enterprise-ready Windows Installer package designed for automated IT fleet deployments and silent software distribution.
+                </p>
+
+                <dl class="card-spec-meta" style="margin-top: 1.25rem;">
+                  <div><dt>Version</dt><dd>1.4.0</dd></div>
+                  <div><dt>Architecture</dt><dd>x64 (64-bit)</dd></div>
+                  <div><dt>File Size</dt><dd id="win-msi-size">12.1 MB</dd></div>
+                  <div><dt>Release Date</dt><dd>October 2026</dd></div>
+                </dl>
+
+                <!-- Interactive HiddenHash Component -->
+                <div class="hidden-hash-box" data-hash="ea373931ef85371898e0d553731ea99daca989bf7d90e94a7a543629e78697eb">
+                  <div class="hash-toolbar">
+                    <span class="hash-label">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                      SHA-256 Checksum
+                    </span>
+                    <div class="hash-actions">
+                      <button type="button" class="hash-toggle-btn" aria-label="Toggle hash visibility">
+                        <svg class="icon-eye" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        <span class="toggle-text">Unhide</span>
+                      </button>
+                      <button type="button" class="hash-copy-btn" aria-label="Copy SHA-256 hash" style="display: none;">
+                        <svg class="icon-copy" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span class="copy-text">Copy</span>
+                      </button>
+                    </div>
+                  </div>
+                  <code class="hash-display-code" id="win-msi-hash">••••••••••••••••••••••••••••••••</code>
+                </div>
+              </div>
+
+              <div class="download-card-action">
+                <a
+                  class="btn btn-secondary btn-full"
+                  id="btn-win-msi"
+                  href="/downloads/windows/SmartMigrate-x64.msi"
+                  download="SmartMigrate-x64.msi"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span>Download .msi (Enterprise)</span>
+                </a>
+              </div>
             </article>
-            <article class="route-card sm-glass">
-              <h3>Native Platform Adapters</h3>
-              <p>Direct Win32 Graphics Capture and SendInput APIs on Windows; hardware-accelerated MediaCodec and Jetpack Compose on Android.</p>
+
+            <!-- 03 Android APK -->
+            <article class="download-release-card" data-platform="android">
+              <div>
+                <div class="card-top-identity">
+                  <div class="platform-icon-container" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.6 9.48l1.84-3.18a.5.5 0 0 0-.18-.68.5.5 0 0 0-.69.18L16.7 8.98A11.3 11.3 0 0 0 12 8c-1.74 0-3.37.37-4.7 1L5.43 5.8a.5.5 0 0 0-.69-.18.5.5 0 0 0-.18.68l1.84 3.18C3.58 11.02 1.7 13.78 1.5 17h21c-.2-3.22-2.08-5.98-4.9-7.52zM7 13.5a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"></path>
+                    </svg>
+                  </div>
+                  <div class="card-title-group">
+                    <h3>Android Client</h3>
+                    <span class="file-format-badge">.apk (Universal Package)</span>
+                  </div>
+                </div>
+
+                <p class="card-description-text" style="margin-top: 1rem;">
+                  Native Kotlin / Jetpack Compose client with AMOLED dark theme, multi-touch trackpad, QR pairing, and Android Share Sheet integration.
+                </p>
+
+                <dl class="card-spec-meta" style="margin-top: 1.25rem;">
+                  <div><dt>Version</dt><dd>1.4.0</dd></div>
+                  <div><dt>Architecture</dt><dd>arm64-v8a / universal</dd></div>
+                  <div><dt>File Size</dt><dd id="android-apk-size">13.4 MB</dd></div>
+                  <div><dt>Release Date</dt><dd>October 2026</dd></div>
+                </dl>
+
+                <!-- Interactive HiddenHash Component -->
+                <div class="hidden-hash-box" data-hash="c50daa023247c55ff0f41491034438b02e88e9dbb93cfddf27d84a3aca5c8413">
+                  <div class="hash-toolbar">
+                    <span class="hash-label">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                      SHA-256 Checksum
+                    </span>
+                    <div class="hash-actions">
+                      <button type="button" class="hash-toggle-btn" aria-label="Toggle hash visibility">
+                        <svg class="icon-eye" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        <span class="toggle-text">Unhide</span>
+                      </button>
+                      <button type="button" class="hash-copy-btn" aria-label="Copy SHA-256 hash" style="display: none;">
+                        <svg class="icon-copy" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span class="copy-text">Copy</span>
+                      </button>
+                    </div>
+                  </div>
+                  <code class="hash-display-code" id="android-apk-hash">••••••••••••••••••••••••••••••••</code>
+                </div>
+              </div>
+
+              <div class="download-card-action">
+                <a
+                  class="btn btn-secondary btn-full"
+                  id="btn-android-apk"
+                  href="/downloads/android/SmartMigrate.apk"
+                  download="SmartMigrate.apk"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span>Download .apk (Package)</span>
+                </a>
+              </div>
             </article>
           </div>
         </section>
 
-        <!-- ─── 06 FAQ Section ─────────────────────────────────────────────── -->
-        <section id="faq" class="section" aria-labelledby="faq-title">
-          <div class="section-heading">
-            <p class="eyebrow">Frequently Asked Questions</p>
-            <h2 id="faq-title">Common questions & technical details</h2>
+        <!-- ─── 09 FAQ Section ──────────────────────────────────────────────── -->
+        <section class="faq-section" id="faq" aria-labelledby="faq-title">
+          <div class="section-heading" style="text-align: center; margin-bottom: 2.5rem;">
+            <p class="section-eyebrow">Frequently Asked Questions</p>
+            <h2 class="section-heading-title" id="faq-title">Common questions & technical details</h2>
+            <p class="section-heading-desc">
+              Everything you need to know about Smart Migrate networking, security, and migration mechanics.
+            </p>
           </div>
-          <div class="principle-list">
-            <article class="sm-glass">
-              <span>Q</span>
-              <div>
-                <h3>Does Smart Migrate require an internet connection?</h3>
-                <p>No. When devices are on the same local Wi-Fi or LAN subnet, Smart Migrate routes all files, remote control, and streams directly peer-to-peer at full line speed (0.4 ms RTT).</p>
-              </div>
+
+          <div class="faq-grid">
+            <article class="faq-card">
+              <h3>Does Smart Migrate require an internet connection?</h3>
+              <p>No. When devices are on the same local Wi-Fi or LAN subnet, Smart Migrate routes all files, remote control, and streams directly peer-to-peer at full line speed (0.4 ms RTT). Zero internet connection is required.</p>
             </article>
-            <article class="sm-glass">
-              <span>Q</span>
-              <div>
-                <h3>How does resumable file transfer handle disconnections?</h3>
-                <p>Files are chunked into 1 MiB blocks. If network drops or the app restarts, transfer resumes from the exact missing chunk index. Final files are verified against SHA-256 before atomic commit.</p>
-              </div>
+
+            <article class="faq-card">
+              <h3>How does resumable file transfer handle network drops?</h3>
+              <p>Files are streamed in 1 MB blocks with state checkpoints. If the connection flickers or the application restarts, transfer resumes precisely from the missing chunk index. Files are SHA-256 verified before commit.</p>
             </article>
-            <article class="sm-glass">
-              <span>Q</span>
-              <div>
-                <h3>Is mobile battery consumption high during remote control?</h3>
-                <p>Smart Migrate features automatic Battery Awareness. When battery drops below 20%, it reduces background polling and switches video decode to low-power hardware modes.</p>
-              </div>
+
+            <article class="faq-card">
+              <h3>How does the 60 FPS display stream achieve low latency?</h3>
+              <p>The MigRoute core utilizes native DXGI Desktop Duplication on Windows with direct GPU hardware encoding, bypassing user-space buffer copying. The stream delivers sub-frame latency over 5 GHz Wi-Fi.</p>
+            </article>
+
+            <article class="faq-card">
+              <h3>Is battery consumption high during remote control?</h3>
+              <p>Smart Migrate features automatic Battery Awareness. When battery drops below 20%, it reduces background polling and switches video decode to low-power hardware modes on your phone.</p>
             </article>
           </div>
         </section>
       </main>
 
-      <!-- ─── Footer ──────────────────────────────────────────────────────── -->
-      <footer>
-        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
-          <a class="brand" href="#top">
-            <span class="footer-mark">SM</span>
-            <span>Smart Migrate</span>
-          </a>
-          <div style="display: flex; gap: 20px; font-size: 0.8rem; color: var(--sm-text-3);">
-            <a href="#features">Features</a>
-            <a href="#downloads">Downloads</a>
-            <a href="#security">Security</a>
-            <a href="#docs">Documentation</a>
-            <a href="#faq">FAQ</a>
+      <!-- ─── 10 Site Footer (KnowToMigrate 4-Column Layout) ────────────────── -->
+      <footer class="site-footer" role="contentinfo">
+        <div class="footer-container">
+          <div class="footer-top-grid">
+            <!-- Brand Column -->
+            <div class="footer-brand-column">
+              <a class="brand" href="#hero">
+                <img src="smart_migrate_logo.png" alt="Smart Migrate" width="32" height="32" />
+                <span>Smart Migrate</span>
+              </a>
+              <p>
+                Display Stream. Mobile Remote. Stay in control. High-performance, host-authorized cross-device platform powered by MigRoute.
+              </p>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <span class="protocol-badge">Protocol: SMP/1</span>
+                <span class="protocol-badge" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border-color: rgba(16, 185, 129, 0.25);">
+                  Native Rust & Kotlin
+                </span>
+              </div>
+            </div>
+
+            <!-- Column 1: Product -->
+            <div class="footer-column">
+              <h4>Product</h4>
+              <ul class="footer-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#preview">App Preview</a></li>
+                <li><a href="#downloads">Downloads</a></li>
+                <li><a href="#architecture">Architecture</a></li>
+                <li><a href="#faq">FAQ</a></li>
+              </ul>
+            </div>
+
+            <!-- Column 2: Security & Protocols -->
+            <div class="footer-column">
+              <h4>Security</h4>
+              <ul class="footer-links">
+                <li><a href="#security">Host Authorization</a></li>
+                <li><a href="#security">Security Model</a></li>
+                <li><a href="#architecture">SMP/1 Specification</a></li>
+                <li><a href="#security">Privacy & Logging Policy</a></li>
+              </ul>
+            </div>
+
+            <!-- Column 3: Community & Source -->
+            <div class="footer-column">
+              <h4>Ecosystem</h4>
+              <ul class="footer-links">
+                <li><a href="https://github.com/MrGokulaKrishnan/KnowToMigrate" target="_blank" rel="noopener noreferrer">GitHub Repository</a></li>
+                <li><a href="#downloads">Release Binaries</a></li>
+                <li><a href="https://github.com/MrGokulaKrishnan/KnowToMigrate/issues" target="_blank" rel="noopener noreferrer">Issue Tracker</a></li>
+                <li><a href="#downloads">Android Package (APK)</a></li>
+              </ul>
+            </div>
           </div>
-          <p style="margin: 0; font-size: 0.75rem; color: var(--sm-text-muted);">
-            © <span id="year"></span> Smart Migrate. All rights reserved.
-          </p>
+
+          <!-- Bottom Row -->
+          <div class="footer-bottom-row">
+            <p style="margin: 0;">
+              © <span id="year">2026</span> Smart Migrate. Built for performance and privacy.
+            </p>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              <span>Host-Authorized · No Cloud · 100% Native</span>
+            </div>
+            <div>
+              <span>Powered by <strong>MigRoute Engine</strong></span>
+            </div>
+          </div>
         </div>
       </footer>
     </div>
+
+    <!-- Application Script -->
     <script type="module" src="app.js"></script>
   </body>
 </html>

@@ -29,6 +29,13 @@
   --sm-brand-500: #7c4dff;
   --sm-brand-600: #6d3df5;
   --sm-brand-glow: rgba(124, 77, 255, 0.25);
+  
+  /* KnowToMigrate-compatible violet token mappings (Strictly Violet, No Orange) */
+  --sm-accent: #7c4dff;
+  --sm-accent-bright: #8b5cf6;
+  --sm-accent-soft: #a78bfa;
+  --sm-accent-glow: rgba(124, 77, 255, 0.32);
+  --sm-accent-glow-subtle: rgba(124, 77, 255, 0.12);
 
   /* Compatibility aliases */
   --sm-200: #c4baff;
