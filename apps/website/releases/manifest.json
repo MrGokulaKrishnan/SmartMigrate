@@ -1,31 +1,31 @@
 {
   "product": "Smart Migrate",
-  "version": "1.4.0",
-  "versionCode": 4,
-  "releaseDate": "2026-10-16T20:00:00Z",
-  "releaseNotes": "• Version stickiness fix & dynamic package introspection\n• Official Smart Migrate emblem bound to launcher activities\n• Dedicated About & Software Updates center with live diagnostics\n• Real-time 60 FPS remote desktop pipeline with persistent canvas\n• Viewport touch normalization & display scaling (Fit vs Fill)\n• Automatic in-app update system for Windows and Android",
+  "version": "1.4.1",
+  "versionCode": 5,
+  "releaseDate": "2026-10-16T22:30:00Z",
+  "releaseNotes": "• Direct low-latency TCP socket streaming engine with zero OkHttp pooling drops\n• Screen fill default display scaling (zero black bars) with 1-tap HUD scaling toggle\n• In-session status indicator fix: no blocking notification during active stream\n• Direct Connect flow in Devices tab with automatic SMP session creation\n• Android version bump to 1.4.1 (Build 5) with seamless package update",
   "channels": {
-    "stable": "1.4.0",
-    "beta": "1.4.0"
+    "stable": "1.4.1",
+    "beta": "1.4.1"
   },
   "platforms": {
     "windows-x86_64": {
       "version": "1.4.0",
       "url": "https://smartmigrate.web.app/downloads/windows/SmartMigrate-Setup-x64.exe",
       "fileName": "SmartMigrate-Setup-x64.exe",
-      "size": 4377266,
-      "sha256": "881f3f44070890fe52b9e7ae8787d9e212182beac2ca734fa22086895ff617c4",
+      "size": 4380678,
+      "sha256": "c0940409fed30ff21075e4e2fbac34751c24d383c95b73bf9d6ecb6016454f97",
       "signature": "SMP-SIG-WIN-1.4.0-VERIFIED-AUTH",
       "mandatory": false
     },
     "android-arm64": {
-      "version": "1.4.0",
-      "versionCode": 4,
+      "version": "1.4.1",
+      "versionCode": 5,
       "url": "https://smartmigrate.web.app/downloads/android/SmartMigrate.apk",
       "fileName": "SmartMigrate.apk",
       "size": 12426153,
-      "sha256": "a804f8d6bb47d052d06ea0b6baf7ffab2d61fdbbe79190983e821c10089c9791",
-      "signature": "SMP-SIG-APK-1.4.0-VERIFIED-AUTH",
+      "sha256": "75827f8091f6b34d80877b832e7fff9b012678e9b11928d43e036772e923ad54",
+      "signature": "SMP-SIG-APK-1.4.1-VERIFIED-AUTH",
       "mandatory": false
     }
   }

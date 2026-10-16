@@ -333,6 +333,28 @@ private fun SmartMigrateApp() {
                                     targetHostAddress = host.ip
                                     notice = "Selected ${host.name} (${host.ip}:${host.port})"
                                 },
+                                onConnectHost = { host ->
+                                    targetHostAddress = host.ip
+                                    scope.launch {
+                                        notice = "Connecting to ${host.name} (${host.ip})..."
+                                        val helloRes = SmpClient.getHello(host.ip, host.port)
+                                        if (helloRes.isSuccess) {
+                                            val sessRes = SmpClient.createSession(host.ip, host.port, SmpClient.DEFAULT_DEVICE_ID, currentSessionToken)
+                                            if (sessRes.isSuccess) {
+                                                val sess = sessRes.getOrNull()
+                                                currentSessionToken = sess?.sessionId ?: ""
+                                                destination = AppDestination.Remote
+                                                isDedicatedRemoteSessionActive = true
+                                                notice = "Connected to ${host.name}!"
+                                            } else {
+                                                notice = "Device pairing required for ${host.name}. Please enter PIN."
+                                                pairingDialog = true
+                                            }
+                                        } else {
+                                            notice = "Cannot reach ${host.name} at ${host.ip}:${host.port}. Check firewall or host."
+                                        }
+                                    }
+                                },
                                 onPair = { pairingDialog = true },
                                 onNotice = { notice = it }
                             )
@@ -892,6 +914,7 @@ private fun DevicesScreen(
     isDiscovering: Boolean,
     onRefresh: () -> Unit,
     onSelectHost: (SmpClient.DiscoveredHost) -> Unit,
+    onConnectHost: (SmpClient.DiscoveredHost) -> Unit,
     onPair: () -> Unit,
     onNotice: (String) -> Unit
 ) {
@@ -950,15 +973,13 @@ private fun DevicesScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Brand600.copy(alpha = 0.25f))
-                            .border(1.dp, Brand400.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .background(Brand600)
                             .clickable {
-                                onSelectHost(discoveredHost)
-                                onNotice("Selected host ${discoveredHost.name} at ${discoveredHost.ip}:${discoveredHost.port}")
+                                onConnectHost(discoveredHost)
                             }
-                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
                     ) {
-                        Text("Connect", color = Brand300, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Connect", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -1230,7 +1251,7 @@ private fun DedicatedRemoteSessionScreen(
     var showClipboardBanner by rememberSaveable { mutableStateOf(true) }
     var fpsMode by rememberSaveable { mutableIntStateOf(60) }
     var keyboardInputText by rememberSaveable { mutableStateOf("") }
-    var displayScalingMode by rememberSaveable { mutableStateOf("Fit") } // "Fit" (16:9 Aspect) or "Fill" (Screen Fill)
+    var displayScalingMode by rememberSaveable { mutableStateOf("Fill") } // "Fill" (Screen Fill) or "Fit" (16:9 Aspect)
 
     // Virtual Cursor Position in Cursor Mode (normalized 0.0 .. 1.0)
     var cursorNormX by rememberSaveable { mutableFloatStateOf(0.5f) }
@@ -1266,23 +1287,23 @@ private fun DedicatedRemoteSessionScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     // Back / Minimize Button
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .background(Color(0x1AFFFFFF))
                             .clickable { onLeaveSession() }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Text("‹", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("‹", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                             Text("Dashboard", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
@@ -1290,7 +1311,7 @@ private fun DedicatedRemoteSessionScreen(
                     // Host & Live Status Badge
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         val dotColor = when (connState) {
                             StreamConnectionState.STREAMING -> Success
@@ -1302,7 +1323,7 @@ private fun DedicatedRemoteSessionScreen(
                         }
                         Box(
                             modifier = Modifier
-                                .size(8.dp)
+                                .size(7.dp)
                                 .clip(CircleShape)
                                 .background(dotColor)
                         )
@@ -1310,14 +1331,14 @@ private fun DedicatedRemoteSessionScreen(
                         Text(
                             hostAddress,
                             color = Color.White,
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace
                         )
 
                         Text(
                             when (connState) {
-                                StreamConnectionState.STREAMING -> "• ${String.format(java.util.Locale.US, "%.0f", streamDiag.currentFps)} FPS (${String.format(java.util.Locale.US, "%.0f", streamDiag.latencyMs)}ms)"
+                                StreamConnectionState.STREAMING -> "• ${String.format(java.util.Locale.US, "%.0f", streamDiag.currentFps)} FPS"
                                 StreamConnectionState.CONNECTED -> "• Ready"
                                 StreamConnectionState.CONNECTING -> "• Connecting"
                                 StreamConnectionState.AUTHENTICATING -> "• Auth"
@@ -1325,17 +1346,42 @@ private fun DedicatedRemoteSessionScreen(
                                 StreamConnectionState.FAILED -> "• Failed"
                                 else -> "• Idle"
                             },
-                            color = TextMuted,
-                            fontSize = 11.sp
+                            color = if (connState == StreamConnectionState.STREAMING) Success else TextMuted,
+                            fontSize = 11.sp,
+                            fontWeight = if (connState == StreamConnectionState.STREAMING) FontWeight.SemiBold else FontWeight.Normal
                         )
                     }
 
-                    // Disconnect Button
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Danger.copy(alpha = 0.18f))
-                            .border(1.dp, Danger.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Display Scaling Mode Toggle (Fit vs Fill)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (displayScalingMode == "Fill") Brand600 else Color(0x1AFFFFFF))
+                                .border(1.dp, if (displayScalingMode == "Fill") Brand400 else Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                                .clickable {
+                                    displayScalingMode = if (displayScalingMode == "Fit") "Fill" else "Fit"
+                                    onNotice(if (displayScalingMode == "Fill") "Fill Screen (Edge-to-Edge)" else "Fit Screen (16:9 Aspect)")
+                                }
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                displayScalingMode,
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Disconnect Button
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Danger.copy(alpha = 0.18f))
+                                .border(1.dp, Danger.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
                             .clickable {
                                 streamEngine.stopStreaming()
                                 scope.launch {
@@ -1343,14 +1389,15 @@ private fun DedicatedRemoteSessionScreen(
                                 }
                                 onDisconnect()
                             }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
-                            Text("⏻", color = Danger, fontSize = 11.sp)
-                            Text("End", color = Danger, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Text("⏻", color = Danger, fontSize = 10.sp)
+                                Text("End", color = Danger, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -1555,8 +1602,8 @@ private fun DedicatedRemoteSessionScreen(
                             }
                         }
 
-                        // Non-intrusive status pill during reconnect or authentication
-                        if (connState == StreamConnectionState.RECONNECTING || connState == StreamConnectionState.CONNECTING || connState == StreamConnectionState.AUTHENTICATING) {
+                        // Non-intrusive status pill ONLY during active reconnecting when a network drop occurs
+                        if (connState == StreamConnectionState.RECONNECTING) {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
@@ -1577,10 +1624,7 @@ private fun DedicatedRemoteSessionScreen(
                                             .background(Warning)
                                     )
                                     Text(
-                                        if (connState == StreamConnectionState.RECONNECTING)
-                                            "Network hiccup. Reconnecting to Windows host..."
-                                        else
-                                            "Synchronizing session with Windows host...",
+                                        "Network interrupted. Reconnecting to Windows host...",
                                         color = Color.White,
                                         fontSize = 11.sp
                                     )

@@ -79,11 +79,11 @@ object AppUpdater {
     }
 
     fun getInstalledVersionName(context: Context): String {
-        return getInstalledPackageInfo(context)?.versionName ?: "1.4.0"
+        return getInstalledPackageInfo(context)?.versionName ?: "1.4.1"
     }
 
     fun getInstalledVersionCode(context: Context): Long {
-        val info = getInstalledPackageInfo(context) ?: return 4L
+        val info = getInstalledPackageInfo(context) ?: return 5L
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             info.longVersionCode
         } else {

@@ -686,7 +686,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             // Optimize streaming socket: disable Nagle, remove read timeout, set write deadline
             let _ = socket.set_nodelay(true);
             let _ = socket.set_read_timeout(None);
-            let _ = socket.set_write_timeout(Some(Duration::from_millis(4000)));
+            let _ = socket.set_write_timeout(Some(Duration::from_millis(8000)));
 
             // Stream frames directly on this connection
             let http_header = "HTTP/1.1 200 OK\r\n\
