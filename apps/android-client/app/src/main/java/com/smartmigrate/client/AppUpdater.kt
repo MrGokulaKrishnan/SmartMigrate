@@ -316,6 +316,11 @@ object AppUpdater {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 context.startActivity(settingsIntent)
+                return Result.failure(
+                    IllegalStateException(
+                        "Permission required to install updates. Please enable 'Allow from this source' in Settings, then tap Update Now."
+                    )
+                )
             }
 
             // 4. Launch Official Android Package Installer

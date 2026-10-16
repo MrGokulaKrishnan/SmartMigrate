@@ -2,8 +2,8 @@
   "product": "Smart Migrate",
   "version": "1.4.1",
   "versionCode": 5,
-  "releaseDate": "2026-10-16T22:30:00Z",
-  "releaseNotes": "• Persistent DesktopCaptureSession with GDI handle reuse and zero-copy frame pipeline\n• Decoupled DesktopStreamSurface on Android eliminating Compose tree recomposition at 60 FPS\n• Adaptive backpressure frame pacing modulating quality (45-75) and interval (16-33ms)\n• Direct low-latency TCP socket streaming engine with zero OkHttp pooling drops\n• Screen fill default display scaling (zero black bars) with 1-tap HUD scaling toggle\n• Direct Connect flow in Devices tab with automatic SMP session creation",
+  "releaseDate": "2026-10-16T17:15:00Z",
+  "releaseNotes": "• Fixed Android app closure: added full BackHandler for gestures, modals, and remote session\n• Zero-allocation inBitmap frame decode eliminating 250 MB/s GC memory churn\n• Global unhandled exception recovery & largeHeap enabled in manifest\n• Real-time relative release timing badges (e.g. Updated recently • 1 hour ago)\n• Persistent DesktopCaptureSession with GDI handle reuse and 60 FPS adaptive backpressure\n• Screen fill default display scaling (zero black bars) with 1-tap HUD scaling toggle",
   "channels": {
     "stable": "1.4.1",
     "beta": "1.4.1"
@@ -23,8 +23,8 @@
       "versionCode": 5,
       "url": "https://smartmigrate.web.app/downloads/android/SmartMigrate.apk",
       "fileName": "SmartMigrate.apk",
-      "size": 12838266,
-      "sha256": "855fdb06ee167664a10dd5280eb62fe27ad37e4dc81421e80ac3fa674db17769",
+      "size": 12843675,
+      "sha256": "37dcefc61d935c05c8692c95c4c1cab02c8d44bf76c160ef6c2eb45dec99e15e",
       "signature": "SMP-SIG-APK-1.4.1-VERIFIED-AUTH",
       "mandatory": false
     }

@@ -183,12 +183,81 @@ function setupHiddenHashComponents() {
 
 setupHiddenHashComponents();
 
-// ─── 05 Hydrate Metadata & Checksums from release.json ───────────────────────
+// ─── 05 Dynamic Release Metadata & Relative Time Hydration ───────────────────
+function formatRelativeTime(dateInput) {
+  const date = new Date(dateInput);
+  const now = new Date();
+  const diffMs = now - date;
+  if (isNaN(diffMs) || diffMs < 0) return "just now";
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHours = Math.floor(diffMin / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMin < 1) return "just now";
+  if (diffMin === 1) return "1 minute ago";
+  if (diffMin < 60) return `${diffMin} minutes ago`;
+  if (diffHours === 1) return "1 hour ago";
+  if (diffHours < 24) return `${diffHours} hours ago`;
+  if (diffDays === 1) return "yesterday";
+  return `${diffDays} days ago`;
+}
+
+function formatExactDate(dateInput) {
+  const date = new Date(dateInput);
+  if (isNaN(date.getTime())) return "October 16, 2026";
+  const options = { year: "numeric", month: "long", day: "numeric" };
+  const dateStr = date.toLocaleDateString("en-US", options);
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const mins = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${dateStr} (${hours}:${mins} UTC)`;
+}
+
 async function hydrateReleaseData() {
   try {
-    const res = await fetch("release.json");
+    const res = await fetch("release.json", { cache: "no-store" });
     if (!res.ok) return;
     const data = await res.json();
+
+    // Dynamic Version and Relative Timing Badges
+    if (data.updated_at || data.date) {
+      const timestamp = data.updated_at || data.date;
+      const relTime = formatRelativeTime(timestamp);
+      const exactDate = formatExactDate(timestamp);
+
+      const bannerTag = document.querySelector("#banner-update-tag");
+      if (bannerTag) bannerTag.textContent = `Updated recently: ${relTime}`;
+
+      const heroUpdated = document.querySelector("#hero-updated-time");
+      if (heroUpdated) heroUpdated.textContent = `Updated recently (${relTime})`;
+
+      const dlUpdated = document.querySelector("#downloads-last-updated");
+      if (dlUpdated) dlUpdated.textContent = `Updated recently: ${relTime}`;
+
+      const dlExact = document.querySelector("#downloads-exact-date");
+      if (dlExact) dlExact.textContent = exactDate;
+
+      const androidDate = document.querySelector("#android-release-date");
+      if (androidDate) androidDate.textContent = `October 16, 2026 (Updated recently: ${relTime})`;
+    }
+
+    if (data.version) {
+      const dlVersion = document.querySelector("#downloads-current-version");
+      if (dlVersion) dlVersion.textContent = `v${data.version} (Build 5)`;
+
+      const previewTag = document.querySelector(".preview-brand-tag");
+      if (previewTag) previewTag.textContent = `v${data.version}`;
+
+      const winExeVer = document.querySelector("#win-exe-version");
+      if (winExeVer) winExeVer.textContent = data.version;
+
+      const winMsiVer = document.querySelector("#win-msi-version");
+      if (winMsiVer) winMsiVer.textContent = data.version;
+
+      const androidVer = document.querySelector("#android-apk-version");
+      if (androidVer) androidVer.textContent = data.version;
+    }
+
     if (!data.artifacts) return;
 
     const winExe = data.artifacts["windows-exe"];
@@ -239,6 +308,7 @@ async function hydrateReleaseData() {
 }
 
 hydrateReleaseData();
+setInterval(hydrateReleaseData, 60000);
 
 // ─── 06 Particle Background Canvas (KnowToMigrate Pattern, Purple/Violet) ────
 function initParticleField() {

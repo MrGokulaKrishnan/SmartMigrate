@@ -27,7 +27,9 @@
     <div class="site-shell">
       <!-- ─── 00 Sticky Beta Announcement Banner (KnowToMigrate Pattern) ─────── -->
       <aside class="announcement-banner" aria-label="Release Announcement">
-        <strong>Smart Migrate 1.4.0</strong> — Standalone 60 FPS low-latency display streaming, mobile remote control, and encrypted local file transfer.
+        <span class="live-pulse-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10B981; margin-right:6px; box-shadow:0 0 8px #10B981;"></span>
+        <strong>Smart Migrate 1.4.1</strong> — 60 FPS low-latency display streaming, mobile remote control, and encrypted local file transfer.
+        <span class="banner-update-badge" id="banner-update-tag" style="display:inline-block; margin-left: 8px; margin-right: 8px; padding: 2px 9px; border-radius: 12px; background: rgba(124, 77, 255, 0.28); border: 1px solid rgba(167, 139, 250, 0.4); color: #C4B5FD; font-size: 11px; font-weight: 600;">Updated recently: 1 hour ago</span>
         <a href="#downloads">Download official release →</a>
       </aside>
 
@@ -52,7 +54,7 @@
           <a class="nav-link" href="#downloads">Downloads</a>
           <a class="nav-link" href="#faq">FAQ</a>
           <a class="btn btn-primary btn-sm nav-cta-btn" href="#downloads">
-            <span>Download v1.4.0</span>
+            <span>Download v1.4.1</span>
           </a>
         </nav>
       </header>
@@ -73,8 +75,8 @@
             </div>
 
             <!-- Public Release Badge -->
-            <div class="pill-badge">
-              PRODUCTION RELEASE v1.4.0
+            <div class="pill-badge" id="hero-release-pill">
+              PRODUCTION RELEASE v1.4.1 • <span id="hero-updated-time" style="color: #34D399; font-weight: 600;">Updated recently (1 hour ago)</span>
             </div>
 
             <!-- Headline -->
@@ -180,7 +182,7 @@
               <div class="preview-brand-group">
                 <img src="smart_migrate_logo.png" alt="" class="preview-brand-logo" width="22" height="22" />
                 <span class="preview-brand-name">Smart Migrate</span>
-                <span class="preview-brand-tag">v1.4.0</span>
+                <span class="preview-brand-tag">v1.4.1</span>
               </div>
               <div class="preview-center-badge">
                 <span class="status-indicator-dot"></span>
@@ -632,6 +634,14 @@
             <p class="section-heading-desc">
               Download verified, standalone binaries built with the MigRoute engine. Checksums verified before deployment.
             </p>
+            <div class="release-status-banner" style="display: inline-flex; align-items: center; gap: 8px; margin-top: 1rem; padding: 6px 16px; border-radius: 20px; background: rgba(124, 77, 255, 0.14); border: 1px solid rgba(124, 77, 255, 0.35);">
+              <span class="status-indicator-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background: #10B981; box-shadow: 0 0 8px #10B981;"></span>
+              <span style="font-size: 12px; color: #F3F3F7; font-weight: 500;">Current Release: <strong id="downloads-current-version">v1.4.1 (Build 5)</strong></span>
+              <span style="color: rgba(255,255,255,0.3);">•</span>
+              <span id="downloads-last-updated" style="font-size: 12px; color: #A78BFA; font-weight: 600;">Updated recently: 1 hour ago</span>
+              <span style="color: rgba(255,255,255,0.3);">•</span>
+              <span id="downloads-exact-date" style="font-size: 11px; color: #94A3B8;">October 16, 2026 (22:30 UTC)</span>
+            </div>
           </div>
 
           <!-- Platform Filter Tabs -->
@@ -664,14 +674,14 @@
                 </p>
 
                 <dl class="card-spec-meta" style="margin-top: 1.25rem;">
-                  <div><dt>Version</dt><dd>1.4.0</dd></div>
+                  <div><dt>Version</dt><dd id="win-exe-version">1.4.1</dd></div>
                   <div><dt>Architecture</dt><dd>x64 (64-bit)</dd></div>
                   <div><dt>File Size</dt><dd id="win-exe-size">4.2 MB</dd></div>
-                  <div><dt>Release Date</dt><dd>October 2026</dd></div>
+                  <div><dt>Release Date</dt><dd id="win-exe-date">October 16, 2026</dd></div>
                 </dl>
 
                 <!-- Interactive HiddenHash Component (KnowToMigrate Pattern) -->
-                <div class="hidden-hash-box" data-hash="881f3f44070890fe52b9e7ae8787d9e212182beac2ca734fa22086895ff617c4">
+                <div class="hidden-hash-box" data-hash="c0940409fed30ff21075e4e2fbac34751c24d383c95b73bf9d6ecb6016454f97">
                   <div class="hash-toolbar">
                     <span class="hash-label">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
@@ -729,14 +739,14 @@
                 </p>
 
                 <dl class="card-spec-meta" style="margin-top: 1.25rem;">
-                  <div><dt>Version</dt><dd>1.4.0</dd></div>
+                  <div><dt>Version</dt><dd id="win-msi-version">1.4.1</dd></div>
                   <div><dt>Architecture</dt><dd>x64 (64-bit)</dd></div>
                   <div><dt>File Size</dt><dd id="win-msi-size">12.1 MB</dd></div>
-                  <div><dt>Release Date</dt><dd>October 2026</dd></div>
+                  <div><dt>Release Date</dt><dd id="win-msi-date">October 16, 2026</dd></div>
                 </dl>
 
                 <!-- Interactive HiddenHash Component -->
-                <div class="hidden-hash-box" data-hash="ea373931ef85371898e0d553731ea99daca989bf7d90e94a7a543629e78697eb">
+                <div class="hidden-hash-box" data-hash="ea64d27adb2dae822ac43019d96a72e1033145f916d0dda2df7f05a927997a20">
                   <div class="hash-toolbar">
                     <span class="hash-label">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
@@ -794,14 +804,14 @@
                 </p>
 
                 <dl class="card-spec-meta" style="margin-top: 1.25rem;">
-                  <div><dt>Version</dt><dd>1.4.0</dd></div>
+                  <div><dt>Version</dt><dd id="android-apk-version">1.4.1</dd></div>
                   <div><dt>Architecture</dt><dd>arm64-v8a / universal</dd></div>
-                  <div><dt>File Size</dt><dd id="android-apk-size">13.4 MB</dd></div>
-                  <div><dt>Release Date</dt><dd>October 2026</dd></div>
+                  <div><dt>File Size</dt><dd id="android-apk-size">12.2 MB</dd></div>
+                  <div><dt>Release Date</dt><dd id="android-release-date">October 16, 2026</dd></div>
                 </dl>
 
                 <!-- Interactive HiddenHash Component -->
-                <div class="hidden-hash-box" data-hash="c50daa023247c55ff0f41491034438b02e88e9dbb93cfddf27d84a3aca5c8413">
+                <div class="hidden-hash-box" data-hash="37dcefc61d935c05c8692c95c4c1cab02c8d44bf76c160ef6c2eb45dec99e15e">
                   <div class="hash-toolbar">
                     <span class="hash-label">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>

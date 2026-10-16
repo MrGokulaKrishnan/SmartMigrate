@@ -12,6 +12,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.core.content.ContextCompat
@@ -204,6 +206,28 @@ private fun SmartMigrateApp() {
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var updateModalOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    var lastBackPressTime by remember { mutableLongStateOf(0L) }
+
+    // Intercept hardware and gesture back button to prevent accidental app termination
+    BackHandler(enabled = !isDedicatedRemoteSessionActive) {
+        if (updateModalOpen) {
+            updateModalOpen = false
+        } else if (qrScannerOpen) {
+            qrScannerOpen = false
+        } else if (pairingDialog) {
+            pairingDialog = false
+        } else if (destination != AppDestination.Home) {
+            destination = AppDestination.Home
+        } else {
+            val now = System.currentTimeMillis()
+            if (now - lastBackPressTime < 2000L) {
+                (context as? androidx.activity.ComponentActivity)?.finish()
+            } else {
+                lastBackPressTime = now
+                Toast.makeText(context, "Press back again to exit Smart Migrate", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     val checkUpdatesManual: () -> Unit = {
         scope.launch {
@@ -1239,6 +1263,7 @@ private fun DesktopStreamSurface(
     val bitmap = bitmapState.value ?: return
 
     Canvas(modifier = modifier.fillMaxSize()) {
+        if (bitmap.isRecycled) return@Canvas
         val containerW = size.width
         val containerH = size.height
         val imgW = bitmap.width.toFloat()
@@ -1263,7 +1288,13 @@ private fun DesktopStreamSurface(
                 }
             }
 
-            drawContext.canvas.nativeCanvas.drawBitmap(bitmap, null, dstRect, null)
+            try {
+                if (!bitmap.isRecycled) {
+                    drawContext.canvas.nativeCanvas.drawBitmap(bitmap, null, dstRect, null)
+                }
+            } catch (_: Throwable) {
+                // Safeguard against asynchronous bitmap invalidation during frame decode
+            }
         }
     }
 }
@@ -1313,6 +1344,17 @@ private fun DedicatedRemoteSessionScreen(
     DisposableEffect(streamEngine) {
         onDispose {
             streamEngine.stopStreaming()
+        }
+    }
+
+    // Intercept back gesture during remote session to minimize session rather than kill application
+    BackHandler {
+        if (isPanelOpen) {
+            isPanelOpen = false
+        } else if (isKeyboardOpen) {
+            isKeyboardOpen = false
+        } else {
+            onLeaveSession()
         }
     }
 

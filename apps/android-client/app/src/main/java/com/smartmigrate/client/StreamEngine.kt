@@ -6,9 +6,11 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -86,11 +88,22 @@ class StreamEngine {
         private const val MAX_RECONNECT_ATTEMPTS = 5
     }
 
-    private val scope = CoroutineScope(Dispatchers.IO + Job())
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Log.e(TAG, "[$currentSessionId] Unhandled stream exception: ${throwable.message}", throwable)
+        _state.value = StreamConnectionState.FAILED
+        _diagnostics.value = _diagnostics.value.copy(
+            connectionState = StreamConnectionState.FAILED,
+            failureReason = throwable.message ?: "Stream internal error"
+        )
+    }
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob() + exceptionHandler)
     private var streamJob: Job? = null
     private var currentSessionId: String = ""
     @Volatile
     private var activeSocket: Socket? = null
+    @Volatile
+    private var reusableBitmap: Bitmap? = null
 
     private val _state = mutableStateOf(StreamConnectionState.DISCONNECTED)
     val state: State<StreamConnectionState> = _state
@@ -150,11 +163,14 @@ class StreamEngine {
                 // Conflated channel guarantees zero buffer bloat: newest frame always replaces un-decoded older frame
                 val frameChannel = Channel<ByteArray>(Channel.CONFLATED)
 
-                // Launch decode worker
-                val decodeJob = launch(Dispatchers.Default) {
+                // Launch decode worker with robust inBitmap buffer reuse
+                val decodeJob = launch(Dispatchers.Default + CoroutineExceptionHandler { _, t ->
+                    Log.w(TAG, "[$sessionId] Decoder coroutine error: ${t.message}")
+                }) {
                     val decodeOptions = BitmapFactory.Options().apply {
                         inPreferredConfig = Bitmap.Config.RGB_565
                         inDither = false
+                        inMutable = true
                     }
 
                     var lastFpsTime = SystemClock.elapsedRealtime()
@@ -166,9 +182,37 @@ class StreamEngine {
 
                         val t0 = SystemClock.elapsedRealtime()
                         val bitmap = try {
-                            BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, decodeOptions)
+                            val candidate = reusableBitmap
+                            if (candidate != null && !candidate.isRecycled) {
+                                decodeOptions.inBitmap = candidate
+                            } else {
+                                decodeOptions.inBitmap = null
+                            }
+                            val decoded = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, decodeOptions)
+                            if (decoded != null) {
+                                reusableBitmap = decoded
+                            }
+                            decoded
+                        } catch (iae: IllegalArgumentException) {
+                            // Dimension or format change: reset inBitmap and re-decode
+                            decodeOptions.inBitmap = null
+                            try {
+                                val decoded = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, decodeOptions)
+                                if (decoded != null) {
+                                    reusableBitmap = decoded
+                                }
+                                decoded
+                            } catch (_: Throwable) {
+                                null
+                            }
                         } catch (oom: OutOfMemoryError) {
                             Log.w(TAG, "[$sessionId] Decoder OOM: ${oom.message}")
+                            reusableBitmap = null
+                            decodeOptions.inBitmap = null
+                            System.gc()
+                            null
+                        } catch (t: Throwable) {
+                            Log.w(TAG, "[$sessionId] Decoder error: ${t.message}")
                             null
                         }
 
@@ -347,6 +391,7 @@ class StreamEngine {
 
         streamJob?.cancel()
         streamJob = null
+        reusableBitmap = null
         _latestBitmap.value = null
         _state.value = StreamConnectionState.DISCONNECTED
         _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.DISCONNECTED)
