@@ -13,8 +13,9 @@
 //!   - Raw local filesystem paths are **never** echoed in logs or untrusted telemetry.
 
 use migroute::transfer::{
-    compute_sha256, sanitize_file_name, TransferSession, TransferState, DEFAULT_CHUNK_SIZE,
-    MAX_FILE_SIZE,
+    compute_sha256, lz4_compress_block, lz4_decompress_block, sanitize_file_name,
+    should_compress_file, TransferCheckpoint, TransferSession,
+    TransferState, DEFAULT_CHUNK_SIZE, MAX_FILE_SIZE,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -207,10 +208,13 @@ impl TransferManager {
 
         session.approve().map_err(|e| format!("approval failed: {}", e))?;
 
-        // Prepare the .part staging file
+        // Prepare the .part staging file with preallocated file extent for fast random-access writes
         let staging_file = Self::get_staging_dir().join(format!("{}.part", transfer_id));
-        let _ = File::create(&staging_file)
+        let staging_handle = File::create(&staging_file)
             .map_err(|e| format!("failed to initialize staging file: {}", e))?;
+        if total_bytes > 0 {
+            let _ = staging_handle.set_len(total_bytes);
+        }
 
         let dto = TransferSessionDto::from(&session);
         self.sessions.lock().unwrap().insert(transfer_id, session);
@@ -336,6 +340,231 @@ impl TransferManager {
         })
     }
 
+    /// Reads multiple contiguous chunks in parallel, compressing compressible files with LZ4 on the fly.
+    pub fn read_outgoing_batch(
+        &self,
+        transfer_id: &str,
+        start_chunk: u64,
+        max_chunks: u32,
+        enable_compression: bool,
+    ) -> Result<OutgoingBatchDto, String> {
+        let mut sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get_mut(transfer_id)
+            .ok_or_else(|| "transfer session not found".to_string())?;
+
+        let source_path = {
+            let paths = self.source_paths.lock().unwrap();
+            paths
+                .get(transfer_id)
+                .cloned()
+                .ok_or_else(|| "source file path missing".to_string())?
+        };
+
+        if start_chunk >= session.total_chunks {
+            return Err("start chunk index out of bounds".to_string());
+        }
+
+        let mut file = File::open(&source_path)
+            .map_err(|e| format!("failed to open source file: {}", e))?;
+
+        let count = (max_chunks as u64).min(session.total_chunks - start_chunk).max(1);
+        let mut slices = Vec::with_capacity(count as usize);
+
+        let should_compress = enable_compression && should_compress_file(&session.file_name, &[]);
+
+        for i in 0..count {
+            let chunk_index = start_chunk + i;
+            let offset = chunk_index * (session.chunk_size as u64);
+            file.seek(SeekFrom::Start(offset))
+                .map_err(|e| format!("seek error: {}", e))?;
+
+            let expected_len = if chunk_index == session.total_chunks - 1 {
+                let rem = (session.total_bytes % session.chunk_size as u64) as usize;
+                if rem == 0 && session.total_bytes > 0 {
+                    session.chunk_size as usize
+                } else {
+                    rem
+                }
+            } else {
+                session.chunk_size as usize
+            };
+
+            let mut raw_buf = vec![0u8; expected_len];
+            file.read_exact(&mut raw_buf)
+                .map_err(|e| format!("failed to read chunk {}: {}", chunk_index, e))?;
+
+            let chunk_sha256 = compute_sha256(&raw_buf);
+
+            let (payload_bytes, codec_str) = if should_compress {
+                let compressed = lz4_compress_block(&raw_buf);
+                if compressed.len() < raw_buf.len() {
+                    (compressed, "lz4".to_string())
+                } else {
+                    (raw_buf, "none".to_string())
+                }
+            } else {
+                (raw_buf, "none".to_string())
+            };
+
+            session.record_chunk_completed(chunk_index, expected_len);
+
+            slices.push(OutgoingSliceDto {
+                chunk_index,
+                byte_offset: offset,
+                uncompressed_length: expected_len as u32,
+                compression: codec_str,
+                chunk_sha256,
+                data_base64: to_base64(&payload_bytes),
+            });
+        }
+
+        let is_final_batch = (start_chunk + count) >= session.total_chunks;
+        if is_final_batch {
+            session.state = TransferState::Completed;
+        }
+
+        Ok(OutgoingBatchDto {
+            transfer_id: transfer_id.to_string(),
+            batch_id: start_chunk / (max_chunks as u64).max(1),
+            slices,
+            is_final_batch,
+            progress_percent: session.progress_percent(),
+        })
+    }
+
+    /// Ingests a batch of incoming slices written to exact offsets with on-the-fly decompression and microsecond checkpoint journaling.
+    pub fn write_incoming_batch(
+        &self,
+        transfer_id: &str,
+        slices: &[IncomingSliceDto],
+    ) -> Result<TransferProgressDto, String> {
+        let mut sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get_mut(transfer_id)
+            .ok_or_else(|| "transfer session not found".to_string())?;
+
+        let staging_file = Self::get_staging_dir().join(format!("{}.part", transfer_id));
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&staging_file)
+            .map_err(|e| format!("failed to open staging file: {}", e))?;
+
+        for slice in slices {
+            let raw_data = from_base64(&slice.data_base64)
+                .map_err(|e| format!("slice base64 decode failed: {}", e))?;
+
+            let decompressed = match slice.compression.as_str() {
+                "lz4" => lz4_decompress_block(&raw_data, slice.uncompressed_length as usize)
+                    .map_err(|e| format!("lz4 decompression failed: {}", e))?,
+                _ => raw_data,
+            };
+
+            session
+                .validate_chunk(slice.chunk_index, &decompressed, &slice.chunk_sha256)
+                .map_err(|e| format!("slice validation failed: {}", e))?;
+
+            file.seek(SeekFrom::Start(slice.byte_offset))
+                .map_err(|e| format!("seek error: {}", e))?;
+
+            file.write_all(&decompressed)
+                .map_err(|e| format!("write error: {}", e))?;
+
+            session.record_chunk_completed(slice.chunk_index, decompressed.len());
+        }
+
+        file.flush().map_err(|e| format!("flush error: {}", e))?;
+
+        // Commit microsecond checkpoint journal for crash recovery
+        let now_us = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_micros() as u64;
+
+        let completed_indices: Vec<u64> = session.acknowledged_chunks.iter().copied().collect();
+        let cp = TransferCheckpoint::new(
+            transfer_id.to_string(),
+            session.total_bytes,
+            session.chunk_size,
+            session.total_chunks,
+            completed_indices,
+            now_us,
+        );
+        let _ = Self::save_checkpoint_to_disk(transfer_id, &cp);
+
+        Ok(TransferProgressDto {
+            transfer_id: transfer_id.to_string(),
+            chunks_completed: session.chunks_completed,
+            total_chunks: session.total_chunks,
+            bytes_transferred: session.bytes_transferred,
+            total_bytes: session.total_bytes,
+            progress_percent: session.progress_percent(),
+            state: format!("{:?}", session.state),
+            next_expected_chunk: session.next_expected_chunk,
+        })
+    }
+
+    /// Saves a transfer checkpoint journal atomically to disk.
+    pub fn save_checkpoint_to_disk(transfer_id: &str, checkpoint: &TransferCheckpoint) -> Result<(), String> {
+        let staging_dir = Self::get_staging_dir();
+        let journal_file = staging_dir.join(format!("{}.journal", transfer_id));
+        let tmp_file = staging_dir.join(format!("{}.journal.tmp", transfer_id));
+        let bytes = checkpoint.encode();
+        fs::write(&tmp_file, &bytes).map_err(|e| format!("failed writing checkpoint tmp: {e}"))?;
+        fs::rename(&tmp_file, &journal_file).map_err(|e| format!("failed committing checkpoint: {e}"))?;
+        Ok(())
+    }
+
+    /// Loads a transfer checkpoint journal from disk.
+    pub fn load_checkpoint_from_disk(transfer_id: &str) -> Result<TransferCheckpoint, String> {
+        let journal_file = Self::get_staging_dir().join(format!("{}.journal", transfer_id));
+        if !journal_file.exists() {
+            return Err("journal file does not exist".to_string());
+        }
+        let bytes = fs::read(&journal_file).map_err(|e| format!("failed reading journal: {e}"))?;
+        TransferCheckpoint::decode(&bytes).map_err(|e| format!("failed decoding journal: {e}"))
+    }
+
+    /// Recovers transfer state from an on-disk journal checkpoint in microseconds.
+    pub fn resume_from_checkpoint(&self, transfer_id: &str) -> Result<CheckpointResumeDto, String> {
+        let cp = Self::load_checkpoint_from_disk(transfer_id)?;
+        let mut sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get_mut(transfer_id)
+            .ok_or_else(|| "transfer session not found in active state".to_string())?;
+
+        for &idx in &cp.completed_chunk_indices {
+            let len = if idx == cp.total_chunks - 1 {
+                let rem = (cp.file_size % cp.chunk_size as u64) as usize;
+                if rem == 0 && cp.file_size > 0 {
+                    cp.chunk_size as usize
+                } else {
+                    rem
+                }
+            } else {
+                cp.chunk_size as usize
+            };
+            session.record_chunk_completed(idx, len);
+        }
+
+        let missing = cp.find_missing_chunk_indices();
+        let pct = if cp.total_chunks > 0 {
+            (cp.completed_count as f32 / cp.total_chunks as f32) * 100.0
+        } else {
+            100.0
+        };
+
+        Ok(CheckpointResumeDto {
+            transfer_id: transfer_id.to_string(),
+            total_chunks: cp.total_chunks,
+            completed_count: cp.completed_count,
+            progress_percent: pct,
+            missing_chunks: missing,
+            timestamp_us: cp.timestamp_us,
+        })
+    }
+
     /// Finalizes an incoming transfer: verifies the overall file digest and moves to destination.
     pub fn finalize_incoming(&self, transfer_id: &str) -> Result<FinalizeResultDto, String> {
         let mut sessions = self.sessions.lock().unwrap();
@@ -372,6 +601,8 @@ impl TransferManager {
             })
             .map_err(|e| format!("failed to move staged file to destination: {}", e))?;
 
+        let _ = fs::remove_file(Self::get_staging_dir().join(format!("{}.journal", transfer_id)));
+
         Ok(FinalizeResultDto {
             transfer_id: transfer_id.to_string(),
             file_name: session.file_name.clone(),
@@ -407,10 +638,14 @@ impl TransferManager {
             session.cancel();
         }
 
-        // Clean up partial file
+        // Clean up partial file and journal
         let staging_file = Self::get_staging_dir().join(format!("{}.part", transfer_id));
         if staging_file.exists() {
             let _ = fs::remove_file(staging_file);
+        }
+        let journal_file = Self::get_staging_dir().join(format!("{}.journal", transfer_id));
+        if journal_file.exists() {
+            let _ = fs::remove_file(journal_file);
         }
 
         Ok(())
@@ -606,6 +841,49 @@ pub struct OutgoingChunkDto {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct OutgoingSliceDto {
+    pub chunk_index: u64,
+    pub byte_offset: u64,
+    pub uncompressed_length: u32,
+    pub compression: String,
+    pub chunk_sha256: String,
+    pub data_base64: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OutgoingBatchDto {
+    pub transfer_id: String,
+    pub batch_id: u64,
+    pub slices: Vec<OutgoingSliceDto>,
+    pub is_final_batch: bool,
+    pub progress_percent: f32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct IncomingSliceDto {
+    pub chunk_index: u64,
+    pub byte_offset: u64,
+    pub uncompressed_length: u32,
+    pub compression: String,
+    pub chunk_sha256: String,
+    pub data_base64: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckpointResumeDto {
+    pub transfer_id: String,
+    pub total_chunks: u64,
+    pub completed_count: u64,
+    pub progress_percent: f32,
+    pub missing_chunks: Vec<u64>,
+    pub timestamp_us: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct TransferProgressDto {
     pub transfer_id: String,
     pub chunks_completed: u64,
@@ -657,4 +935,6 @@ pub struct DeltaSyncSummary {
     pub bytes_saved: u64,
     pub delta_entries: Vec<FolderManifestEntry>,
 }
+
+
 

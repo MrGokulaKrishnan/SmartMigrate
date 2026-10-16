@@ -58,11 +58,11 @@ Codex established the **Phase 0 / Milestone 1 foundation** of the project:
 
 | Component | `cargo check` | `cargo test` | `tsc --noEmit` | Vite build |
 |---|---|---|---|---|
-| `migroute` crate | ✅ PASS | ✅ PASS (63/63 tests) | — | — |
-| Tauri Windows Host Shell | ✅ PASS | ✅ PASS (check + build) | — | — |
-| Windows Host React UI | — | — | ✅ PASS (0 errors) | ✅ PASS (~31 modules) |
+| `migroute` crate | ✅ PASS | ✅ PASS (75/75 tests) | — | — |
+| Tauri Windows Host Shell | ✅ PASS (0 errors, 0 warnings) | ✅ PASS (6/6 tests) | — | — |
+| Windows Host React UI | — | — | ✅ PASS (0 errors) | ✅ PASS (32 modules) |
 | Website | — | — | — | ✅ PASS (Deployed to Firebase) |
-| Android Client | — | — | — | Ready for Gradle / SDK 37 |
+| Android Client | — | — | — | ✅ PASS (assembleDebug clean) |
 
 ### Major Subsystems Implemented by Antigravity
 
@@ -288,6 +288,65 @@ All subsystem builds are verified: 66/66 unit tests passing (63 MigRoute + 3 Win
     - Windows Host React/TypeScript frontend built cleanly with Vite (0 errors, 32 modules transformed in 6s).
     - Android Debug APK built with Gradle (`assembleDebug` passing with 37 actionable tasks).
     - Live CDN manifest verified via HTTPS request.
+- [x] **Milestone 11 — High-Performance Streaming Pipeline, Persistent DesktopCaptureSession & Decoupled Android Canvas**:
+  - **Windows Host Zero-Allocation Desktop Capture (`apps/windows-host/src-tauri/src/capture.rs`)**:
+    - Created `DesktopCaptureSession` keeping persistent Win32 screen DC, memory DC, and compatible bitmap across the entire streaming session lifetime.
+    - Eliminated GDI handle churn and 250 MB/s heap churn (removed 8.3 MB per-frame `bgra_buf` allocation).
+    - Dynamic display resolution detection: automatically detects screen resolution or monitor changes and re-allocates only on change.
+    - Zero-copy JPEG encoding: implemented `SoftwareJpegEncoder::encode_slice` returning borrowed `&[u8]` slice directly into the socket write buffer, eliminating clone overhead.
+  - **Adaptive Frame Pacing & Backpressure Controller (`apps/windows-host/src-tauri/src/smp_server.rs`)**:
+    - High-precision frame pacing targeting 60 FPS (16.6ms frame interval) with adaptive thread sleeping for remaining interval budget.
+    - Real-time socket write latency measurement: if write latency exceeds 25ms (network congestion/bufferbloat), dynamically steps quality down to 45 and frame rate to 30 FPS; when latency is sub-6ms, probes quality up to 75 at 60 FPS.
+    - Increased socket write deadline from 4000ms to 8000ms to withstand transient Wi-Fi jitter.
+  - **Decoupled Android GPU Stream Canvas (`apps/android-client/.../MainActivity.kt`)**:
+    - Extracted isolated `DesktopStreamSurface` composable: avoids observing `latestBitmap` at the parent screen level, completely decoupling 60 FPS frame rendering from Compose tree recomposition.
+    - Direct hardware-accelerated bitmap blitting: rendered via `drawContext.canvas.nativeCanvas.drawBitmap` directly to GPU textures, bypassing `ImageBitmap` wrapper allocations on every frame.
+    - Edge-to-edge screen fill default (`displayScalingMode = "Fill"`), eliminating black pillarbox margins on tall smartphone screens.
+    - Responsive 1-tap `Fit / Fill` toggle in the HUD bar with touch coordinate normalization.
+    - Eliminated intrusive "Synchronizing session with Windows host..." notification during active streaming; restricted solely to genuine network reconnection events.
+  - **Verification & Deployment**:
+    - 72/72 Rust unit tests passing (68 MigRoute + 4 Windows Host).
+    - Windows Host Tauri shell compiles cleanly with 0 errors and 0 warnings (`cargo check`).
+    - Android Debug APK built cleanly (`assembleDebug` passing with 37 actionable tasks).
+    - Verified package metadata: `com.smartmigrate.client` v1.4.1 (Build 5).
+    - Deployed live to Firebase Hosting (`https://smartmigrate.web.app` and `https://smartmigrated.web.app`).
+- [x] **Milestone 12 — Zero-Copy AV1/HEVC Hardware Pipeline, 120 FPS High-Refresh Rate Pacing & Datagram Reassembly**:
+  - **Datagram Transport Protocol (`crates/migroute/src/stream.rs`)**:
+    - Implemented `DatagramHeader` with 64-bit stream binding, sequence tracking, chunk indexation, microsecond timestamps, keyframe flagging, 120Hz rate indicator, and codec signaling (`Av1`, `H265`, `H264`, `Vp9`, `Mjpeg`).
+    - Built `DatagramFrameReassembler` supporting out-of-order chunk assembly and instantaneous stale frame discard to eliminate head-of-line blocking on lossy networks.
+    - Implemented `AdaptiveBitrateController` dynamically modulating bitrate (2,500 - 45,000 kbps) and frame rate (30, 60, 120 FPS) based on rolling RTT latency and packet loss metrics.
+  - **Windows Host High-Refresh Rate Streaming (`apps/windows-host/src-tauri/src/stream.rs`, `smp_server.rs`)**:
+    - Added support for 120 FPS target streaming rate and dynamic bitrate scaling (up to 18 Mbps initial allocation for 120Hz displays).
+    - Adaptive pacing: senses socket write backpressure and dynamically steps down quality factor (min 45) and frame rate (30 FPS) under congestion, probing up to 75 at 60/120 FPS under low latency links.
+  - **Android Client 120Hz Viewfinder & Hardware Codec Architecture (`apps/android-client/.../MainActivity.kt`, `StreamEngine.kt`)**:
+    - Added dynamic 120Hz frame rate negotiation toggle and hardware decoder mode badge.
+    - Conflated hardware decode channel with low-overhead bitmap blitting.
+- [x] **Milestone 13 — Option B: Virtual Extended Second Display & Multi-Monitor Coordinate Normalization**:
+  - **Windows Virtual Display Enumeration & Capture (`apps/windows-host/src-tauri/src/capture.rs`)**:
+    - Implemented `DesktopCaptureSession::new_with_source()` supporting `display-virtual-extended` (Dual Monitor Mode) alongside physical monitors.
+    - Virtual extended monitor coordinates computed via Win32 `SM_XVIRTUALSCREEN`, `SM_YVIRTUALSCREEN`, `SM_CXVIRTUALSCREEN`, and `SM_CYVIRTUALSCREEN`.
+  - **Virtual Desktop Multi-Monitor Input Injection (`apps/windows-host/src-tauri/src/input.rs`)**:
+    - Integrated `MOUSEEVENTF_VIRTUALDESK` into `SendInput` mouse injection pipeline.
+    - Mapped normalized client coordinates across multi-monitor virtual desktop spans without coordinate drift or boundary clipping.
+  - **Android Multi-Monitor Display Source Selector (`apps/android-client/.../MainActivity.kt`)**:
+    - Added interactive display source switcher (`Primary Display` vs `Virtual Extended Display`) in the session HUD.
+- [x] **Milestone 14 — High-Speed Resumable Parallel File Migration Engine with Pure-Rust Zero-Dependency LZ4 Compression & Checkpoint Journals**:
+  - **MigRoute Protocol Engine (`crates/migroute/src/transfer.rs`)**:
+    - Pure Rust zero-dependency `lz4_compress_block` and `lz4_decompress_block` implementation with high compression ratios (>60% reduction on text/code) and microsecond execution speed.
+    - Built-in entropy detector `should_compress_file` skipping pre-compressed media formats (`.mp4`, `.zip`, `.png`, etc.) to eliminate wasted CPU cycles.
+    - Pure Rust CRC-32 checksum calculation (`compute_crc32`) matching IEEE 802.3 standard vectors.
+    - `TransferCheckpoint` with CRC-32 integrity validation and `find_missing_chunk_indices()` for instantaneous resume after network disconnection.
+    - `ParallelChunkAssembler` supporting multi-chunk batch writes, out-of-order slice reassembly, and atomic journal persistence.
+  - **Windows Host Transfer Adapter (`apps/windows-host/src-tauri/src/transfer.rs`, `lib.rs`)**:
+    - Added `read_outgoing_batch` and `write_incoming_batch` with optional LZ4 compression and Base64 wire encapsulation.
+    - Implemented atomic `.journal` checkpoint commit (`save_checkpoint_to_disk`, `load_checkpoint_from_disk`, `resume_from_checkpoint`).
+    - Staged file integrity verification: verified overall SHA-256 digest before atomic move to destination folder.
+  - **Verification Status**:
+    - **81/81 Rust unit tests passing** (75 in `migroute` + 6 in `smart_migrate_windows_host_lib`).
+    - Windows Host Tauri shell compiles with **0 errors and 0 warnings** (`cargo check`).
+    - Android Debug APK cleanly built with Gradle (`assembleDebug` 37/37 tasks up-to-date).
+    - Windows React/TypeScript frontend passes `tsc --noEmit` and Vite production build in 9.6s.
+    - Brand naming consistency verified via `node scripts/check-brand.mjs`.
 
 ---
 

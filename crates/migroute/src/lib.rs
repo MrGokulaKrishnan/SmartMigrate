@@ -40,8 +40,10 @@ pub use stream::{
     MAX_DATAGRAM_PAYLOAD_SIZE,
 };
 pub use transfer::{
-    compute_sha256, sanitize_file_name, TransferDirection, TransferError, TransferSession,
-    TransferState, DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE, MAX_FILE_SIZE,
+    compute_crc32, compute_sha256, lz4_compress_block, lz4_decompress_block, sanitize_file_name,
+    should_compress_file, ParallelChunkAssembler, ProcessedSlice, TransferCheckpoint,
+    TransferChunkBatch, TransferChunkSlice, TransferCompression, TransferDirection, TransferError,
+    TransferSession, TransferState, DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE, MAX_FILE_SIZE,
 };
 pub use trust::{TrustStore, TrustStoreError, TrustedDevice};
 

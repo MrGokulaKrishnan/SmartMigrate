@@ -26,8 +26,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use stream::{StreamSessionState, StreamTelemetry};
 use tauri::{State, Window};
 use transfer::{
-    DeltaSyncSummary, FinalizeResultDto, FolderScanResult, OutgoingChunkDto, TransferManager,
-    TransferProgressDto, TransferSessionDto,
+    CheckpointResumeDto, DeltaSyncSummary, FinalizeResultDto, FolderScanResult, IncomingSliceDto,
+    OutgoingBatchDto, OutgoingChunkDto, TransferManager, TransferProgressDto, TransferSessionDto,
 };
 
 
@@ -628,6 +628,37 @@ fn finalize_incoming_transfer(
     state.transfer.finalize_incoming(&transfer_id)
 }
 
+/// Reads a parallel batch of outgoing chunks with on-the-fly LZ4 compression.
+#[tauri::command]
+fn read_outgoing_batch(
+    state: State<'_, AppState>,
+    transfer_id: String,
+    start_chunk: u64,
+    max_chunks: u32,
+    enable_compression: bool,
+) -> Result<OutgoingBatchDto, String> {
+    state.transfer.read_outgoing_batch(&transfer_id, start_chunk, max_chunks, enable_compression)
+}
+
+/// Ingests a parallel batch of incoming slices with on-the-fly decompression and microsecond checkpoint journaling.
+#[tauri::command]
+fn write_incoming_batch(
+    state: State<'_, AppState>,
+    transfer_id: String,
+    slices: Vec<IncomingSliceDto>,
+) -> Result<TransferProgressDto, String> {
+    state.transfer.write_incoming_batch(&transfer_id, &slices)
+}
+
+/// Recovers and resumes a transfer state from its microsecond on-disk journal checkpoint.
+#[tauri::command]
+fn resume_transfer_from_checkpoint(
+    state: State<'_, AppState>,
+    transfer_id: String,
+) -> Result<CheckpointResumeDto, String> {
+    state.transfer.resume_from_checkpoint(&transfer_id)
+}
+
 /// Pauses an active transfer.
 #[tauri::command]
 fn pause_transfer(state: State<'_, AppState>, transfer_id: String) -> Result<(), String> {
@@ -937,11 +968,14 @@ pub fn run() {
             deactivate_clipboard_sync,
             prepare_outgoing_transfer,
             read_outgoing_chunk,
+            read_outgoing_batch,
             accept_incoming_transfer,
             write_incoming_chunk,
+            write_incoming_batch,
             finalize_incoming_transfer,
             pause_transfer,
             resume_transfer,
+            resume_transfer_from_checkpoint,
             cancel_transfer,
             list_transfers,
             open_transfers_folder,

@@ -424,6 +424,10 @@ mod win_gdi {
         ) -> i32;
         pub fn DeleteDC(hdc: *mut std::ffi::c_void) -> i32;
         pub fn DeleteObject(ho: *mut std::ffi::c_void) -> i32;
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
         pub fn GetLastError() -> u32;
     }
 

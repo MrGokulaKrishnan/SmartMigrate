@@ -3,7 +3,7 @@
   "version": "1.4.1",
   "versionCode": 5,
   "releaseDate": "2026-10-16T22:30:00Z",
-  "releaseNotes": "• Direct low-latency TCP socket streaming engine with zero OkHttp pooling drops\n• Screen fill default display scaling (zero black bars) with 1-tap HUD scaling toggle\n• In-session status indicator fix: no blocking notification during active stream\n• Direct Connect flow in Devices tab with automatic SMP session creation\n• Android version bump to 1.4.1 (Build 5) with seamless package update",
+  "releaseNotes": "• Persistent DesktopCaptureSession with GDI handle reuse and zero-copy frame pipeline\n• Decoupled DesktopStreamSurface on Android eliminating Compose tree recomposition at 60 FPS\n• Adaptive backpressure frame pacing modulating quality (45-75) and interval (16-33ms)\n• Direct low-latency TCP socket streaming engine with zero OkHttp pooling drops\n• Screen fill default display scaling (zero black bars) with 1-tap HUD scaling toggle\n• Direct Connect flow in Devices tab with automatic SMP session creation",
   "channels": {
     "stable": "1.4.1",
     "beta": "1.4.1"
@@ -23,8 +23,8 @@
       "versionCode": 5,
       "url": "https://smartmigrate.web.app/downloads/android/SmartMigrate.apk",
       "fileName": "SmartMigrate.apk",
-      "size": 12426153,
-      "sha256": "75827f8091f6b34d80877b832e7fff9b012678e9b11928d43e036772e923ad54",
+      "size": 12838266,
+      "sha256": "855fdb06ee167664a10dd5280eb62fe27ad37e4dc81421e80ac3fa674db17769",
       "signature": "SMP-SIG-APK-1.4.1-VERIFIED-AUTH",
       "mandatory": false
     }
