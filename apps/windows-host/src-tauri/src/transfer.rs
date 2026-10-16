@@ -936,5 +936,61 @@ pub struct DeltaSyncSummary {
     pub delta_entries: Vec<FolderManifestEntry>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_base64_roundtrip() {
+        let data = b"Hello Smart Migrate high speed file transfer engine!";
+        let encoded = to_base64(data);
+        let decoded = from_base64(&encoded).expect("base64 decode succeeds");
+        assert_eq!(&decoded, data);
+    }
+
+    #[test]
+    fn test_batch_read_and_checkpoint_journaling() {
+        let temp_dir = std::env::temp_dir().join("smart_migrate_test_batch_2");
+        let _ = fs::create_dir_all(&temp_dir);
+        let src_file = temp_dir.join("payload.txt");
+
+        let mut content = Vec::new();
+        for i in 0..50 {
+            content.extend_from_slice(format!("Row #{}: Smart Migrate migroute high-speed parallel chunk engine\n", i).as_bytes());
+        }
+        fs::write(&src_file, &content).expect("write src file");
+
+        let manager = TransferManager::new();
+        let transfer_id = "test-batch-002".to_string();
+
+        let out_dto = manager.register_outgoing(transfer_id.clone(), src_file.clone()).expect("register outgoing");
+        assert_eq!(out_dto.total_chunks, 1);
+
+        let batch = manager.read_outgoing_batch(&transfer_id, 0, 10, true).expect("read batch");
+        assert_eq!(batch.slices.len(), 1);
+        let slice = &batch.slices[0];
+        assert_eq!(slice.compression, "lz4");
+        assert_eq!(slice.uncompressed_length, content.len() as u32);
+
+        // Verify checkpoint saving and loading
+        let cp = TransferCheckpoint::new(
+            transfer_id.clone(),
+            content.len() as u64,
+            out_dto.chunk_size,
+            1,
+            vec![0],
+            1729100000000000,
+        );
+        TransferManager::save_checkpoint_to_disk(&transfer_id, &cp).expect("save checkpoint");
+        let loaded = TransferManager::load_checkpoint_from_disk(&transfer_id).expect("load checkpoint");
+        assert_eq!(loaded.transfer_id, transfer_id);
+        assert_eq!(loaded.completed_count, 1);
+
+        // Clean up
+        let _ = fs::remove_file(TransferManager::get_staging_dir().join(format!("{}.journal", transfer_id)));
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+}
+
 
 

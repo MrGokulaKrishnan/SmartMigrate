@@ -426,11 +426,6 @@ mod win_gdi {
         pub fn DeleteObject(ho: *mut std::ffi::c_void) -> i32;
     }
 
-    #[link(name = "kernel32")]
-    extern "system" {
-        pub fn GetLastError() -> u32;
-    }
-
     pub const SRCCOPY: u32 = 0x00CC0020;
     pub const CAPTUREBLT: u32 = 0x40000000;
     pub const DIB_RGB_COLORS: u32 = 0;
@@ -591,8 +586,7 @@ impl DesktopCaptureSession {
                 );
             }
             if blt_res == 0 {
-                let err = GetLastError();
-                return Err(format!("BitBlt screen copy failed (Win32 error {})", err));
+                return Err("BitBlt screen copy failed".to_string());
             }
 
             let mut bmi = BITMAPINFO {
