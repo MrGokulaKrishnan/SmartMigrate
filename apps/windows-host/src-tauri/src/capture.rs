@@ -85,6 +85,16 @@ fn enumerate_windows_monitors() -> Vec<DisplaySource> {
         is_primary: true,
     });
 
+    // Provide Virtual Extended Second Display target for dual-screen workflow
+    sources.push(DisplaySource {
+        id: "display-virtual-extended".to_string(),
+        name: "Virtual Extended Display (Dual Monitor Mode)".to_string(),
+        width: w,
+        height: h,
+        refresh_rate_hz: 60,
+        is_primary: false,
+    });
+
     if count > 1 {
         for i in 1..count {
             sources.push(DisplaySource {
@@ -421,15 +431,26 @@ mod win_gdi {
     pub const CAPTUREBLT: u32 = 0x40000000;
     pub const DIB_RGB_COLORS: u32 = 0;
     pub const BI_RGB: u32 = 0;
+
+    pub const SM_XVIRTUALSCREEN: i32 = 76;
+    pub const SM_YVIRTUALSCREEN: i32 = 77;
+    pub const SM_CXVIRTUALSCREEN: i32 = 78;
+    pub const SM_CYVIRTUALSCREEN: i32 = 79;
 }
 
 /// Persistent high-performance screen capture session.
 /// Avoids recreating DCs, bitmaps, and buffers on every frame.
 pub struct DesktopCaptureSession {
     #[cfg(target_os = "windows")]
+    screen_x: i32,
+    #[cfg(target_os = "windows")]
+    screen_y: i32,
+    #[cfg(target_os = "windows")]
     screen_w: i32,
     #[cfg(target_os = "windows")]
     screen_h: i32,
+    #[allow(dead_code)]
+    source_id: String,
     #[cfg(target_os = "windows")]
     hdc_screen: *mut std::ffi::c_void,
     #[cfg(target_os = "windows")]
@@ -446,11 +467,32 @@ unsafe impl Send for DesktopCaptureSession {}
 
 impl DesktopCaptureSession {
     pub fn new() -> Result<Self, String> {
+        Self::new_with_source("display-primary")
+    }
+
+    pub fn new_with_source(source: &str) -> Result<Self, String> {
         #[cfg(target_os = "windows")]
         unsafe {
             use win_gdi::*;
-            let screen_w = GetSystemMetrics(0);
-            let screen_h = GetSystemMetrics(1);
+            let primary_w = GetSystemMetrics(0);
+            let primary_h = GetSystemMetrics(1);
+
+            let (screen_x, screen_y, screen_w, screen_h) = if source == "display-virtual-extended" {
+                let virt_x = GetSystemMetrics(SM_XVIRTUALSCREEN);
+                let virt_y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+                let virt_w = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+                let virt_h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+                if virt_w > primary_w || virt_x != 0 {
+                    let sec_w = virt_w - primary_w;
+                    let sec_x = if virt_x < 0 { virt_x } else { primary_w };
+                    (sec_x, virt_y, sec_w.max(640), virt_h.max(480))
+                } else {
+                    (0, 0, primary_w, primary_h)
+                }
+            } else {
+                (0, 0, primary_w, primary_h)
+            };
+
             if screen_w <= 0 || screen_h <= 0 {
                 return Err("Invalid desktop screen dimensions".to_string());
             }
@@ -477,8 +519,11 @@ impl DesktopCaptureSession {
             let total_bytes = (screen_w as usize) * (screen_h as usize) * 4;
 
             Ok(Self {
+                screen_x,
+                screen_y,
                 screen_w,
                 screen_h,
+                source_id: source.to_string(),
                 hdc_screen,
                 hdc_mem,
                 hbitmap,
@@ -491,6 +536,7 @@ impl DesktopCaptureSession {
         #[cfg(not(target_os = "windows"))]
         {
             Ok(Self {
+                source_id: source.to_string(),
                 bgra_buf: vec![0u8; 1920 * 1080 * 4],
                 capture_count: 0,
             })
@@ -530,13 +576,13 @@ impl DesktopCaptureSession {
 
             let mut blt_res = BitBlt(
                 self.hdc_mem, 0, 0, self.screen_w, self.screen_h,
-                self.hdc_screen, 0, 0,
+                self.hdc_screen, self.screen_x, self.screen_y,
                 SRCCOPY | CAPTUREBLT,
             );
             if blt_res == 0 {
                 blt_res = BitBlt(
                     self.hdc_mem, 0, 0, self.screen_w, self.screen_h,
-                    self.hdc_screen, 0, 0,
+                    self.hdc_screen, self.screen_x, self.screen_y,
                     SRCCOPY,
                 );
             }
@@ -705,6 +751,34 @@ mod tests {
             Err(e) => {
                 // If running in a headless/CI environment without active GUI desktop
                 println!("Display capture test reported environment notice: {e}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_virtual_extended_display_source_enumeration() {
+        let sources = enumerate_windows_monitors();
+        assert!(!sources.is_empty(), "Sources must not be empty");
+        let virtual_ext = sources.iter().find(|s| s.id == "display-virtual-extended");
+        assert!(virtual_ext.is_some(), "display-virtual-extended must be enumerated");
+        let ext = virtual_ext.unwrap();
+        assert_eq!(ext.name, "Virtual Extended Display (Dual Monitor Mode)");
+        assert!(!ext.is_primary, "Extended display should not be marked primary");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_virtual_extended_display_capture_session_init() {
+        let session = DesktopCaptureSession::new_with_source("display-virtual-extended");
+        if let Ok(mut sess) = session {
+            let exp_w = sess.screen_w as u32;
+            let exp_h = sess.screen_h as u32;
+            assert!(exp_w > 0);
+            assert!(exp_h > 0);
+            if let Ok((bgra, w, h, _)) = sess.capture_frame() {
+                assert_eq!(w, exp_w);
+                assert_eq!(h, exp_h);
+                assert_eq!(bgra.len(), (w * h * 4) as usize);
             }
         }
     }

@@ -1232,7 +1232,7 @@ private fun RemoteLandingScreen(
  */
 @Composable
 private fun DesktopStreamSurface(
-    bitmapState: State<Bitmap?>,
+    bitmapState: androidx.compose.runtime.State<Bitmap?>,
     displayScalingMode: String,
     modifier: Modifier = Modifier
 ) {
@@ -1296,6 +1296,7 @@ private fun DedicatedRemoteSessionScreen(
     var fpsMode by rememberSaveable { mutableIntStateOf(60) }
     var keyboardInputText by rememberSaveable { mutableStateOf("") }
     var displayScalingMode by rememberSaveable { mutableStateOf("Fill") } // "Fill" (Screen Fill) or "Fit" (16:9 Aspect)
+    var isVirtualExtendedDisplay by rememberSaveable { mutableStateOf(false) }
 
     // Virtual Cursor Position in Cursor Mode (normalized 0.0 .. 1.0)
     var cursorNormX by rememberSaveable { mutableFloatStateOf(0.5f) }
@@ -1303,10 +1304,10 @@ private fun DedicatedRemoteSessionScreen(
     var viewportSize by remember { mutableStateOf(IntSize(1, 1)) }
 
     // Automatically initiate stream on enter
-    LaunchedEffect(hostAddress, sessionToken) {
+    LaunchedEffect(hostAddress, sessionToken, isVirtualExtendedDisplay) {
         val h = hostAddress.trim().ifEmpty { "10.0.2.2" }
         val tok = sessionToken.trim().ifEmpty { null }
-        streamEngine.startStreaming(h, 7890, tok)
+        streamEngine.startStreaming(h, 7890, tok, isVirtualExtendedDisplay = isVirtualExtendedDisplay)
     }
 
     DisposableEffect(streamEngine) {
@@ -1400,6 +1401,26 @@ private fun DedicatedRemoteSessionScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        // Display Source Mode: Primary vs Virtual Extended
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isVirtualExtendedDisplay) Brand600 else Color(0x1AFFFFFF))
+                                .border(1.dp, if (isVirtualExtendedDisplay) Brand400 else Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                                .clickable {
+                                    isVirtualExtendedDisplay = !isVirtualExtendedDisplay
+                                    onNotice(if (isVirtualExtendedDisplay) "Switched to Virtual Extended Display (Second Screen)" else "Switched to Primary Monitor")
+                                }
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                if (isVirtualExtendedDisplay) "Dual Ext" else "Screen 1",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
                         // Display Scaling Mode Toggle (Fit vs Fill)
                         Box(
                             modifier = Modifier
@@ -1707,7 +1728,7 @@ private fun DedicatedRemoteSessionScreen(
                                     .clickable {
                                         val h = hostAddress.trim().ifEmpty { "10.0.2.2" }
                                         val tok = sessionToken.trim().ifEmpty { null }
-                                        streamEngine.startStreaming(h, 7890, tok)
+                                        streamEngine.startStreaming(h, 7890, tok, isVirtualExtendedDisplay = isVirtualExtendedDisplay)
                                     }
                                     .padding(horizontal = 16.dp, vertical = 10.dp)
                             ) {
@@ -1780,8 +1801,8 @@ private fun DedicatedRemoteSessionScreen(
                     }
                 }
 
-                // ── OVERLAYS (ONLY ACTIVE WHEN STREAMING / CONNECTED) ───────────
-                if (connState == StreamConnectionState.STREAMING || (connState == StreamConnectionState.RECONNECTING && frame != null)) {
+                // ── OVERLAYS (ONLY ACTIVE WHEN STREAMING / RECONNECTING) ───────────
+                if (connState == StreamConnectionState.STREAMING || connState == StreamConnectionState.RECONNECTING) {
                     // 1. StarDesk Right Slim Floating Toolbar
                     Box(
                         modifier = Modifier
@@ -2468,6 +2489,29 @@ private fun DedicatedRemoteSessionScreen(
                                         .padding(horizontal = 10.dp, vertical = 4.dp)
                                 ) {
                                     Text(if (virtualMouseEnabled) "ON" else "OFF", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("Virtual Extended Display", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(if (isVirtualExtendedDisplay) "Dual Monitor Mode (Second screen)" else "Mirroring primary Windows display", color = TextMuted, fontSize = 10.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isVirtualExtendedDisplay) Brand600 else Color(0x26FFFFFF))
+                                        .clickable {
+                                            isVirtualExtendedDisplay = !isVirtualExtendedDisplay
+                                            onNotice(if (isVirtualExtendedDisplay) "Virtual Extended Display activated" else "Primary Monitor activated")
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(if (isVirtualExtendedDisplay) "EXTENDED" else "MIRROR", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
 

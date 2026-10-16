@@ -312,9 +312,15 @@ mod win32 {
     pub const MOUSEEVENTF_MIDDLEDOWN: u32 = 0x0020;
     pub const MOUSEEVENTF_MIDDLEUP: u32 = 0x0040;
     pub const MOUSEEVENTF_WHEEL: u32 = 0x0800;
+    pub const MOUSEEVENTF_VIRTUALDESK: u32 = 0x4000;
     pub const MOUSEEVENTF_ABSOLUTE: u32 = 0x8000;
     pub const KEYEVENTF_KEYUP: u32 = 0x0002;
     pub const KEYEVENTF_UNICODE: u32 = 0x0004;
+
+    pub const SM_XVIRTUALSCREEN: i32 = 76;
+    pub const SM_YVIRTUALSCREEN: i32 = 77;
+    pub const SM_CXVIRTUALSCREEN: i32 = 78;
+    pub const SM_CYVIRTUALSCREEN: i32 = 79;
 }
 
 #[cfg(target_os = "windows")]
@@ -337,17 +343,32 @@ fn inject_win32_mouse(
     let mut norm_y = 0i32;
 
     if !is_relative {
-        let screen_w = unsafe { GetSystemMetrics(0) };
-        let screen_h = unsafe { GetSystemMetrics(1) };
-        let sw = if screen_w > 0 { screen_w } else { 1920 };
-        let sh = if screen_h > 0 { screen_h } else { 1080 };
+        let virt_w = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+        let virt_h = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+        let virt_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+        let virt_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+        let primary_w = unsafe { GetSystemMetrics(0) };
 
-        let clamped_x = x.clamp(0, sw);
-        let clamped_y = y.clamp(0, sh);
+        if virt_w > 0 && virt_h > 0 && (virt_w > primary_w || virt_x != 0 || virt_y != 0) {
+            // Virtual extended multi-display canvas
+            let clamped_x = x.clamp(virt_x, virt_x + virt_w);
+            let clamped_y = y.clamp(virt_y, virt_y + virt_h);
+            norm_x = (((clamped_x - virt_x) as f64 / virt_w as f64) * 65535.0) as i32;
+            norm_y = (((clamped_y - virt_y) as f64 / virt_h as f64) * 65535.0) as i32;
+            flags |= MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+        } else {
+            let screen_w = primary_w;
+            let screen_h = unsafe { GetSystemMetrics(1) };
+            let sw = if screen_w > 0 { screen_w } else { 1920 };
+            let sh = if screen_h > 0 { screen_h } else { 1080 };
 
-        norm_x = ((clamped_x as f64 / sw as f64) * 65535.0) as i32;
-        norm_y = ((clamped_y as f64 / sh as f64) * 65535.0) as i32;
-        flags |= MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+            let clamped_x = x.clamp(0, sw);
+            let clamped_y = y.clamp(0, sh);
+
+            norm_x = ((clamped_x as f64 / sw as f64) * 65535.0) as i32;
+            norm_y = ((clamped_y as f64 / sh as f64) * 65535.0) as i32;
+            flags |= MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+        }
     }
 
     if left_down { flags |= MOUSEEVENTF_LEFTDOWN; }

@@ -700,7 +700,12 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 return;
             }
 
-            let mut capture_session = match DesktopCaptureSession::new() {
+            let requested_source = if query.contains("source=display-virtual-extended") {
+                "display-virtual-extended"
+            } else {
+                "display-primary"
+            };
+            let mut capture_session = match DesktopCaptureSession::new_with_source(requested_source) {
                 Ok(s) => s,
                 Err(e) => {
                     eprintln!("[SMP/1 Stream] Failed to initialize desktop capture session: {e}");
@@ -708,7 +713,9 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 }
             };
             let mut encoder = SoftwareJpegEncoder::new(65);
-            let frame_interval = Duration::from_millis(16); // Up to ~60 fps target with adaptive sleep
+            let mut current_quality: u8 = 65;
+            let target_fps: u64 = if query.contains("fps=120") { 120 } else { 60 };
+            let mut frame_interval = Duration::from_millis(1000 / target_fps);
 
             // Rolling 1-second FPS and bitrate measurement window
             let mut fps_window_start = Instant::now();
@@ -731,7 +738,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                         sl.frames_captured += 1;
                     }
 
-                    if let Ok((encoded_slice, enc_duration_ms)) = encoder.encode_slice(bgra_data, width, height, 65) {
+                    if let Ok((encoded_slice, enc_duration_ms)) = encoder.encode_slice(bgra_data, width, height, current_quality) {
                         let frame_head = format!(
                             "--smartmigrate\r\n\
                             Content-Type: image/jpeg\r\n\
@@ -744,12 +751,26 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
 
                         let frame_bytes = frame_head.len() as u64 + encoded_slice.len() as u64 + 2;
 
+                        let t_write = Instant::now();
                         if socket.write_all(frame_head.as_bytes()).is_err()
                             || socket.write_all(encoded_slice).is_err()
                             || socket.write_all(b"\r\n").is_err()
                             || socket.flush().is_err()
                         {
                             break; // Client disconnected
+                        }
+                        let write_duration_ms = t_write.elapsed().as_secs_f32() * 1000.0;
+
+                        // Adaptive backpressure controller:
+                        // Senses socket write blocking and dynamically modulates quality and frame interval
+                        if write_duration_ms > 25.0 {
+                            // Backpressure detected: step down quality and throttle to 30 FPS
+                            current_quality = current_quality.saturating_sub(4).max(45);
+                            frame_interval = Duration::from_millis(33);
+                        } else if write_duration_ms < 6.0 && (cap_duration_ms + enc_duration_ms) < 14.0 {
+                            // Low latency link: probe quality up to 75 and sustain 60 FPS (16ms)
+                            current_quality = (current_quality + 1).min(75);
+                            frame_interval = Duration::from_millis(16);
                         }
 
                         fps_window_frames += 1;

@@ -60,6 +60,7 @@ data class StreamDiagnostics(
     val resolution: String = "—",
     val transport: String = "Direct LAN (P2P Zero-Latency)",
     val codec: String = "Zero-Copy AV1 / HEVC / H.264",
+    val displayMode: String = "Primary (Mirror)",
     val framesReceived: Long = 0L,
     val framesDecoded: Long = 0L,
     val framesRendered: Long = 0L,
@@ -115,7 +116,12 @@ class StreamEngine {
     /**
      * Connects to the host streaming server at the specified host IP/port.
      */
-    fun startStreaming(hostAddress: String = "", port: Int = 7890, authToken: String? = null) {
+    fun startStreaming(
+        hostAddress: String = "",
+        port: Int = 7890,
+        authToken: String? = null,
+        isVirtualExtendedDisplay: Boolean = false
+    ) {
         stopStreaming()
         inputSeq.set(1L)
 
@@ -127,13 +133,15 @@ class StreamEngine {
 
         val sessionId = "smp-sess-" + UUID.randomUUID().toString().take(8)
         currentSessionId = sessionId
-        Log.i(TAG, "[$sessionId] Initiating direct socket stream connection to $resolvedHost:$port")
+        val modeLabel = if (isVirtualExtendedDisplay) "Virtual Extended Display" else "Primary Mirror"
+        Log.i(TAG, "[$sessionId] Initiating direct stream ($modeLabel) to $resolvedHost:$port")
 
         streamJob = scope.launch {
             _state.value = StreamConnectionState.CONNECTING
             _diagnostics.value = _diagnostics.value.copy(
                 sessionId = sessionId,
                 connectionState = StreamConnectionState.CONNECTING,
+                displayMode = if (isVirtualExtendedDisplay) "Virtual Extended Display (Second Screen)" else "Primary Monitor (Mirror)",
                 failureReason = null
             )
 
@@ -205,6 +213,7 @@ class StreamEngine {
                                 resolution = if (bitmap != null) "${bitmap.width} × ${bitmap.height}" else "1920 × 1080",
                                 transport = "Direct LAN (P2P Zero-Latency)",
                                 codec = "Zero-Copy AV1 / HEVC / H.264",
+                                displayMode = if (isVirtualExtendedDisplay) "Virtual Extended Display (Second Screen)" else "Primary Monitor (Mirror)",
                                 framesReceived = totalFramesReceived,
                                 framesDecoded = totalFramesDecoded,
                                 framesRendered = totalFramesRendered,
@@ -233,11 +242,12 @@ class StreamEngine {
                     }
                     activeSocket = sock
 
-                    // Send HTTP/1.1 GET /live request with 120 FPS negotiation hint
+                    // Send HTTP/1.1 GET /live request with 120 FPS and Virtual Display target
+                    val sourceParam = if (isVirtualExtendedDisplay) "&source=display-virtual-extended" else "&source=display-primary"
                     val tokenQuery = if (!authToken.isNullOrBlank()) {
-                        "?token=${java.net.URLEncoder.encode(authToken, "UTF-8")}&fps=120"
+                        "?token=${java.net.URLEncoder.encode(authToken, "UTF-8")}&fps=120$sourceParam"
                     } else {
-                        "?fps=120"
+                        "?fps=120$sourceParam"
                     }
                     val writer = OutputStreamWriter(sock.getOutputStream(), Charsets.US_ASCII)
                     writer.write("GET /live$tokenQuery HTTP/1.1\r\n")
