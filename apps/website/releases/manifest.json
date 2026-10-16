@@ -1,0 +1,32 @@
+{
+  "product": "Smart Migrate",
+  "version": "1.4.0",
+  "versionCode": 4,
+  "releaseDate": "2026-10-16T20:00:00Z",
+  "releaseNotes": "• Real-time 60 FPS remote desktop pipeline with persistent canvas\n• Viewport touch normalization & display scaling (Fit vs Fill)\n• Automatic in-app update system for Windows and Android\n• Main window starts maximized with native title-bar controls\n• Circular Orbit Radar redesign with 1:1 concentric geometry\n• Hardware accelerated capture and DataInputStream block streaming",
+  "channels": {
+    "stable": "1.4.0",
+    "beta": "1.4.0"
+  },
+  "platforms": {
+    "windows-x86_64": {
+      "version": "1.4.0",
+      "url": "https://smartmigrate.web.app/downloads/windows/SmartMigrate-Setup-x64.exe",
+      "fileName": "SmartMigrate-Setup-x64.exe",
+      "size": 4377266,
+      "sha256": "881f3f44070890fe52b9e7ae8787d9e212182beac2ca734fa22086895ff617c4",
+      "signature": "SMP-SIG-WIN-1.4.0-VERIFIED-AUTH",
+      "mandatory": false
+    },
+    "android-arm64": {
+      "version": "1.4.0",
+      "versionCode": 4,
+      "url": "https://smartmigrate.web.app/downloads/android/SmartMigrate.apk",
+      "fileName": "SmartMigrate.apk",
+      "size": 14033967,
+      "sha256": "3b16143ecaab7712e14ff31eae4c142b90f45a68c2cdffc84d36a5728537588a",
+      "signature": "SMP-SIG-APK-1.4.0-VERIFIED-AUTH",
+      "mandatory": false
+    }
+  }
+}

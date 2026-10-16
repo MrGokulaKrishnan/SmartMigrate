@@ -262,6 +262,32 @@ All subsystem builds are verified: 66/66 unit tests passing (63 MigRoute + 3 Win
     - Android Debug APK cleanly built with Gradle (`assembleDebug` in 2m 11s).
     - Debug APK synchronized to website distribution packages (`apps/website/downloads/android/` and `apps/website/public/downloads/android/`).
     - Successfully deployed to Firebase Hosting (`https://smartmigrate.web.app` and `https://smartmigrated.web.app`).
+- [x] **Milestone 10 — Automatic In-App Updates, Windows Maximized Startup & Circular Orbit Radar**:
+  - **Windows Host Maximized Startup & Window Management (`apps/windows-host/src-tauri/tauri.conf.json`)**:
+    - Configured `"maximized": true` in `tauri.conf.json` so the application opens maximized by default with native Windows title-bar controls (minimize, maximize/restore, close) without entering exclusive fullscreen.
+    - Integrated startup emblem logo into `apps/windows-host/public/logo.png` and favicon `<link rel="icon">` in `index.html`.
+  - **Circular Orbit Radar Redesign (`apps/windows-host/src/styles.css`, `main.tsx`)**:
+    - Replaced the oval radar distortion with a mathematical 1:1 circular radar centered around the Smart Migrate emblem (`aspect-ratio: 1 / 1`, `border-radius: 50%`, responsive scaling `min(520px, 80vw, 68vh)`).
+    - Styled concentric distance rings (`ring-1`, `ring-2`, `ring-3`) with smooth radial glows, sonar radar sweep, and centered host orb logo.
+  - **Windows Host In-App Auto-Updater (`apps/windows-host/src-tauri/src/lib.rs`, `main.tsx`, `styles.css`)**:
+    - Added Tauri commands `check_windows_update`, `download_windows_update`, and `apply_windows_update_and_restart`.
+    - Automated CDN manifest checks (`https://smartmigrate.web.app/releases/manifest.json`), SHA-256 integrity digest validation, and detached process staging & restart.
+    - Added React `UpdateModal`, Titlebar update notification badge with live pulse indicator, and manual "Check for Updates" triggers in Settings and About screens.
+    - Restored `StartupIntro` cinematic splash overlay with smooth dissolution and keyboard/click skip.
+  - **Android In-App Auto-Updater (`apps/android-client/.../AppUpdater.kt`, `MainActivity.kt`)**:
+    - Created `AppUpdater.kt` supporting release manifest inspection, background download with progress telemetry, cryptographic SHA-256 verification, package signature and ID matching (`com.smartmigrate.client`), and `FileProvider` + `PackageInstaller` intent dispatching.
+    - Added `REQUEST_INSTALL_PACKAGES` permission and `FileProvider` definition in `AndroidManifest.xml` and `file_paths.xml`.
+    - Added Compose `UpdateAvailableModal` with live download progress bar, SHA-256 verification pill, and "Update Now" trigger.
+    - Added update check badge in `AppBar` and manual update check trigger in `SecurityScreen`.
+  - **Official Distribution Manifest & Web Deployment (`apps/website/...`)**:
+    - Authored official `releases/manifest.json` with verified SHA-256 hashes (`881f3f44070890fe52b9e7ae8787d9e212182beac2ca734fa22086895ff617c4` for Windows and `3b16143ecaab7712e14ff31eae4c142b90f45a68c2cdffc84d36a5728537588a` for Android).
+    - Synchronized APK binaries (`SmartMigrate.apk` and `SmartMigrate.apk.bin`) and `release.json`.
+    - Deployed to Firebase Hosting (`smartmigrate.web.app` and `smartmigrated.web.app`).
+  - **Verification**:
+    - 66/66 Rust unit tests passing (63 MigRoute + 3 Windows Host).
+    - Windows Host React/TypeScript frontend built cleanly with Vite (0 errors, 32 modules transformed in 6s).
+    - Android Debug APK built with Gradle (`assembleDebug` passing with 37 actionable tasks).
+    - Live CDN manifest verified via HTTPS request.
 
 ---
 

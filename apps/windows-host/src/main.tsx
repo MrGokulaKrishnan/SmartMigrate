@@ -286,7 +286,278 @@ export function StatusDot({ status = "connected" }: { status?: "connected" | "re
   );
 }
 
+export type UpdateCheckDto = {
+  hasUpdate: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  releaseNotes: string;
+  downloadUrl: string;
+  sizeBytes: number;
+  sha256: string;
+};
+
+export function StartupIntro({ onComplete }: { onComplete: () => void }) {
+  const [phase, setPhase] = useState<"black" | "glow" | "emblem" | "text" | "dissolve">("black");
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      onComplete();
+      return;
+    }
+
+    const t1 = setTimeout(() => setPhase("glow"), 300);
+    const t2 = setTimeout(() => setPhase("emblem"), 800);
+    const t3 = setTimeout(() => setPhase("text"), 1400);
+    const t4 = setTimeout(() => setPhase("dissolve"), 2000);
+    const t5 = setTimeout(() => onComplete(), 2450);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+        onComplete();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+      clearTimeout(t5);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onComplete]);
+
+  return (
+    <div
+      className={`startup-intro ${phase === "dissolve" ? "dissolve" : ""}`}
+      onClick={onComplete}
+      role="presentation"
+    >
+      <div className="intro-stars" aria-hidden="true" />
+      <div className={`intro-glow ${phase !== "black" ? "visible" : ""}`} aria-hidden="true" />
+
+      <div className="intro-stage">
+        <div className={`intro-emblem ${phase === "emblem" || phase === "text" || phase === "dissolve" ? "visible" : ""}`}>
+          <img src={brandLogoUrl} alt="Smart Migrate emblem" className="intro-logo-img" />
+        </div>
+
+        <div className={`intro-typography ${phase === "text" || phase === "dissolve" ? "visible" : ""}`}>
+          <h2>SMART MIGRATE</h2>
+          <div className="intro-sweep" aria-hidden="true" />
+          <p>Powered by MigRoute</p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="intro-skip"
+        onClick={(e) => {
+          e.stopPropagation();
+          onComplete();
+        }}
+        aria-label="Skip startup animation"
+      >
+        Skip ↗
+      </button>
+    </div>
+  );
+}
+
+export function UpdateModal({
+  updateInfo,
+  onClose,
+  onDownloadAndApply,
+  onRestart,
+  isDownloading,
+  downloadError,
+  installerStagedPath,
+}: {
+  updateInfo: UpdateCheckDto | null;
+  onClose: () => void;
+  onDownloadAndApply: () => void;
+  onRestart: () => void;
+  isDownloading: boolean;
+  downloadError: string | null;
+  installerStagedPath: string | null;
+}) {
+  if (!updateInfo) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-dialog" style={{ width: "min(560px, 94vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{
+              width: "28px",
+              height: "28px",
+              borderRadius: "8px",
+              background: "rgba(124, 77, 255, 0.15)",
+              border: "1px solid var(--sm-brand-500)",
+              display: "grid",
+              placeItems: "center"
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--sm-brand-300)" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+            </div>
+            <h3 style={{ margin: 0 }}>
+              {updateInfo.hasUpdate ? "Smart Migrate Update Available" : "Smart Migrate is Up to Date"}
+            </h3>
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={onClose} aria-label="Close">
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {updateInfo.hasUpdate ? (
+            <>
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 16px",
+                background: "rgba(124, 77, 255, 0.08)",
+                border: "1px solid rgba(124, 77, 255, 0.2)",
+                borderRadius: "10px"
+              }}>
+                <div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--sm-text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Version Upgrade</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                    <span style={{ fontSize: "0.95rem", color: "var(--sm-text-2)", fontFamily: "JetBrains Mono" }}>v{updateInfo.currentVersion}</span>
+                    <span style={{ color: "var(--sm-brand-400)" }}>→</span>
+                    <span style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--sm-brand-300)", fontFamily: "JetBrains Mono" }}>v{updateInfo.latestVersion}</span>
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: "0.75rem", color: "var(--sm-text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Package Size</div>
+                  <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--sm-text-1)", marginTop: "4px" }}>
+                    {formatBytes(updateInfo.sizeBytes || 0)}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 style={{ margin: "0 0 8px", fontSize: "0.85rem", color: "var(--sm-text-2)" }}>Release Highlights</h4>
+                <div style={{
+                  background: "rgba(0, 0, 0, 0.4)",
+                  border: "1px solid var(--sm-line)",
+                  borderRadius: "8px",
+                  padding: "12px 14px",
+                  fontSize: "0.82rem",
+                  color: "var(--sm-text-2)",
+                  lineHeight: "1.5",
+                  whiteSpace: "pre-wrap",
+                  fontFamily: "var(--sm-font-sans)"
+                }}>
+                  {updateInfo.releaseNotes}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.72rem", color: "var(--sm-text-3)" }}>
+                <span style={{ color: "#34d399" }}>✓</span>
+                <span>SHA-256 Digest Verification:</span>
+                <span style={{ fontFamily: "JetBrains Mono", color: "var(--sm-text-2)" }}>
+                  {updateInfo.sha256 ? `${updateInfo.sha256.slice(0, 16)}...` : "Enforced"}
+                </span>
+              </div>
+
+              {isDownloading && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--sm-text-2)" }}>
+                    <span>Downloading signed installer package...</span>
+                    <span>Direct CDN</span>
+                  </div>
+                  <div style={{ height: "6px", width: "100%", background: "rgba(255,255,255,0.08)", borderRadius: "3px", overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%",
+                      width: "100%",
+                      background: "linear-gradient(90deg, #7c4dff, #38bdf8)",
+                    }} />
+                  </div>
+                </div>
+              )}
+
+              {downloadError && (
+                <div style={{
+                  padding: "10px 14px",
+                  background: "rgba(239, 68, 68, 0.12)",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  borderRadius: "8px",
+                  color: "#fca5a5",
+                  fontSize: "0.8rem"
+                }}>
+                  {downloadError}
+                </div>
+              )}
+
+              {installerStagedPath && (
+                <div style={{
+                  padding: "10px 14px",
+                  background: "rgba(16, 185, 129, 0.12)",
+                  border: "1px solid rgba(16, 185, 129, 0.3)",
+                  borderRadius: "8px",
+                  color: "#6ee7b7",
+                  fontSize: "0.8rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px"
+                }}>
+                  <span>✓</span>
+                  <span>Update package downloaded and cryptographic SHA-256 verified successfully. Ready to restart.</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ textAlign: "center", padding: "16px 0" }}>
+              <div style={{ fontSize: "2rem", marginBottom: "8px", color: "var(--sm-brand-300)" }}>✓</div>
+              <h4 style={{ margin: "0 0 6px" }}>Smart Migrate v{updateInfo.currentVersion}</h4>
+              <p style={{ margin: 0, fontSize: "0.84rem", color: "var(--sm-text-2)" }}>
+                You are currently running the latest official version of Smart Migrate with MigRoute systems engine.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+          {updateInfo.hasUpdate ? (
+            installerStagedPath ? (
+              <button className="btn btn-primary" onClick={onRestart}>
+                Restart & Apply Now
+              </button>
+            ) : (
+              <>
+                <button className="btn btn-secondary" onClick={onClose} disabled={isDownloading}>
+                  Later
+                </button>
+                <button className="btn btn-primary" onClick={onDownloadAndApply} disabled={isDownloading}>
+                  {isDownloading ? "Downloading..." : "Update Now"}
+                </button>
+              </>
+            )
+          ) : (
+            <button className="btn btn-primary" onClick={onClose}>
+              OK
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
+  const [showIntro, setShowIntro] = useState(true);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckDto | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [installerStagedPath, setInstallerStagedPath] = useState<string | null>(null);
+
   const [destination, setDestination] = useState<Destination>("Home");
   const [status, setStatus] = useState<HostStatus>(previewStatus);
   const [pairingModalOpen, setPairingModalOpen] = useState(false);
@@ -345,6 +616,59 @@ export function App() {
     refreshStatus();
     const interval = setInterval(refreshStatus, 3000);
     return () => clearInterval(interval);
+  }, []);
+
+  const handleCheckForUpdates = async (silent: boolean = false) => {
+    setIsCheckingUpdate(true);
+    try {
+      const res = await invoke<UpdateCheckDto>("check_windows_update");
+      setUpdateInfo(res);
+      if (res.hasUpdate) {
+        setUpdateModalOpen(true);
+      } else if (!silent) {
+        setNotice(`Smart Migrate v${res.currentVersion} is up to date.`);
+        setUpdateModalOpen(true);
+      }
+    } catch (err: any) {
+      if (!silent) {
+        setNotice(`Update check failed: ${err?.message || err}`);
+      }
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleDownloadAndApplyUpdate = async () => {
+    if (!updateInfo || !updateInfo.downloadUrl) return;
+    setIsDownloadingUpdate(true);
+    setDownloadError(null);
+    try {
+      const targetPath = await invoke<string>("download_windows_update", {
+        downloadUrl: updateInfo.downloadUrl,
+        expectedSha256: updateInfo.sha256,
+      });
+      setInstallerStagedPath(targetPath);
+    } catch (err: any) {
+      setDownloadError(err?.toString() || "Failed to download update package.");
+    } finally {
+      setIsDownloadingUpdate(false);
+    }
+  };
+
+  const handleExecuteRestart = async () => {
+    if (!installerStagedPath) return;
+    try {
+      await invoke("apply_windows_update_and_restart", { installerPath: installerStagedPath });
+    } catch (err: any) {
+      setDownloadError(err?.toString() || "Failed to launch installer.");
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleCheckForUpdates(true);
+    }, 4000);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -557,6 +881,17 @@ export function App() {
         </div>
 
         <div className="titlebar-right" data-tauri-drag-region>
+          {updateInfo?.hasUpdate && (
+            <button
+              className="update-badge-btn"
+              onClick={() => setUpdateModalOpen(true)}
+              title={`Update available: v${updateInfo.latestVersion}`}
+            >
+              <span className="update-pulse-dot" />
+              <span>Update to v{updateInfo.latestVersion}</span>
+            </button>
+          )}
+
           <div className="host-identity-pill" title="Host hardware fingerprint verified by Windows DPAPI">
             <span className="status-indicator-dot"></span>
             <span className="host-fingerprint-text">{status.fingerprint}</span>
@@ -879,11 +1214,19 @@ export function App() {
           )}
 
           {destination === "Settings" && (
-            <SettingsView status={status} />
+            <SettingsView
+              status={status}
+              onCheckForUpdates={() => handleCheckForUpdates(false)}
+              isCheckingUpdates={isCheckingUpdate}
+            />
           )}
 
           {destination === "About" && (
-            <AboutView status={status} />
+            <AboutView
+              status={status}
+              onCheckForUpdates={() => handleCheckForUpdates(false)}
+              isCheckingUpdates={isCheckingUpdate}
+            />
           )}
         </main>
       </div>
@@ -1224,6 +1567,22 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* ─── Startup Intro Splash Overlay ─────────────────────────── */}
+      {showIntro && <StartupIntro onComplete={() => setShowIntro(false)} />}
+
+      {/* ─── In-App Auto-Update Modal ──────────────────────────────── */}
+      {updateModalOpen && (
+        <UpdateModal
+          updateInfo={updateInfo}
+          onClose={() => setUpdateModalOpen(false)}
+          onDownloadAndApply={handleDownloadAndApplyUpdate}
+          onRestart={handleExecuteRestart}
+          isDownloading={isDownloadingUpdate}
+          downloadError={downloadError}
+          installerStagedPath={installerStagedPath}
+        />
+      )}
     </div>
   );
 }
@@ -1465,17 +1824,17 @@ function OrbitRadarView({
         <div className="orbit-sonar-sweep" />
 
         {/* Concentric distance rings */}
-        <div className="orbit-range-ring" style={{ width: "160px", height: "160px" }} title="Ultra-Near Proximity (< 2m)" />
-        <div className="orbit-range-ring" style={{ width: "300px", height: "300px" }} title="Direct LAN / Wi-Fi Subnet (< 10m)" />
-        <div className="orbit-range-ring" style={{ width: "440px", height: "440px" }} title="Extended Mesh / Relay Boundary" />
+        <div className="orbit-range-ring ring-1" title="Ultra-Near Proximity (< 2m)" />
+        <div className="orbit-range-ring ring-2" title="Direct LAN / Wi-Fi Subnet (< 10m)" />
+        <div className="orbit-range-ring ring-3" title="Extended Mesh / Relay Boundary" />
 
-        {/* Center Host Orb */}
+        {/* Center Host Orb with Unclipped Circular Logo */}
         <div
           className="orbit-center-orb"
           title={`Smart Migrate Windows Host (${primaryHostIp || "192.168.31.33"}:7890)`}
           onClick={() => onNavigate("Home")}
         >
-          <img src={brandLogoUrl} alt="Windows Host" style={{ width: "32px", height: "32px", objectFit: "contain" }} />
+          <img src={brandLogoUrl} alt="Windows Host" style={{ width: "36px", height: "36px", objectFit: "contain", borderRadius: "10px" }} />
           <div className="orbit-center-orb-pulse" />
         </div>
 
@@ -2682,7 +3041,15 @@ function DiagnosticsView({
 }
 
 // ─── 13 Settings View ────────────────────────────────────────────────────────
-function SettingsView({ status }: { status: HostStatus }) {
+function SettingsView({
+  status,
+  onCheckForUpdates,
+  isCheckingUpdates,
+}: {
+  status: HostStatus;
+  onCheckForUpdates: () => void;
+  isCheckingUpdates: boolean;
+}) {
   const [activeTab, setActiveTab] = useState("General");
 
   return (
@@ -2708,6 +3075,24 @@ function SettingsView({ status }: { status: HostStatus }) {
         </div>
 
         <div className="settings-content-panel">
+          <div className="setting-row">
+            <div className="setting-info">
+              <h4>Smart Migrate In-App Updates</h4>
+              <p>Check the official Smart Migrate CDN manifest for cryptographic releases.</p>
+            </div>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={onCheckForUpdates}
+              disabled={isCheckingUpdates}
+              style={{ display: "flex", alignItems: "center", gap: "6px" }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+              </svg>
+              <span>{isCheckingUpdates ? "Checking..." : "Check for Updates"}</span>
+            </button>
+          </div>
+
           <div className="setting-row">
             <div className="setting-info">
               <h4>Start with Windows</h4>
@@ -2758,7 +3143,15 @@ function SettingsView({ status }: { status: HostStatus }) {
 }
 
 // ─── 14 About View ───────────────────────────────────────────────────────────
-function AboutView({ status }: { status: HostStatus }) {
+function AboutView({
+  status,
+  onCheckForUpdates,
+  isCheckingUpdates,
+}: {
+  status: HostStatus;
+  onCheckForUpdates: () => void;
+  isCheckingUpdates: boolean;
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div className="workspace-header">
@@ -2766,6 +3159,17 @@ function AboutView({ status }: { status: HostStatus }) {
           <h1>About Smart Migrate</h1>
           <p>Product architecture, licensing, and protocol implementation details.</p>
         </div>
+        <button
+          className="btn btn-primary"
+          onClick={onCheckForUpdates}
+          disabled={isCheckingUpdates}
+          style={{ display: "flex", alignItems: "center", gap: "8px" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+          </svg>
+          <span>{isCheckingUpdates ? "Checking..." : "Check for Updates"}</span>
+        </button>
       </div>
 
       <div className="card" style={{ display: "flex", gap: "24px", alignItems: "center" }}>

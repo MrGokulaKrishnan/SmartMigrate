@@ -81,6 +81,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -190,6 +193,52 @@ private fun SmartMigrateApp() {
     var discoveredHost by remember { mutableStateOf<SmpClient.DiscoveredHost?>(null) }
     var isDiscovering by remember { mutableStateOf(false) }
 
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var updateModalOpen by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    val checkUpdatesManual: () -> Unit = {
+        scope.launch {
+            notice = "Checking official Smart Migrate CDN for updates..."
+            val res = AppUpdater.checkForUpdate(context)
+            res.onSuccess { info ->
+                updateInfo = info
+                if (info.hasUpdate) {
+                    updateModalOpen = true
+                    notice = "New update available: Smart Migrate v${info.latestVersion}"
+                } else {
+                    notice = "Smart Migrate v${info.currentVersion} is up to date."
+                }
+            }.onFailure { err ->
+                notice = "Update check failed: ${err.message}"
+            }
+        }
+    }
+
+    // Auto-discover Windows Host on LAN and check for updates at startup
+    LaunchedEffect(Unit) {
+        scope.launch(Dispatchers.IO) {
+            val updateRes = AppUpdater.checkForUpdate(context)
+            updateRes.onSuccess { info ->
+                if (info.hasUpdate) {
+                    withContext(Dispatchers.Main) {
+                        updateInfo = info
+                        updateModalOpen = true
+                    }
+                }
+            }
+        }
+
+        isDiscovering = true
+        val discovered = SmpClient.discoverHosts()
+        discoveredHost = discovered
+        if (discovered != null) {
+            targetHostAddress = discovered.ip
+            notice = "Discovered Windows Host '${discovered.name}' at ${discovered.ip}:${discovered.port}"
+        }
+        isDiscovering = false
+    }
+
     val refreshDiscovery: () -> Unit = {
         scope.launch {
             isDiscovering = true
@@ -204,18 +253,6 @@ private fun SmartMigrateApp() {
             }
             isDiscovering = false
         }
-    }
-
-    // Auto-discover Windows Host on LAN at startup
-    LaunchedEffect(Unit) {
-        isDiscovering = true
-        val discovered = SmpClient.discoverHosts()
-        discoveredHost = discovered
-        if (discovered != null) {
-            targetHostAddress = discovered.ip
-            notice = "Discovered Windows Host '${discovered.name}' at ${discovered.ip}:${discovered.port}"
-        }
-        isDiscovering = false
     }
 
     MaterialTheme(
@@ -260,7 +297,9 @@ private fun SmartMigrateApp() {
                     // Top App Bar
                     AppBar(
                         onScanQR = { qrScannerOpen = true },
-                        batterySaver = batterySaverMode
+                        batterySaver = batterySaverMode,
+                        hasUpdate = updateInfo?.hasUpdate == true,
+                        onOpenUpdate = { updateModalOpen = true }
                     )
 
                     Spacer(Modifier.height(12.dp))
@@ -306,7 +345,8 @@ private fun SmartMigrateApp() {
                             )
                             AppDestination.Security -> SecurityScreen(
                                 hostAddress = targetHostAddress,
-                                onNotice = { notice = it }
+                                onNotice = { notice = it },
+                                onCheckUpdates = checkUpdatesManual
                             )
                         }
                     }
@@ -355,6 +395,17 @@ private fun SmartMigrateApp() {
                         notice = "Paired with $hostId at $host! Launching remote session."
                         destination = AppDestination.Remote
                         isDedicatedRemoteSessionActive = true
+                    }
+                )
+            }
+
+            // In-App Auto-Updater Modal
+            if (updateModalOpen && updateInfo != null) {
+                UpdateAvailableModal(
+                    updateInfo = updateInfo!!,
+                    onDismiss = { updateModalOpen = false },
+                    onInstallStarted = {
+                        notice = "Downloading official Smart Migrate APK update..."
                     }
                 )
             }
@@ -608,7 +659,12 @@ private fun SkipNextVector(modifier: Modifier = Modifier, color: Color = TextPri
 
 // ─── App Bar ─────────────────────────────────────────────────────────────────
 @Composable
-private fun AppBar(onScanQR: () -> Unit, batterySaver: Boolean) {
+private fun AppBar(
+    onScanQR: () -> Unit,
+    batterySaver: Boolean,
+    hasUpdate: Boolean = false,
+    onOpenUpdate: () -> Unit = {}
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = Surface1,
@@ -631,6 +687,19 @@ private fun AppBar(onScanQR: () -> Unit, batterySaver: Boolean) {
             Column(Modifier.weight(1f)) {
                 Text("Smart Migrate", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 Text(if (batterySaver) "Battery Saver Mode Active" else "Direct LAN • Remote Desktop", color = if (batterySaver) Warning else TextMuted, fontSize = 12.sp)
+            }
+            if (hasUpdate) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Success.copy(alpha = 0.2f))
+                        .border(1.dp, Success.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                        .clickable { onOpenUpdate() }
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
+                ) {
+                    Text("Update", color = Success, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(8.dp))
             }
             Box(
                 modifier = Modifier
@@ -2414,7 +2483,11 @@ private fun DedicatedRemoteSessionScreen(
 }
 // ─── 14 Security Screen ──────────────────────────────────────────────────────
 @Composable
-private fun SecurityScreen(hostAddress: String = "10.0.2.2", onNotice: (String) -> Unit) {
+private fun SecurityScreen(
+    hostAddress: String = "10.0.2.2",
+    onNotice: (String) -> Unit,
+    onCheckUpdates: () -> Unit = {}
+) {
     val scope = rememberCoroutineScope()
     var isTestingDiag by remember { mutableStateOf(false) }
     var diagReport by remember { mutableStateOf<SmpClient.DiagnosticsReport?>(null) }
@@ -2541,6 +2614,23 @@ private fun SecurityScreen(hostAddress: String = "10.0.2.2", onNotice: (String) 
                 Spacer(Modifier.height(10.dp))
                 SecondaryButton("Revoke All Host Access") {
                     onNotice("All host authorizations revoked.")
+                }
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Surface1,
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("SOFTWARE UPDATES & RELEASES", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(6.dp))
+                Text("Official Smart Migrate CDN releases with cryptographic SHA-256 integrity verification.", color = TextSecondary, fontSize = 12.sp)
+                Spacer(Modifier.height(10.dp))
+                SecondaryButton("Check for Updates") {
+                    onCheckUpdates()
                 }
             }
         }
@@ -3090,6 +3180,233 @@ private fun PairingPinModal(
     }
 }
 
+@Composable
+private fun UpdateAvailableModal(
+    updateInfo: UpdateInfo,
+    onDismiss: () -> Unit,
+    onInstallStarted: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isDownloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableFloatStateOf(0f) }
+    var bytesDownloaded by remember { mutableLongStateOf(0L) }
+    var totalBytes by remember { mutableLongStateOf(updateInfo.sizeBytes) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isInstalledTriggered by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = {
+        if (!isDownloading && !updateInfo.isMandatory) onDismiss()
+    }) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Surface1,
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, LineStrong)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Header badge
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Brand600.copy(alpha = 0.2f))
+                        .border(1.dp, Brand400.copy(alpha = 0.5f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    ProfessionalCheckBadge(size = 24.dp)
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "UPDATE AVAILABLE",
+                    color = Brand300,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Smart Migrate v${updateInfo.latestVersion}",
+                    color = TextPrimary,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                // Version comparison pill
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Surface2)
+                        .border(1.dp, Line, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Current Version", color = TextMuted, fontSize = 10.sp)
+                        Text("v${updateInfo.currentVersion}", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text("→", color = Brand400, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("New Release", color = TextMuted, fontSize = 10.sp)
+                        Text("v${updateInfo.latestVersion}", color = Brand300, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                // Release Highlights
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Black.copy(alpha = 0.5f))
+                        .border(1.dp, LineSubtle, RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                ) {
+                    Text("RELEASE HIGHLIGHTS", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        updateInfo.releaseNotes,
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // Cryptographic verification tag
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("✓", color = Success, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "SHA-256 Digest: ${if (updateInfo.sha256.length > 16) updateInfo.sha256.take(16) + "..." else "Enforced"}",
+                        color = TextMuted,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+
+                // Progress Bar if downloading
+                if (isDownloading) {
+                    Spacer(Modifier.height(16.dp))
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Downloading update...", color = TextSecondary, fontSize = 11.sp)
+                            val pct = (downloadProgress * 100).toInt()
+                            Text("$pct%", color = Brand300, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        // Polished gradient progress track
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(Line)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(fraction = downloadProgress.coerceIn(0.01f, 1f))
+                                    .background(Brush.horizontalGradient(listOf(Brand500, Brand300)))
+                            )
+                        }
+
+                        if (bytesDownloaded > 0) {
+                            val mbDownloaded = String.format(java.util.Locale.US, "%.1f", bytesDownloaded / (1024f * 1024f))
+                            val mbTotal = String.format(java.util.Locale.US, "%.1f", totalBytes / (1024f * 1024f))
+                            Text("$mbDownloaded MB / $mbTotal MB", color = TextMuted, fontSize = 10.sp)
+                        }
+                    }
+                }
+
+                if (errorMessage != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Danger.copy(alpha = 0.15f))
+                            .border(1.dp, Danger.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text(errorMessage ?: "", color = Danger, fontSize = 11.sp)
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (!updateInfo.isMandatory && !isDownloading) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            SecondaryButton("Later") { onDismiss() }
+                        }
+                    }
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        PrimaryButton(
+                            if (isInstalledTriggered) "Install Launched"
+                            else if (isDownloading) "Downloading..."
+                            else "Update Now"
+                        ) {
+                            if (!isDownloading && !isInstalledTriggered) {
+                                isDownloading = true
+                                errorMessage = null
+                                onInstallStarted()
+                                scope.launch {
+                                    val dlResult = AppUpdater.downloadApk(
+                                        context = context,
+                                        downloadUrl = updateInfo.downloadUrl,
+                                        expectedBytes = updateInfo.sizeBytes
+                                    ) { prog, read, tot ->
+                                        downloadProgress = prog
+                                        bytesDownloaded = read
+                                        totalBytes = tot
+                                    }
+
+                                    dlResult.onSuccess { apkFile ->
+                                        isDownloading = false
+                                        val installResult = AppUpdater.verifyAndTriggerInstall(
+                                            context = context,
+                                            apkFile = apkFile,
+                                            expectedSha256 = updateInfo.sha256
+                                        )
+                                        installResult.onSuccess {
+                                            isInstalledTriggered = true
+                                            onDismiss()
+                                        }.onFailure { err ->
+                                            errorMessage = "Install failed: ${err.message}"
+                                        }
+                                    }.onFailure { err ->
+                                        isDownloading = false
+                                        errorMessage = "Download error: ${err.message}"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 // ─── Reusable UI Atoms ───────────────────────────────────────────────────────
 @Composable

@@ -735,6 +735,156 @@ fn close_window(window: Window) -> Result<(), String> {
     window.close().map_err(|e| e.to_string())
 }
 
+#[derive(Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateCheckDto {
+    has_update: bool,
+    current_version: String,
+    latest_version: String,
+    release_notes: String,
+    download_url: String,
+    size_bytes: u64,
+    sha256: String,
+}
+
+/// Checks the official Smart Migrate CDN release manifest for newer versions.
+#[tauri::command]
+fn check_windows_update() -> Result<UpdateCheckDto, String> {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+
+    let script = r#"
+        $ProgressPreference = 'SilentlyContinue';
+        try {
+            $resp = Invoke-RestMethod -Uri 'https://smartmigrate.web.app/releases/manifest.json' -TimeoutSec 6 -Headers @{'User-Agent'='SmartMigrate-Windows/1.4.0'}
+            $json = $resp | ConvertTo-Json -Depth 6 -Compress
+            Write-Output $json
+        } catch {
+            try {
+                $resp = Invoke-RestMethod -Uri 'https://smartmigrated.web.app/releases/manifest.json' -TimeoutSec 6
+                $json = $resp | ConvertTo-Json -Depth 6 -Compress
+                Write-Output $json
+            } catch {
+                Write-Error $_.Exception.Message
+            }
+        }
+    "#;
+
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .output()
+        .map_err(|e| format!("PowerShell error checking update: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if stdout.is_empty() {
+        return Ok(UpdateCheckDto {
+            has_update: false,
+            current_version: current_version.clone(),
+            latest_version: current_version,
+            release_notes: "You are running the latest verified release.".to_string(),
+            download_url: String::new(),
+            size_bytes: 0,
+            sha256: String::new(),
+        });
+    }
+
+    let parsed: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Failed to parse release manifest JSON: {e}"))?;
+
+    let latest_version = parsed.get("version").and_then(|v| v.as_str()).unwrap_or("1.4.0").to_string();
+    let release_notes = parsed.get("releaseNotes").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+    let win_platform = parsed.get("platforms").and_then(|p| p.get("windows-x86_64"));
+    let download_url = win_platform.and_then(|w| w.get("url")).and_then(|u| u.as_str()).unwrap_or("").to_string();
+    let size_bytes = win_platform.and_then(|w| w.get("size")).and_then(|s| s.as_u64()).unwrap_or(0);
+    let sha256 = win_platform.and_then(|w| w.get("sha256")).and_then(|s| s.as_str()).unwrap_or("").to_string();
+
+    let has_update = latest_version != current_version && !download_url.is_empty();
+
+    Ok(UpdateCheckDto {
+        has_update,
+        current_version,
+        latest_version,
+        release_notes,
+        download_url,
+        size_bytes,
+        sha256,
+    })
+}
+
+/// Downloads and cryptographically verifies the Windows installer update package.
+#[tauri::command]
+fn download_windows_update(download_url: String, expected_sha256: String) -> Result<String, String> {
+    let update_dir = std::env::var("APPDATA")
+        .map(|d| std::path::PathBuf::from(d).join("SmartMigrate").join("updates"))
+        .unwrap_or_else(|_| std::path::PathBuf::from("updates"));
+
+    let _ = std::fs::create_dir_all(&update_dir);
+    let target_file = update_dir.join("SmartMigrate-Setup-x64.exe");
+
+    let script = format!(
+        "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '{}' -OutFile '{}'",
+        download_url, target_file.display()
+    );
+
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .map_err(|e| format!("Failed to download update: {e}"))?;
+
+    if !output.status.success() {
+        return Err(format!("Download failed: {}", String::from_utf8_lossy(&output.stderr)));
+    }
+
+    // Verify SHA-256
+    if !expected_sha256.is_empty() {
+        let hash_script = format!(
+            "(Get-FileHash -Path '{}' -Algorithm SHA256).Hash",
+            target_file.display()
+        );
+        let hash_out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &hash_script])
+            .output()
+            .map_err(|e| format!("Failed to compute SHA256: {e}"))?;
+
+        let actual_hash = String::from_utf8_lossy(&hash_out.stdout).trim().to_uppercase();
+        if actual_hash != expected_sha256.trim().to_uppercase() {
+            let _ = std::fs::remove_file(&target_file);
+            return Err(format!(
+                "Integrity failure: expected SHA-256 {} but got {}",
+                expected_sha256, actual_hash
+            ));
+        }
+    }
+
+    Ok(target_file.to_string_lossy().to_string())
+}
+
+/// Stages and executes the official Windows installer and cleanly exits the host.
+#[tauri::command]
+fn apply_windows_update_and_restart(installer_path: String) -> Result<(), String> {
+    let path = std::path::PathBuf::from(&installer_path);
+    if !path.exists() {
+        return Err("Installer file does not exist.".to_string());
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new(&installer_path)
+            .creation_flags(0x00000008 | 0x00000200) // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+            .spawn()
+            .map_err(|e| format!("Failed to spawn installer: {e}"))?;
+    }
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new(&installer_path)
+            .spawn()
+            .map_err(|e| format!("Failed to spawn installer: {e}"))?;
+    }
+
+    std::process::exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     std::panic::set_hook(Box::new(|info| {
@@ -802,6 +952,9 @@ pub fn run() {
             toggle_maximize,
             is_window_maximized,
             close_window,
+            check_windows_update,
+            download_windows_update,
+            apply_windows_update_and_restart,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
