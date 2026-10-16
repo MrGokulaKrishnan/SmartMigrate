@@ -40,6 +40,21 @@ pub struct StreamSessionState {
     pub encoder_name: String,
     pub stream_url: String,
     pub auth_token: String,
+    /// Millisecond timestamp of the last 1-second FPS measurement window start.
+    #[serde(default)]
+    pub fps_window_start_ms: u64,
+    /// Frames sent since `fps_window_start_ms`.
+    #[serde(default)]
+    pub fps_window_frames: u32,
+    /// Actual measured FPS from the most recent completed 1-second window.
+    #[serde(default)]
+    pub measured_fps: f32,
+    /// Actual bytes sent in the most recent 1-second window (for bitrate calc).
+    #[serde(default)]
+    pub bytes_window: u64,
+    /// Actual measured bitrate in kbps from the most recent window.
+    #[serde(default)]
+    pub measured_bitrate_kbps: f32,
 }
 
 impl Default for StreamSessionState {
@@ -62,6 +77,11 @@ impl Default for StreamSessionState {
             encoder_name: "Not active".to_string(),
             stream_url: String::new(),
             auth_token: String::new(),
+            fps_window_start_ms: 0,
+            fps_window_frames: 0,
+            measured_fps: 0.0,
+            bytes_window: 0,
+            measured_bitrate_kbps: 0.0,
         }
     }
 }
@@ -137,9 +157,9 @@ pub fn start_stream(
         target_fps: fps,
         bitrate_kbps: 6000,
         started_at_epoch_ms: now,
-        frames_captured: 1,
+        frames_captured: 0,
         frames_sent: 0,
-        capture_latency_ms: 4.5,
+        capture_latency_ms: 0.0,
         encoder_name: if encoder_name.is_empty() {
             "High-Speed SIMD MJPEG".to_string()
         } else {
@@ -147,6 +167,11 @@ pub fn start_stream(
         },
         stream_url,
         auth_token,
+        fps_window_start_ms: now,
+        fps_window_frames: 0,
+        measured_fps: 0.0,
+        bytes_window: 0,
+        measured_bitrate_kbps: 0.0,
     };
 
     Ok(state)
@@ -158,22 +183,37 @@ pub fn stop_stream(_reason: &str) -> Result<(), String> {
 }
 
 /// Computes live streaming telemetry sourced directly from the active stream session state.
+/// FPS and bitrate use the actual rolling 1-second window measurements, never the target values.
 pub fn compute_telemetry(state: &mut StreamSessionState) -> StreamTelemetry {
     if state.is_active {
         let now = now_ms();
         let duration = (now.saturating_sub(state.started_at_epoch_ms)) / 1000;
-        let fps = if state.target_fps == 0 { 30.0 } else { state.target_fps as f32 };
+
+        // Use measured FPS if available; fall back to target only during the first second
+        let current_fps = if state.measured_fps > 0.0 {
+            state.measured_fps
+        } else if duration == 0 && state.frames_sent > 0 {
+            state.frames_sent as f32  // raw count in first second
+        } else {
+            0.0
+        };
+
+        let bitrate_mbps = if state.measured_bitrate_kbps > 0.0 {
+            state.measured_bitrate_kbps / 1000.0
+        } else {
+            0.0
+        };
 
         StreamTelemetry {
             is_active: true,
             session_id: state.session_id.clone(),
             target_device_name: state.target_device_name.clone(),
-            current_fps: fps,
-            bitrate_mbps: (state.bitrate_kbps as f32) / 1000.0,
+            current_fps,
+            bitrate_mbps,
             latency_ms: state.capture_latency_ms,
             duration_seconds: duration,
-            total_frames: state.frames_captured,
-            dropped_frames: 0,
+            total_frames: state.frames_sent,
+            dropped_frames: state.frames_captured.saturating_sub(state.frames_sent),
             encoder_name: state.encoder_name.clone(),
             resolution: format!("{}x{}", state.width, state.height),
             stream_url: state.stream_url.clone(),
@@ -249,10 +289,14 @@ mod tests {
         assert!(!state.auth_token.is_empty());
         assert!(state.stream_url.contains(&state.auth_token));
 
-        // 4. Verify telemetry calculation
+        // 4. Verify telemetry calculation (starts at 0.0 before frames are sent, reflects measured_fps when set)
+        let telem_initial = compute_telemetry(&mut state);
+        assert!(telem_initial.is_active);
+        assert_eq!(telem_initial.target_device_name, "Pixel Test Phone");
+        assert_eq!(telem_initial.current_fps, 0.0);
+
+        state.measured_fps = 30.0;
         let telem = compute_telemetry(&mut state);
-        assert!(telem.is_active);
-        assert_eq!(telem.target_device_name, "Pixel Test Phone");
         assert_eq!(telem.current_fps, 30.0);
 
         let mut idle_state = StreamSessionState::default();

@@ -186,13 +186,36 @@ private fun SmartMigrateApp() {
     var currentSessionToken by rememberSaveable { mutableStateOf("") }
     var isDedicatedRemoteSessionActive by rememberSaveable { mutableStateOf(false) }
 
+    val scope = rememberCoroutineScope()
+    var discoveredHost by remember { mutableStateOf<SmpClient.DiscoveredHost?>(null) }
+    var isDiscovering by remember { mutableStateOf(false) }
+
+    val refreshDiscovery: () -> Unit = {
+        scope.launch {
+            isDiscovering = true
+            notice = "Scanning Wi-Fi for Smart Migrate hosts..."
+            val discovered = SmpClient.discoverHosts()
+            discoveredHost = discovered
+            if (discovered != null) {
+                targetHostAddress = discovered.ip
+                notice = "Discovered Windows Host '${discovered.name}' at ${discovered.ip}:${discovered.port}"
+            } else {
+                notice = "Discovery completed. No Smart Migrate hosts responded on Wi-Fi."
+            }
+            isDiscovering = false
+        }
+    }
+
     // Auto-discover Windows Host on LAN at startup
     LaunchedEffect(Unit) {
+        isDiscovering = true
         val discovered = SmpClient.discoverHosts()
+        discoveredHost = discovered
         if (discovered != null) {
             targetHostAddress = discovered.ip
-            notice = "Discovered Windows Host '${discovered.name}' at ${discovered.ip}:7890"
+            notice = "Discovered Windows Host '${discovered.name}' at ${discovered.ip}:${discovered.port}"
         }
+        isDiscovering = false
     }
 
     MaterialTheme(
@@ -259,6 +282,13 @@ private fun SmartMigrateApp() {
                                 onToggleBatterySaver = { batterySaverMode = !batterySaverMode }
                             )
                             AppDestination.Devices -> DevicesScreen(
+                                discoveredHost = discoveredHost,
+                                isDiscovering = isDiscovering,
+                                onRefresh = { refreshDiscovery() },
+                                onSelectHost = { host ->
+                                    targetHostAddress = host.ip
+                                    notice = "Selected ${host.name} (${host.ip}:${host.port})"
+                                },
                                 onPair = { pairingDialog = true },
                                 onNotice = { notice = it }
                             )
@@ -600,7 +630,7 @@ private fun AppBar(onScanQR: () -> Unit, batterySaver: Boolean) {
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("Smart Migrate", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                Text(if (batterySaver) "Battery Saver Mode Active" else "Direct LAN • 60 FPS Stream", color = if (batterySaver) Warning else TextMuted, fontSize = 12.sp)
+                Text(if (batterySaver) "Battery Saver Mode Active" else "Direct LAN • Remote Desktop", color = if (batterySaver) Warning else TextMuted, fontSize = 12.sp)
             }
             Box(
                 modifier = Modifier
@@ -661,7 +691,7 @@ private fun HomeScreen(
                 Spacer(Modifier.height(14.dp))
                 Text("PC Display Stream", color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
-                Text("Direct LAN • Host: $hostAddress:7890 • 60 FPS Hardware Video", color = TextSecondary, fontSize = 13.5.sp)
+                Text("Direct LAN • Host: $hostAddress:7890 • Low-Latency Stream", color = TextSecondary, fontSize = 13.5.sp)
 
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -692,13 +722,17 @@ private fun HomeScreen(
             border = androidx.compose.foundation.BorderStroke(1.dp, Line)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("SMART CONNECTION STATUS", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("LOCAL NETWORK STATUS", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text("TCP 7890", color = TextMuted, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                }
                 listOf(
-                    "1. Discovering device" to true,
-                    "2. Verifying hardware identity" to true,
-                    "3. Establishing secure channel (AES-GCM)" to true,
-                    "4. Negotiating transport (Direct LAN • 14 ms)" to true,
-                    "5. Host authorization granted" to true
+                    "1. Host discovery beacon (UDP 7889)" to true,
+                    "2. Verifying device hardware identity" to true,
+                    "3. Direct LAN media socket (Port 7890)" to true,
+                    "4. Host-side authorization check" to true,
+                    "5. Monotonic SMP/1 input protocol" to true
                 ).forEach { (step, done) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (done) {
@@ -715,6 +749,8 @@ private fun HomeScreen(
                         Text(step, color = if (done) TextPrimary else TextMuted, fontSize = 13.5.sp, fontWeight = if (done) FontWeight.Medium else FontWeight.Normal)
                     }
                 }
+                Spacer(Modifier.height(2.dp))
+                Text("Notice: Media streams directly over local Wi-Fi without cloud relay. Host authorization required.", color = TextMuted, fontSize = 11.5.sp)
             }
         }
 
@@ -751,20 +787,40 @@ private fun HomeScreen(
 
 // ─── 03 Nearby Devices Screen ────────────────────────────────────────────────
 @Composable
-private fun DevicesScreen(onPair: () -> Unit, onNotice: (String) -> Unit) {
+private fun DevicesScreen(
+    discoveredHost: SmpClient.DiscoveredHost?,
+    isDiscovering: Boolean,
+    onRefresh: () -> Unit,
+    onSelectHost: (SmpClient.DiscoveredHost) -> Unit,
+    onPair: () -> Unit,
+    onNotice: (String) -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("NEARBY DISCOVERED DEVICES", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("NEARBY DISCOVERED DEVICES", color = Brand300, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            if (isDiscovering) {
+                Text("Scanning...", color = Info, fontSize = 12.sp)
+            } else {
+                Text(
+                    "Scan Again",
+                    color = Brand400,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickable { onRefresh() }
+                )
+            }
+        }
 
-        listOf(
-            Triple("Windows Host PC", "Windows 11 • Direct LAN (7890)", "Connected"),
-            Triple("Office Desktop", "Windows 10 • LAN Subnet", "Ready"),
-            Triple("Pixel Tablet", "Android 14 • Standby", "Ready")
-        ).forEach { (name, info, status) ->
+        if (discoveredHost != null) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 color = Surface1,
@@ -776,22 +832,77 @@ private fun DevicesScreen(onPair: () -> Unit, onNotice: (String) -> Unit) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(name, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.height(2.dp))
-                        Text(info, color = TextMuted, fontSize = 13.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(discoveredHost.name, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(Success.copy(alpha = 0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("ONLINE", color = Success, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.height(3.dp))
+                        Text("${discoveredHost.ip}:${discoveredHost.port} • Direct LAN", color = TextMuted, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
                     }
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (status == "Connected") Success.copy(alpha = 0.15f) else Surface2)
-                            .border(1.dp, if (status == "Connected") Success.copy(alpha = 0.3f) else Line, RoundedCornerShape(8.dp))
+                            .background(Brand600.copy(alpha = 0.25f))
+                            .border(1.dp, Brand400.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             .clickable {
-                                onNotice(if (status == "Connected") "Connected to $name" else "Pairing requested with $name")
+                                onSelectHost(discoveredHost)
+                                onNotice("Selected host ${discoveredHost.name} at ${discoveredHost.ip}:${discoveredHost.port}")
                             }
                             .padding(horizontal = 12.dp, vertical = 7.dp)
                     ) {
-                        Text(status, color = if (status == "Connected") Success else Brand300, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Connect", color = Brand300, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
+                }
+            }
+        } else if (isDiscovering) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Surface1,
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Searching for Smart Migrate hosts...", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Sending UDP beacon probe on port 7889", color = TextMuted, fontSize = 12.sp)
+                }
+            }
+        } else {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Surface1,
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("No Devices Discovered", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Ensure the Smart Migrate Windows Host app is running on the same Wi-Fi subnet. Both devices must be on the same local network.",
+                        color = TextMuted,
+                        fontSize = 12.5.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    PrimaryButton("Scan Network Again") { onRefresh() }
                 }
             }
         }
@@ -1005,8 +1116,7 @@ private fun DedicatedRemoteSessionScreen(
     val connState by streamEngine.state
     val latestBitmap by streamEngine.latestBitmap
     val streamDiag by streamEngine.diagnostics
-
-    var inputSeq by rememberSaveable { mutableLongStateOf(1L) }
+    fun nextSeq(): Long = streamEngine.nextSeq()
 
     // Remote Control Modes & Panel State
     var controlMode by rememberSaveable { mutableStateOf("Touch") } // "Touch" or "Cursor"
@@ -1166,7 +1276,7 @@ private fun DedicatedRemoteSessionScreen(
                                         onTap = { offset ->
                                             val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
                                             val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                            val seq = inputSeq++
+                                            val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
                                                     host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1181,7 +1291,7 @@ private fun DedicatedRemoteSessionScreen(
                                         onDoubleTap = { offset ->
                                             val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
                                             val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                            val seq = inputSeq++
+                                            val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
                                                     host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1196,7 +1306,7 @@ private fun DedicatedRemoteSessionScreen(
                                         onLongPress = { offset ->
                                             val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
                                             val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                            val seq = inputSeq++
+                                            val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
                                                     host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1221,7 +1331,7 @@ private fun DedicatedRemoteSessionScreen(
                                         cursorNormX = (cursorNormX + dx / size.width.toFloat()).coerceIn(0f, 1f)
                                         cursorNormY = (cursorNormY + dy / size.height.toFloat()).coerceIn(0f, 1f)
 
-                                        val seq = inputSeq++
+                                        val seq = nextSeq()
                                         scope.launch {
                                             SmpClient.sendInput(
                                                 host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1239,7 +1349,7 @@ private fun DedicatedRemoteSessionScreen(
                                         onDragStart = { offset ->
                                             val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
                                             val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                            val seq = inputSeq++
+                                            val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
                                                     host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1256,7 +1366,7 @@ private fun DedicatedRemoteSessionScreen(
                                             change.consume()
                                             val nx = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
                                             val ny = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                            val seq = inputSeq++
+                                            val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
                                                     host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1269,7 +1379,7 @@ private fun DedicatedRemoteSessionScreen(
                                             }
                                         },
                                         onDragEnd = {
-                                            val seq = inputSeq++
+                                            val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
                                                     host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1524,7 +1634,7 @@ private fun DedicatedRemoteSessionScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .clickable {
-                                        val seq = inputSeq++
+                                        val seq = nextSeq()
                                         scope.launch {
                                             SmpClient.sendInput(
                                                 host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1561,7 +1671,7 @@ private fun DedicatedRemoteSessionScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .clickable {
-                                        val seq = inputSeq++
+                                        val seq = nextSeq()
                                         scope.launch {
                                             SmpClient.sendInput(
                                                 host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1662,7 +1772,7 @@ private fun DedicatedRemoteSessionScreen(
                                     .background(Color(0xD91E293B))
                                     .border(1.5.dp, Brand400, CircleShape)
                                     .clickable {
-                                        val seq = inputSeq++
+                                        val seq = nextSeq()
                                         scope.launch {
                                             SmpClient.sendInput(
                                                 host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1685,7 +1795,7 @@ private fun DedicatedRemoteSessionScreen(
                                     .background(Color(0xD91E293B))
                                     .border(1.5.dp, Color(0x6694A3B8), CircleShape)
                                     .clickable {
-                                        val seq = inputSeq++
+                                        val seq = nextSeq()
                                         scope.launch {
                                             SmpClient.sendInput(
                                                 host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1708,7 +1818,7 @@ private fun DedicatedRemoteSessionScreen(
                                     .background(Color(0xD91E293B))
                                     .border(1.dp, Color(0x33FFFFFF), CircleShape)
                                     .clickable {
-                                        val seq = inputSeq++
+                                        val seq = nextSeq()
                                         scope.launch {
                                             SmpClient.sendInput(
                                                 host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1740,7 +1850,7 @@ private fun DedicatedRemoteSessionScreen(
                                         change.consume()
                                         val delta = (-dragAmount.y * 8f).toInt()
                                         if (delta != 0) {
-                                            val seq = inputSeq++
+                                            val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
                                                     host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1833,7 +1943,7 @@ private fun DedicatedRemoteSessionScreen(
                                     if (keyboardInputText.isNotEmpty()) {
                                         val textToSend = keyboardInputText
                                         keyboardInputText = ""
-                                        val seq = inputSeq++
+                                        val seq = nextSeq()
                                         scope.launch {
                                             SmpClient.sendInput(
                                                 host = hostAddress.ifEmpty { "10.0.2.2" },
@@ -1863,7 +1973,7 @@ private fun DedicatedRemoteSessionScreen(
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(Color(0x26FFFFFF))
                                     .clickable {
-                                        val seq = inputSeq++
+                                        val seq = nextSeq()
                                         scope.launch {
                                             SmpClient.sendInput(
                                                 host = hostAddress.ifEmpty { "10.0.2.2" },

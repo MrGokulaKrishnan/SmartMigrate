@@ -115,8 +115,8 @@ Codex established the **Phase 0 / Milestone 1 foundation** of the project:
 
 ## Stopping Point
 
-Milestones 1, 2, 3, 4, 5, 6, and **Milestone 7 (Complete Professional UI/UX Redesign & Multi-Platform v1.4.0 Release)** are complete.
-All subsystem builds are verified, 63/63 unit tests passing, TypeScript clean, Vite build clean, and deployed to Firebase Hosting (`smartmigrated.web.app` and `smartmigrate.web.app`).
+Milestones 1 through 7 and **Milestone 8 (Phase 1: Real-Time Stream Stabilization & Truthful Diagnostic Reporting)** are complete.
+All subsystem builds are verified: 66/66 unit tests passing (63 MigRoute + 3 Windows Host), Android Gradle assembleDebug verified clean, and deployment updated.
 
 ---
 
@@ -223,6 +223,26 @@ All subsystem builds are verified, 63/63 unit tests passing, TypeScript clean, V
     - Windows React/TypeScript clean (`tsc --noEmit` 0 errors, Vite production build clean).
     - Brand check passing with 0 legacy references.
     - All commits pushed to GitHub origin (`https://github.com/MrGokulaKrishnan/SmartMigrate.git`).
+- [x] **Milestone 8 — Real-Time Stream Stabilization & Truthful Diagnostic Reporting (Phase 1)**:
+  - **Rust Windows Host Rolling Telemetry (`apps/windows-host/src-tauri/src/stream.rs`, `smp_server.rs`)**:
+    - Real measured FPS and bitrate tracking calculated over 1000ms rolling windows (`fps_window_start_ms`, `fps_window_frames`, `measured_fps`, `bytes_window`, `measured_bitrate_kbps`).
+    - Eliminates simulated target FPS reporting; reports 0.0 before frame flow and actual throughput during streaming.
+    - Stream termination fix: `/live` loop explicitly interrogates `active_stream.is_active` to terminate immediately on disconnect or `stop_display_stream()`.
+  - **Host Resilience & Packaging Integrity (`apps/windows-host/src-tauri/src/lib.rs`, `smp_server.rs`)**:
+    - Relocated panic crash log from write-protected `C:\Smart Migrate\crash.log` to user profile `%APPDATA%\SmartMigrate\crash.log`.
+    - Truthful app version: replaced hardcoded `"0.1.0"` with dynamic `env!("CARGO_PKG_VERSION")`.
+  - **Android Truthful Disclosures & Security Policy (`apps/android-client/.../MainActivity.kt`)**:
+    - Eliminated false "AES-GCM" encryption claim from connection stages and replaced with truthful direct LAN socket disclosure (Plaintext TCP over Port 7890).
+    - Replaced hardcoded "60 FPS Stream" claim in AppBar with state-appropriate connection description.
+  - **Android Dynamic Local Device Discovery (`apps/android-client/.../MainActivity.kt`)**:
+    - Replaced hardcoded fake devices ("Windows Host PC", "Office Desktop", "Pixel Tablet") with dynamic UDP beacon probe (Port 7889) discovery state.
+    - Added dedicated empty/scanning states and "Scan Network Again" trigger.
+  - **Android Monotonic Sequence Generation (`apps/android-client/.../StreamEngine.kt`, `MainActivity.kt`)**:
+    - Migrated SMP/1 input sequence counter from Compose UI state to thread-safe `AtomicLong` within `StreamEngine`.
+    - Strictly resets sequence counter to 1 upon every new session start to prevent replay rejects.
+  - **Verification**:
+    - 66/66 Rust unit tests passing (63 MigRoute + 3 Windows Host).
+    - Android Debug APK built with Gradle (`assembleDebug` passing in 3m 37s).
 
 ---
 

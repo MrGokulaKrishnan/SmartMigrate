@@ -293,7 +293,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 device_id: state.identity.id.to_string(),
                 device_name: state.identity.name.clone(),
                 platform: "Windows 11".to_string(),
-                app_version: "0.1.0".to_string(),
+                app_version: env!("CARGO_PKG_VERSION").to_string(),
                 capabilities: vec![
                     "SCREEN_CAPTURE".to_string(),
                     "VIDEO_ENCODE".to_string(),
@@ -698,12 +698,28 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             }
 
             let mut encoder = SoftwareJpegEncoder::new(75);
-            let frame_interval = Duration::from_millis(33); // ~30 fps
+            let frame_interval = Duration::from_millis(33); // ~30 fps target
 
-            while !stop_signal.load(Ordering::Relaxed) {
+            // Rolling 1-second FPS and bitrate measurement window
+            let mut fps_window_start = Instant::now();
+            let mut fps_window_frames: u32 = 0;
+            let mut fps_window_bytes: u64 = 0;
+
+            loop {
+                // Respect stop_display_stream() — check is_active flag each frame
+                let still_active = state.active_stream.lock().map_or(true, |s| s.is_active);
+                if !still_active || stop_signal.load(Ordering::Relaxed) {
+                    break;
+                }
+
                 let loop_start = Instant::now();
 
                 if let Ok(raw_frame) = capture_primary_display() {
+                    // Count every capture attempt
+                    if let Ok(mut sl) = state.active_stream.lock() {
+                        sl.frames_captured += 1;
+                    }
+
                     if let Ok(encoded) = encoder.encode(&raw_frame, 75) {
                         let frame_head = format!(
                             "--smartmigrate\r\n\
@@ -715,6 +731,8 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                             encoded.payload.len(), encoded.timestamp_ms, encoded.width, encoded.height
                         );
 
+                        let frame_bytes = frame_head.len() as u64 + encoded.payload.len() as u64 + 2;
+
                         if socket.write_all(frame_head.as_bytes()).is_err()
                             || socket.write_all(&encoded.payload).is_err()
                             || socket.write_all(b"\r\n").is_err()
@@ -723,12 +741,30 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                             break; // Client disconnected
                         }
 
+                        fps_window_frames += 1;
+                        fps_window_bytes += frame_bytes;
+
                         if let Ok(mut stream_lock) = state.active_stream.lock() {
-                            stream_lock.frames_captured += 1;
                             stream_lock.frames_sent += 1;
                             stream_lock.capture_latency_ms = encoded.encode_duration_ms;
                             stream_lock.width = encoded.width;
                             stream_lock.height = encoded.height;
+
+                            // Update rolling measurement window every ~1 second
+                            let window_elapsed = fps_window_start.elapsed();
+                            if window_elapsed >= Duration::from_secs(1) {
+                                let elapsed_secs = window_elapsed.as_secs_f32();
+                                stream_lock.measured_fps = fps_window_frames as f32 / elapsed_secs;
+                                stream_lock.measured_bitrate_kbps = (fps_window_bytes as f32 * 8.0)
+                                    / (elapsed_secs * 1000.0);
+                                stream_lock.fps_window_frames = fps_window_frames;
+                                stream_lock.bytes_window = fps_window_bytes;
+                                stream_lock.fps_window_start_ms = now_ms();
+
+                                fps_window_frames = 0;
+                                fps_window_bytes = 0;
+                                fps_window_start = Instant::now();
+                            }
                         }
                     }
                 }
@@ -743,6 +779,10 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             if let Ok(mut stream_lock) = state.active_stream.lock() {
                 stream_lock.is_active = false;
                 stream_lock.started_at_epoch_ms = 0;
+                stream_lock.measured_fps = 0.0;
+                stream_lock.measured_bitrate_kbps = 0.0;
+                stream_lock.fps_window_frames = 0;
+                stream_lock.bytes_window = 0;
             }
         }
 

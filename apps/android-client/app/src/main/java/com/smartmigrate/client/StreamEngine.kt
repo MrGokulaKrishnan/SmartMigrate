@@ -20,6 +20,7 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Coherent session state machine for the Smart Migrate Protocol (SMP/1) display streaming engine.
@@ -99,11 +100,19 @@ class StreamEngine {
     private var totalFramesRendered = 0L
     private var totalDropped = 0L
 
+    private val inputSeq = AtomicLong(1L)
+
+    /**
+     * Allocates the next strictly monotonic input sequence number for SMP/1 input envelopes.
+     */
+    fun nextSeq(): Long = inputSeq.getAndIncrement()
+
     /**
      * Connects to the host streaming server at the specified host IP/port.
      */
     fun startStreaming(hostAddress: String = "", port: Int = 7890, authToken: String? = null) {
         stopStreaming()
+        inputSeq.set(1L)
 
         val resolvedHost = if (hostAddress.isBlank() || hostAddress == "10.0.2.2") {
             "${SmpClient.getLocalSubnetPrefix()}33"

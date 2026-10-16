@@ -738,7 +738,11 @@ fn close_window(window: Window) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     std::panic::set_hook(Box::new(|info| {
-        let _ = std::fs::write("C:\\Smart Migrate\\crash.log", format!("{:#?}", info));
+        let log_path = std::env::var("APPDATA")
+            .map(|d| std::path::PathBuf::from(d).join("SmartMigrate").join("crash.log"))
+            .unwrap_or_else(|_| std::path::PathBuf::from("crash.log"));
+        let _ = std::fs::create_dir_all(log_path.parent().unwrap_or(std::path::Path::new(".")));
+        let _ = std::fs::write(&log_path, format!("{:#?}", info));
     }));
 
     let identity = storage::load_or_create_identity();
