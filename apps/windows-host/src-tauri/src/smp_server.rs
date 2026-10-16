@@ -663,10 +663,12 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 return;
             }
 
+            let connection_token = now_ms();
             // Mark stream session as actively transmitting
             {
                 let mut stream_lock = state.active_stream.lock().unwrap();
                 stream_lock.is_active = true;
+                stream_lock.connection_id = connection_token;
                 if stream_lock.started_at_epoch_ms == 0 {
                     stream_lock.started_at_epoch_ms = now_ms();
                 }
@@ -681,7 +683,8 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 }
             }
 
-            // Remove socket read timeout so streaming socket is not interrupted by OS timeout
+            // Optimize streaming socket: disable Nagle, remove read timeout, set write deadline
+            let _ = socket.set_nodelay(true);
             let _ = socket.set_read_timeout(None);
             let _ = socket.set_write_timeout(Some(Duration::from_millis(4000)));
 
@@ -697,7 +700,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 return;
             }
 
-            let mut encoder = SoftwareJpegEncoder::new(75);
+            let mut encoder = SoftwareJpegEncoder::new(65);
             let frame_interval = Duration::from_millis(33); // ~30 fps target
 
             // Rolling 1-second FPS and bitrate measurement window
@@ -706,9 +709,9 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             let mut fps_window_bytes: u64 = 0;
 
             loop {
-                // Respect stop_display_stream() — check is_active flag each frame
-                let still_active = state.active_stream.lock().map_or(true, |s| s.is_active);
-                if !still_active || stop_signal.load(Ordering::Relaxed) {
+                // Respect stop_display_stream() and verify this connection has not been superseded
+                let is_current = state.active_stream.lock().map_or(false, |s| s.is_active && s.connection_id == connection_token);
+                if !is_current || stop_signal.load(Ordering::Relaxed) {
                     break;
                 }
 
@@ -720,7 +723,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                         sl.frames_captured += 1;
                     }
 
-                    if let Ok(encoded) = encoder.encode(&raw_frame, 75) {
+                    if let Ok(encoded) = encoder.encode(&raw_frame, 65) {
                         let frame_head = format!(
                             "--smartmigrate\r\n\
                             Content-Type: image/jpeg\r\n\
@@ -775,14 +778,16 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 }
             }
 
-            // Reset active stream on disconnect
+            // Reset active stream on disconnect only if this connection is still current
             if let Ok(mut stream_lock) = state.active_stream.lock() {
-                stream_lock.is_active = false;
-                stream_lock.started_at_epoch_ms = 0;
-                stream_lock.measured_fps = 0.0;
-                stream_lock.measured_bitrate_kbps = 0.0;
-                stream_lock.fps_window_frames = 0;
-                stream_lock.bytes_window = 0;
+                if stream_lock.connection_id == connection_token {
+                    stream_lock.is_active = false;
+                    stream_lock.started_at_epoch_ms = 0;
+                    stream_lock.measured_fps = 0.0;
+                    stream_lock.measured_bitrate_kbps = 0.0;
+                    stream_lock.fps_window_frames = 0;
+                    stream_lock.bytes_window = 0;
+                }
             }
         }
 

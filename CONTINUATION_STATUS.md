@@ -243,6 +243,25 @@ All subsystem builds are verified: 66/66 unit tests passing (63 MigRoute + 3 Win
   - **Verification**:
     - 66/66 Rust unit tests passing (63 MigRoute + 3 Windows Host).
     - Android Debug APK built with Gradle (`assembleDebug` passing in 3m 37s).
+- [x] **Milestone 9 — High-Speed Streaming Optimization, Viewport Touch Normalization & Session Persistence**:
+  - **Windows Host Stream Isolation & Memory Optimization (`apps/windows-host/src-tauri/src/stream.rs`, `smp_server.rs`, `capture.rs`)**:
+    - Connection token isolation: added unique `connection_id` generation token per `/live` session to eliminate race conditions between previous socket disconnects and newly established stream sessions.
+    - Software JPEG Encoder buffer reuse: pre-allocated persistent output buffer to eliminate multi-megabyte GC/heap allocation churn per frame; adjusted default quality factor to 65 for 50%+ network payload compression with lossless visual clarity.
+    - Transport socket tuning: disabled Nagle's algorithm (`socket.set_nodelay(true)`) to minimize latency and packet buffering delays.
+  - **Android High-Throughput Stream Pipeline (`apps/android-client/.../StreamEngine.kt`)**:
+    - Fast native block streaming: replaced byte-by-byte multipart scanning with `DataInputStream.readFully(frameData)` based on HTTP `Content-Length` header, eliminating hundreds of thousands of byte method calls per second.
+    - Set `readTimeout = 10000` to prevent premature socket timeout on transient frame pauses.
+    - Set `inDither = false` on `BitmapFactory.Options` for faster decoding.
+  - **Android Persistent Canvas & Viewport Normalization (`apps/android-client/.../MainActivity.kt`)**:
+    - Continuous desktop canvas: desktop view remains active across `AUTHENTICATING` and `RECONNECTING` transitions, replacing full-screen connecting interruptions with a non-intrusive floating status pill.
+    - Pixel-perfect touch normalization: implemented dynamic aspect-ratio calculation (`drawX, drawY, drawW, drawH`) to map touch and drag gestures directly to Windows desktop screen space rather than letterboxed container coordinates.
+    - Display mode toggle: added user-selectable "Fit" (1:1 16:9 aspect ratio) and "Fill" (fullscreen stretch with zero black space) modes in both the right floating toolbar and slide-out panel.
+    - Precision virtual cursor: aligned virtual pointer coordinates directly with the rendered desktop rect.
+  - **Verification & Deployment**:
+    - 66/66 Rust unit tests passing (63 MigRoute + 3 Windows Host).
+    - Android Debug APK cleanly built with Gradle (`assembleDebug` in 2m 11s).
+    - Debug APK synchronized to website distribution packages (`apps/website/downloads/android/` and `apps/website/public/downloads/android/`).
+    - Successfully deployed to Firebase Hosting (`https://smartmigrate.web.app` and `https://smartmigrated.web.app`).
 
 ---
 

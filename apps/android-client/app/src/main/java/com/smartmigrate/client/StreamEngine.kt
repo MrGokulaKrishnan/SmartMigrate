@@ -141,7 +141,7 @@ class StreamEngine {
                 val decodeJob = launch(Dispatchers.Default) {
                     val decodeOptions = BitmapFactory.Options().apply {
                         inPreferredConfig = Bitmap.Config.RGB_565
-                        inDither = true
+                        inDither = false
                     }
 
                     var lastFpsTime = SystemClock.elapsedRealtime()
@@ -219,7 +219,7 @@ class StreamEngine {
                     val url = URL(streamUrl)
                     val conn = (url.openConnection() as HttpURLConnection).apply {
                         connectTimeout = 4000
-                        readTimeout = 8000
+                        readTimeout = 10000
                         requestMethod = "GET"
                         setRequestProperty("Accept", "multipart/x-mixed-replace")
                         setRequestProperty("User-Agent", "SmartMigrate-Android/0.1.0")
@@ -251,8 +251,7 @@ class StreamEngine {
                     _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.CONNECTED)
                     reconnectAttempts = 0
 
-                    val stream = BufferedInputStream(conn.inputStream, 65536)
-                    readMultipartStream(stream, frameChannel, sessionId)
+                    readMultipartStream(conn.inputStream, frameChannel, sessionId)
 
                 } catch (e: Exception) {
                     if (!isActive) break
@@ -308,47 +307,54 @@ class StreamEngine {
 
     /**
      * Reads MJPEG multipart frames from the active stream socket and publishes to the conflated frame channel.
+     * Uses fast native block reads with DataInputStream.readFully() to prevent Android CPU throttling.
      */
     private suspend fun readMultipartStream(
         stream: InputStream,
         frameChannel: Channel<ByteArray>,
         sessionId: String
     ) = withContext(Dispatchers.IO) {
-        val buffer = ByteArray(65536)
-        val frameOutputStream = ByteArrayOutputStream(196608)
-        var inJpeg = false
-        var prevByte = 0
+        val bis = BufferedInputStream(stream, 131072)
+        val dis = java.io.DataInputStream(bis)
+
+        fun readAsciiLine(): String {
+            val sb = java.lang.StringBuilder(80)
+            while (true) {
+                val b = bis.read()
+                if (b == -1) throw java.io.EOFException("Stream EOF reached")
+                if (b == '\n'.code) break
+                if (b != '\r'.code) {
+                    sb.append(b.toChar())
+                }
+            }
+            return sb.toString()
+        }
 
         while (isActive) {
-            val bytesRead = stream.read(buffer)
-            if (bytesRead == -1) {
-                Log.w(TAG, "[$sessionId] Stream EOF reached from host")
-                break
+            var line = readAsciiLine().trim()
+            // Skip boundaries or empty lines between frames
+            while (line.isEmpty() || line.startsWith("--")) {
+                line = readAsciiLine().trim()
             }
 
-            for (i in 0 until bytesRead) {
-                val b = buffer[i].toInt() and 0xFF
-
-                if (!inJpeg) {
-                    // JPEG SOI: 0xFF 0xD8
-                    if (prevByte == 0xFF && b == 0xD8) {
-                        inJpeg = true
-                        frameOutputStream.reset()
-                        frameOutputStream.write(0xFF)
-                        frameOutputStream.write(0xD8)
-                    }
-                } else {
-                    frameOutputStream.write(b)
-                    // JPEG EOI: 0xFF 0xD9
-                    if (prevByte == 0xFF && b == 0xD9) {
-                        inJpeg = false
-                        totalFramesReceived++
-
-                        val jpegBytes = frameOutputStream.toByteArray()
-                        frameChannel.trySend(jpegBytes)
-                    }
+            var contentLength = -1
+            // Parse headers until empty line
+            while (line.isNotEmpty()) {
+                if (line.startsWith("Content-Length:", ignoreCase = true)) {
+                    contentLength = line.substringAfter(":").trim().toIntOrNull() ?: -1
                 }
-                prevByte = b
+                line = readAsciiLine().trim()
+            }
+
+            if (contentLength in 1..15_000_000) {
+                val frameData = ByteArray(contentLength)
+                dis.readFully(frameData)
+                totalFramesReceived++
+
+                // Validate JPEG SOI marker (0xFF, 0xD8)
+                if (contentLength >= 2 && (frameData[0].toInt() and 0xFF) == 0xFF && (frameData[1].toInt() and 0xFF) == 0xD8) {
+                    frameChannel.trySend(frameData)
+                }
             }
         }
     }

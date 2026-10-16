@@ -21,3 +21,4 @@ target/
 local.properties
 *.dll
 **/.kotlin/
+**/smart-migrate.apk

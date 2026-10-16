@@ -55,6 +55,9 @@ pub struct StreamSessionState {
     /// Actual measured bitrate in kbps from the most recent window.
     #[serde(default)]
     pub measured_bitrate_kbps: f32,
+    /// Monotonically increasing connection ID to isolate concurrent / reconnecting streaming sockets.
+    #[serde(default)]
+    pub connection_id: u64,
 }
 
 impl Default for StreamSessionState {
@@ -82,6 +85,7 @@ impl Default for StreamSessionState {
             measured_fps: 0.0,
             bytes_window: 0,
             measured_bitrate_kbps: 0.0,
+            connection_id: 0,
         }
     }
 }
@@ -172,6 +176,7 @@ pub fn start_stream(
         measured_fps: 0.0,
         bytes_window: 0,
         measured_bitrate_kbps: 0.0,
+        connection_id: 0,
     };
 
     Ok(state)

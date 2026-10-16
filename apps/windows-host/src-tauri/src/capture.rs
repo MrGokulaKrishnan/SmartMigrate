@@ -245,12 +245,14 @@ pub trait VideoEncoder: Send + Sync {
 /// High-performance SIMD JPEG/MJPEG video frame encoder.
 pub struct SoftwareJpegEncoder {
     default_quality: u8,
+    out_buffer: Vec<u8>,
 }
 
 impl SoftwareJpegEncoder {
     pub fn new(quality: u8) -> Self {
         Self {
-            default_quality: if quality == 0 { 75 } else { quality },
+            default_quality: if quality == 0 { 65 } else { quality },
+            out_buffer: Vec::with_capacity(256 * 1024),
         }
     }
 }
@@ -259,9 +261,9 @@ impl VideoEncoder for SoftwareJpegEncoder {
     fn encode(&mut self, frame: &RawFrame, quality: u8) -> Result<EncodedFrame, String> {
         let t0 = std::time::Instant::now();
         let q = if quality == 0 { self.default_quality } else { quality };
-        let mut out = Vec::with_capacity(frame.bgra_data.len() / 8);
+        self.out_buffer.clear();
 
-        let encoder = jpeg_encoder::Encoder::new(&mut out, q);
+        let encoder = jpeg_encoder::Encoder::new(&mut self.out_buffer, q);
         encoder
             .encode(
                 &frame.bgra_data,
@@ -277,7 +279,7 @@ impl VideoEncoder for SoftwareJpegEncoder {
             height: frame.height,
             codec: "MJPEG".to_string(),
             is_keyframe: true,
-            payload: out,
+            payload: self.out_buffer.clone(),
             timestamp_ms: frame.timestamp_ms,
             encode_duration_ms: duration,
         })

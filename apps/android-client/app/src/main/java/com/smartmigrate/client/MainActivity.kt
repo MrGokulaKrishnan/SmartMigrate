@@ -1130,6 +1130,7 @@ private fun DedicatedRemoteSessionScreen(
     var showClipboardBanner by rememberSaveable { mutableStateOf(true) }
     var fpsMode by rememberSaveable { mutableIntStateOf(60) }
     var keyboardInputText by rememberSaveable { mutableStateOf("") }
+    var displayScalingMode by rememberSaveable { mutableStateOf("Fit") } // "Fit" (16:9 Aspect) or "Fill" (Screen Fill)
 
     // Virtual Cursor Position in Cursor Mode (normalized 0.0 .. 1.0)
     var cursorNormX by rememberSaveable { mutableFloatStateOf(0.5f) }
@@ -1264,18 +1265,52 @@ private fun DedicatedRemoteSessionScreen(
             ) {
                 val frame = latestBitmap
 
-                if (frame != null && (connState == StreamConnectionState.STREAMING || connState == StreamConnectionState.CONNECTED || connState == StreamConnectionState.RECONNECTING)) {
-                    // Continuous Remote Stream Canvas
+                if (frame != null && connState != StreamConnectionState.FAILED && connState != StreamConnectionState.DISCONNECTED) {
+                    // Continuous Remote Stream Canvas with Viewport Normalization
+                    val containerW = viewportSize.width.toFloat()
+                    val containerH = viewportSize.height.toFloat()
+                    val imgW = frame.width.toFloat()
+                    val imgH = frame.height.toFloat()
+
+                    val (drawX, drawY, drawW, drawH) = remember(containerW, containerH, imgW, imgH, displayScalingMode) {
+                        if (displayScalingMode == "Fill" || containerW <= 0f || containerH <= 0f || imgW <= 0f || imgH <= 0f) {
+                            floatArrayOf(0f, 0f, containerW.coerceAtLeast(1f), containerH.coerceAtLeast(1f))
+                        } else {
+                            val containerAspect = containerW / containerH
+                            val imgAspect = imgW / imgH
+                            if (containerAspect > imgAspect) {
+                                // Pillarbox: letterboxing on left and right
+                                val dH = containerH
+                                val dW = containerH * imgAspect
+                                val dX = (containerW - dW) / 2f
+                                floatArrayOf(dX, 0f, dW, dH)
+                            } else {
+                                // Letterbox: bars on top and bottom
+                                val dW = containerW
+                                val dH = containerW / imgAspect
+                                val dY = (containerH - dH) / 2f
+                                floatArrayOf(0f, dY, dW, dH)
+                            }
+                        }
+                    }
+
+                    fun mapTouchToDesktop(touchX: Float, touchY: Float): Pair<Float, Float> {
+                        val safeW = if (drawW > 0f) drawW else 1f
+                        val safeH = if (drawH > 0f) drawH else 1f
+                        val nx = ((touchX - drawX) / safeW).coerceIn(0f, 1f)
+                        val ny = ((touchY - drawY) / safeH).coerceIn(0f, 1f)
+                        return Pair(nx, ny)
+                    }
+
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .onSizeChanged { viewportSize = it }
-                            .pointerInput(controlMode, connState) {
+                            .pointerInput(controlMode, connState, drawX, drawY, drawW, drawH) {
                                 if (controlMode == "Touch") {
                                     detectTapGestures(
                                         onTap = { offset ->
-                                            val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                            val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                            val (nx, ny) = mapTouchToDesktop(offset.x, offset.y)
                                             val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
@@ -1289,8 +1324,7 @@ private fun DedicatedRemoteSessionScreen(
                                             }
                                         },
                                         onDoubleTap = { offset ->
-                                            val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                            val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                            val (nx, ny) = mapTouchToDesktop(offset.x, offset.y)
                                             val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
@@ -1304,8 +1338,7 @@ private fun DedicatedRemoteSessionScreen(
                                             }
                                         },
                                         onLongPress = { offset ->
-                                            val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                            val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                            val (nx, ny) = mapTouchToDesktop(offset.x, offset.y)
                                             val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
@@ -1322,14 +1355,16 @@ private fun DedicatedRemoteSessionScreen(
                                     )
                                 }
                             }
-                            .pointerInput(controlMode, connState) {
+                            .pointerInput(controlMode, connState, drawX, drawY, drawW, drawH) {
                                 if (controlMode == "Cursor") {
                                     detectDragGestures { change, dragAmount ->
                                         change.consume()
                                         val dx = dragAmount.x
                                         val dy = dragAmount.y
-                                        cursorNormX = (cursorNormX + dx / size.width.toFloat()).coerceIn(0f, 1f)
-                                        cursorNormY = (cursorNormY + dy / size.height.toFloat()).coerceIn(0f, 1f)
+                                        val safeW = if (drawW > 0f) drawW else 1f
+                                        val safeH = if (drawH > 0f) drawH else 1f
+                                        cursorNormX = (cursorNormX + dx / safeW).coerceIn(0f, 1f)
+                                        cursorNormY = (cursorNormY + dy / safeH).coerceIn(0f, 1f)
 
                                         val seq = nextSeq()
                                         scope.launch {
@@ -1347,8 +1382,7 @@ private fun DedicatedRemoteSessionScreen(
                                     // Touch Mode Drag
                                     detectDragGestures(
                                         onDragStart = { offset ->
-                                            val nx = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                            val ny = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                            val (nx, ny) = mapTouchToDesktop(offset.x, offset.y)
                                             val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
@@ -1364,8 +1398,7 @@ private fun DedicatedRemoteSessionScreen(
                                         },
                                         onDrag = { change, _ ->
                                             change.consume()
-                                            val nx = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                            val ny = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                            val (nx, ny) = mapTouchToDesktop(change.position.x, change.position.y)
                                             val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
@@ -1399,13 +1432,13 @@ private fun DedicatedRemoteSessionScreen(
                             bitmap = frame.asImageBitmap(),
                             contentDescription = "Windows Desktop Display",
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit
+                            contentScale = if (displayScalingMode == "Fill") ContentScale.FillBounds else ContentScale.Fit
                         )
 
-                        // Virtual Cursor in Cursor Mode
+                        // Virtual Cursor in Cursor Mode positioned precisely over desktop coordinate
                         if (controlMode == "Cursor") {
-                            val px = cursorNormX * viewportSize.width.toFloat()
-                            val py = cursorNormY * viewportSize.height.toFloat()
+                            val px = drawX + cursorNormX * drawW
+                            val py = drawY + cursorNormY * drawH
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 val path = Path().apply {
                                     moveTo(px, py)
@@ -1422,8 +1455,8 @@ private fun DedicatedRemoteSessionScreen(
                             }
                         }
 
-                        // Reconnecting overlay pill if network drops temporarily
-                        if (connState == StreamConnectionState.RECONNECTING) {
+                        // Non-intrusive status pill during reconnect or authentication
+                        if (connState == StreamConnectionState.RECONNECTING || connState == StreamConnectionState.CONNECTING || connState == StreamConnectionState.AUTHENTICATING) {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
@@ -1443,7 +1476,14 @@ private fun DedicatedRemoteSessionScreen(
                                             .clip(CircleShape)
                                             .background(Warning)
                                     )
-                                    Text("Network hiccup. Reconnecting to Windows host...", color = Color.White, fontSize = 11.sp)
+                                    Text(
+                                        if (connState == StreamConnectionState.RECONNECTING)
+                                            "Network hiccup. Reconnecting to Windows host..."
+                                        else
+                                            "Synchronizing session with Windows host...",
+                                        color = Color.White,
+                                        fontSize = 11.sp
+                                    )
                                 }
                             }
                         }
@@ -1699,6 +1739,42 @@ private fun DedicatedRemoteSessionScreen(
                                 }
                                 Spacer(Modifier.height(2.dp))
                                 Text("Switch", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                            }
+
+                            // Display Scaling Toggle (Fit vs Fill)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        displayScalingMode = if (displayScalingMode == "Fit") "Fill" else "Fit"
+                                        onNotice(if (displayScalingMode == "Fill") "Display mode: Fill Screen (Zero black bars)" else "Display mode: Fit (16:9 Aspect Ratio)")
+                                    }
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .background(if (displayScalingMode == "Fill") Brand600 else Color(0x26FFFFFF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        if (displayScalingMode == "Fill") "⤢" else "⤡",
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    if (displayScalingMode == "Fill") "Fill" else "Fit",
+                                    color = Color.White,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
                     }
@@ -2210,6 +2286,28 @@ private fun DedicatedRemoteSessionScreen(
                                         .padding(horizontal = 10.dp, vertical = 4.dp)
                                 ) {
                                     Text(if (virtualMouseEnabled) "ON" else "OFF", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("Display Aspect Mode", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(if (displayScalingMode == "Fill") "Fill Screen (Zero black space)" else "Fit (Preserve 16:9 aspect)", color = TextMuted, fontSize = 10.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (displayScalingMode == "Fill") Brand600 else Color(0x26FFFFFF))
+                                        .clickable {
+                                            displayScalingMode = if (displayScalingMode == "Fit") "Fill" else "Fit"
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(if (displayScalingMode == "Fill") "FILL" else "FIT", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
 
