@@ -32,6 +32,8 @@ android {
                     ?: "smartmigrate_keystore_pass"
                 enableV1Signing = true
                 enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
             } else {
                 throw GradleException("release.keystore is required for release build and must not fall back to debug")
             }

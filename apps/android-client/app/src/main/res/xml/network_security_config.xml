@@ -7,7 +7,14 @@
         </trust-anchors>
     </base-config>
 
-    <!-- Scoped domain exemptions -->
+    <!-- Strict HTTPS enforcement for production web, CDN, and update endpoints -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">smartmigrate.web.app</domain>
+        <domain includeSubdomains="true">smartmigrated.web.app</domain>
+        <domain includeSubdomains="true">firebaseapp.com</domain>
+    </domain-config>
+
+    <!-- Scoped local loopback exemptions for developer bridges -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">10.0.2.2</domain>
