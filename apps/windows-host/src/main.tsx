@@ -923,7 +923,7 @@ export function App() {
     setPairingSession(null);
   };
 
-  // Pairing TTL countdown
+  // Pairing TTL countdown & auto-dismiss polling
   useEffect(() => {
     if (!pairingModalOpen || !pairingSession) return;
     const timer = setInterval(() => {
@@ -932,6 +932,7 @@ export function App() {
           clearInterval(timer);
           invoke("cancel_pairing").catch(() => {});
           setPairingSession(null);
+          setPairingModalOpen(false);
           setNotice("Pairing session expired.");
           return 0;
         }
@@ -951,9 +952,17 @@ export function App() {
             });
             setSelectedPerms((prev) => (Object.keys(prev).length === 0 ? initial : prev));
           }
+        } else {
+          // The pairing session was approved and cleared by /smp/pair handler, or ended
+          clearInterval(poll);
+          clearInterval(timer);
+          setPairingModalOpen(false);
+          setPairingSession(null);
+          refreshStatus();
+          setNotice("Device successfully paired and authorized!");
         }
       } catch (_) {}
-    }, 1500);
+    }, 1000);
 
     return () => {
       clearInterval(timer);

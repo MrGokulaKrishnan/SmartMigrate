@@ -215,9 +215,52 @@ function formatExactDate(dateInput) {
 
 async function hydrateReleaseData() {
   try {
-    const res = await fetch("release.json", { cache: "no-store" });
-    if (!res.ok) return;
-    const data = await res.json();
+    let data = null;
+    try {
+      const mRes = await fetch("releases/manifest.json", { cache: "no-store" });
+      if (mRes.ok) {
+        const manifest = await mRes.json();
+        data = {
+          version: manifest.version,
+          versionCode: manifest.versionCode,
+          updated_at: manifest.releaseDate,
+          date: manifest.releaseDate ? manifest.releaseDate.split("T")[0] : null,
+          artifacts: {}
+        };
+        if (manifest.platforms) {
+          if (manifest.platforms["windows-x86_64"]) {
+            const win = manifest.platforms["windows-x86_64"];
+            data.artifacts["windows-exe"] = {
+              version: win.version,
+              filename: win.fileName || "SmartMigrate-Setup-x64.exe",
+              download_url: win.url || "/downloads/windows/SmartMigrate-Setup-x64.exe",
+              sha256: win.sha256,
+              size_human: win.size ? `${(win.size / 1048576).toFixed(1)} MB` : "4.2 MB"
+            };
+          }
+          if (manifest.platforms["android-arm64"]) {
+            const apk = manifest.platforms["android-arm64"];
+            data.artifacts["android-apk"] = {
+              version: apk.version,
+              versionCode: apk.versionCode,
+              filename: apk.fileName || "SmartMigrate.apk",
+              download_url: apk.url || "/downloads/android/SmartMigrate.apk",
+              sha256: apk.sha256,
+              size_human: apk.size ? `${(apk.size / 1048576).toFixed(1)} MB` : "2.6 MB"
+            };
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (!data) {
+      const res = await fetch("release.json", { cache: "no-store" });
+      if (res.ok) {
+        data = await res.json();
+      }
+    }
+
+    if (!data) return;
 
     // Dynamic Version and Relative Timing Badges
     if (data.updated_at || data.date) {
@@ -237,25 +280,41 @@ async function hydrateReleaseData() {
       const dlExact = document.querySelector("#downloads-exact-date");
       if (dlExact) dlExact.textContent = exactDate;
 
+      const winExeDate = document.querySelector("#win-exe-date");
+      if (winExeDate) winExeDate.textContent = exactDate;
+
+      const winMsiDate = document.querySelector("#win-msi-date");
+      if (winMsiDate) winMsiDate.textContent = exactDate;
+
       const androidDate = document.querySelector("#android-release-date");
-      if (androidDate) androidDate.textContent = `October 16, 2026 (Updated recently: ${relTime})`;
+      if (androidDate) androidDate.textContent = `${exactDate} (Updated recently: ${relTime})`;
     }
 
     if (data.version) {
+      const buildStr = data.versionCode ? ` (Build ${data.versionCode})` : "";
       const dlVersion = document.querySelector("#downloads-current-version");
-      if (dlVersion) dlVersion.textContent = `v${data.version} (Build 5)`;
+      if (dlVersion) dlVersion.textContent = `v${data.version}${buildStr}`;
 
       const previewTag = document.querySelector(".preview-brand-tag");
       if (previewTag) previewTag.textContent = `v${data.version}`;
 
       const winExeVer = document.querySelector("#win-exe-version");
-      if (winExeVer) winExeVer.textContent = data.version;
+      if (winExeVer) {
+        const exeVer = data.artifacts?.["windows-exe"]?.version || data.version;
+        winExeVer.textContent = exeVer;
+      }
 
       const winMsiVer = document.querySelector("#win-msi-version");
-      if (winMsiVer) winMsiVer.textContent = data.version;
+      if (winMsiVer) {
+        const msiVer = data.artifacts?.["windows-msi"]?.version || data.version;
+        winMsiVer.textContent = msiVer;
+      }
 
       const androidVer = document.querySelector("#android-apk-version");
-      if (androidVer) androidVer.textContent = data.version;
+      if (androidVer) {
+        const apkVer = data.artifacts?.["android-apk"]?.version || data.version;
+        androidVer.textContent = apkVer;
+      }
     }
 
     if (!data.artifacts) return;

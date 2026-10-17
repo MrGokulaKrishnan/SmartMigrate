@@ -324,11 +324,19 @@ class StreamEngine {
                             // A real frame decoded: the link is healthy, so restore the full retry budget.
                             reconnectAttempts.set(0)
 
-                            // Promote to STREAMING only from CONNECTED. Never override RECONNECTING / FAILED /
-                            // DISCONNECTING, otherwise a late frame hides the reconnect state and the UI flickers.
-                            if (_state.value == StreamConnectionState.CONNECTED) {
-                                Log.i(TAG, "[$sessionId] First frame rendered (${decodedBitmap.width}x${decodedBitmap.height}) -> Transition to STREAMING")
+                            // When a valid bitmap successfully decodes, the stream is unequivocally alive and streaming.
+                            // Promote to STREAMING if in CONNECTED, CONNECTING, AUTHENTICATING, or RECONNECTING.
+                            // This immediately dismisses the "Reconnecting..." status banner upon frame arrival.
+                            if (_state.value != StreamConnectionState.STREAMING &&
+                                _state.value != StreamConnectionState.DISCONNECTED &&
+                                _state.value != StreamConnectionState.FAILED
+                            ) {
+                                Log.i(TAG, "[$sessionId] Live frame rendered (${decodedBitmap.width}x${decodedBitmap.height}) -> Transition to STREAMING (was ${_state.value})")
                                 _state.value = StreamConnectionState.STREAMING
+                                _diagnostics.value = _diagnostics.value.copy(
+                                    connectionState = StreamConnectionState.STREAMING,
+                                    failureReason = null
+                                )
                             }
                         } else {
                             totalDropped++

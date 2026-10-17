@@ -476,6 +476,9 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                                 perms.insert(p);
                             }
                             perms.insert(SessionPermission::ViewScreen);
+                            if perms.contains(&SessionPermission::ControlMouse) {
+                                perms.insert(SessionPermission::ControlKeyboard);
+                            }
 
                             let session_token = generate_crypto_token();
                             let trusted_device = TrustedDevice::new(
@@ -498,6 +501,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                                 stream_lock.auth_token = session_token.clone();
                                 stream_lock.target_device_id = req_id.to_string();
                                 stream_lock.target_device_name = pair_req.requester_name.clone();
+                                stream_lock.is_active = true;
                             }
 
                             *active_lock = None; // clear pending pairing after success
@@ -694,30 +698,48 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     }
                 };
 
-                let stream_lock = state.active_stream.lock().unwrap();
-                if !stream_lock.is_active || stream_lock.auth_token.is_empty() {
-                    send_error_response(&mut socket, 401, "Unauthorized", "SMP_NO_ACTIVE_SESSION", "No active streaming session on host", cors_allow_origin);
-                    return;
-                }
+                let mut target_device_id = String::new();
+                let is_token_valid = {
+                    let mut stream_lock = state.active_stream.lock().unwrap();
+                    if !stream_lock.auth_token.is_empty() && constant_time_eq_str(&stream_lock.auth_token, &token_str) {
+                        target_device_id = stream_lock.target_device_id.clone();
+                        stream_lock.is_active = true;
+                        true
+                    } else {
+                        // Check trust store fingerprint anchor
+                        let trust_store = state.trust_store.lock().unwrap();
+                        let expected_fp_prefix = format!("FP-{}", &token_str[..token_str.len().min(8)].to_uppercase());
+                        if let Some(dev) = trust_store.list_all().into_iter().find(|d| d.fingerprint.starts_with(&expected_fp_prefix)) {
+                            target_device_id = dev.id.to_string();
+                            stream_lock.auth_token = token_str.clone();
+                            stream_lock.target_device_id = dev.id.to_string();
+                            stream_lock.target_device_name = dev.name.clone();
+                            stream_lock.is_active = true;
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                };
 
-                if !constant_time_eq_str(&stream_lock.auth_token, &token_str) {
+                if !is_token_valid {
                     send_error_response(&mut socket, 401, "Unauthorized", "SMP_INVALID_SESSION_TOKEN", "Session token is invalid", cors_allow_origin);
                     return;
                 }
 
-                let target_device_id = stream_lock.target_device_id.clone();
-                drop(stream_lock);
-
                 // 2. Validate device identity and trust
                 let trust_store = state.trust_store.lock().unwrap();
-                let client_device_id = if !input_body.device_id.is_empty() {
-                    if input_body.device_id != target_device_id {
+                let client_device_id = if !target_device_id.is_empty() {
+                    if !input_body.device_id.is_empty() && input_body.device_id != target_device_id {
                         send_error_response(&mut socket, 403, "Forbidden", "SMP_DEVICE_MISMATCH", "Cannot inject input for a different device", cors_allow_origin);
                         return;
                     }
                     target_device_id
+                } else if !input_body.device_id.is_empty() {
+                    input_body.device_id.clone()
                 } else {
-                    target_device_id
+                    send_error_response(&mut socket, 400, "Bad Request", "SMP_MISSING_DEVICE_ID", "Device ID required", cors_allow_origin);
+                    return;
                 };
 
                 let parsed_id = match DeviceId::try_from(client_device_id.as_str()) {

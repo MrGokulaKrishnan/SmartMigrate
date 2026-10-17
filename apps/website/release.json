@@ -1,7 +1,7 @@
 {
-  "version": "1.4.2",
+  "version": "1.4.4",
   "date": "2026-10-17",
-  "updated_at": "2026-10-17T12:40:00Z",
+  "updated_at": "2026-10-17T15:40:00Z",
   "artifacts": {
     "windows-exe": {
       "filename": "SmartMigrate-Setup-x64.exe",
@@ -23,7 +23,7 @@
       "filename": "SmartMigrate.apk",
       "path": "downloads/android/SmartMigrate.apk",
       "download_url": "/downloads/android/SmartMigrate.apk",
-      "sha256": "eba656e0d4bd9cb797d926d0688e9721f8482ab3fb07236c5faf25ca3bf5910c",
+      "sha256": "054d325185c9a87dfea9963475296ee8ff964a3cc69b4afe5130ac0aa9c166a1",
       "size_bytes": 2599798,
       "size_human": "2.6 MB"
     }

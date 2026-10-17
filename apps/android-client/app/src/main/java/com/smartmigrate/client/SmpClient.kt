@@ -269,7 +269,7 @@ object SmpClient {
                 put("requesterDeviceId", requesterDeviceId)
                 put("requesterName", requesterName)
                 put("code", pin.trim())
-                put("requestedPermissions", JSONArray(listOf("ViewScreen", "ControlMouse", "Clipboard")))
+                put("requestedPermissions", JSONArray(listOf("ViewScreen", "ControlMouse", "ControlKeyboard", "Clipboard")))
             }
 
             OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }

@@ -1,22 +1,20 @@
 {
   "product": "Smart Migrate",
-  "version": "1.4.3",
-  "versionCode": 7,
-  "releaseDate": "2026-10-17T13:05:00Z",
-  "releaseNotes": "- Android: Foreground service (StreamSessionService) with WifiLock (LOW_LATENCY), WakeLock, and bindProcessToNetwork keeps session alive when app is backgrounded or screen turns off\n- Android: Session token persisted to SharedPreferences — app reconnects silently after process death or Wi-Fi drop without re-pairing\n- Android: ConnectivityManager.registerNetworkCallback triggers immediate reconnect when Wi-Fi returns, bypassing backoff delay\n- Android: 401/403 from host now shows clear \"Session expired — re-pair\" message instead of infinite reconnect loop\n- Android: Removed hardcoded developer subnet .33 guesses from discoverHosts fallback\n- Android: SmpClient.revalidateSession() and pingHost() added for post-drop session recovery\n- Android: All input handlers no longer fall back to emulator address 10.0.2.2\n- Android: Implemented APK Signature Scheme v3/v3.1 rotation lineage to resolve package conflicts and preserve user data\n- Windows: Embedded native application icon directly into executable PE resources and runtime window frame\n- Windows: Fixed UAC elevation update failure (os error 740) by launching installer with elevated ShellExecuteW runas verb\n- Display Stream: Upgraded to full-resolution 4:4:4 chroma, base JPEG quality 82, and 60 FPS target with adaptive frame-rate shedding",
+  "version": "1.4.4",
+  "versionCode": 8,
+  "releaseDate": "2026-10-17T15:40:00Z",
+  "releaseNotes": "- Android: Live stream frame decodes immediately promote connection state to STREAMING, eliminating stuck \"Reconnecting to Windows host...\" banners\n- Android: Automatic session token fallback across input handlers ensures mouse and touch coordinates are never dropped due to transient stream reconnects\n- Android: Dynamic desktop aspect ratio mapping prevents letterbox margin mis-clicks in Fit display mode\n- Android: Replaced missing Unicode glyph box with crisp hardware-accelerated vector power icon\n- Windows & Host: Added automatic ControlKeyboard permission grant on mouse authorization and instantaneous auto-dismissal of Pairing & Verification modal\n- Security: Full APK Signature Scheme v3/v3.1 key rotation lineage preserved for smooth seamless in-place updates",
   "releaseHighlights": [
-    "Android: Foreground service keeps session alive when backgrounded — no more drops on screen-off",
-    "Android: Session token persisted — reconnects silently without PIN re-entry after process restart",
-    "Android: Wi-Fi reconnect fires immediately when network returns, not after backoff timer",
-    "Android: 401/403 host responses now show clear re-pair message instead of infinite reconnect loop",
-    "Android: Removed hardcoded developer .33 subnet guesses from host discovery",
-    "Android: APK Signature Scheme v3/v3.1 rotation lineage for in-place upgrades",
-    "Windows: Embedded native icon + UAC-correct installer elevation",
-    "Display Stream: 4:4:4 chroma, quality 82, 60 FPS adaptive stream"
+    "Android: Instant reconnect recovery — active video frame decodes clear reconnect banner immediately",
+    "Android: Host pairing modal auto-dismisses immediately upon PIN approval",
+    "Android: Full touch, mouse, and keyboard input integration with persistent session authorization",
+    "Android: Dynamic aspect ratio touch mapping for accurate desktop coordinate scaling",
+    "Android: Native vector power icon replaces system font tofu glyphs",
+    "Android: APK Signature Scheme v3/v3.1 rotation lineage for seamless upgrade"
   ],
   "channels": {
-    "stable": "1.4.3",
-    "beta": "1.4.3"
+    "stable": "1.4.4",
+    "beta": "1.4.4"
   },
   "platforms": {
     "windows-x86_64": {
@@ -29,12 +27,12 @@
       "mandatory": false
     },
     "android-arm64": {
-      "version": "1.4.3",
-      "versionCode": 7,
+      "version": "1.4.4",
+      "versionCode": 8,
       "url": "https://smartmigrate.web.app/downloads/android/SmartMigrate.apk",
       "fileName": "SmartMigrate.apk",
       "size": 2599798,
-      "sha256": "e7e63d8f5d1358e37dd0bd99f0d4eb82d46c7c46ca80b5860e8dbf7e2ea8d308",
+      "sha256": "054d325185c9a87dfea9963475296ee8ff964a3cc69b4afe5130ac0aa9c166a1",
       "signature": "62:03:AE:3F:A5:56:E3:29:31:9F:BC:4C:C8:B7:0F:29:72:EC:75:43:A5:06:7A:9A:23:24:5F:F2:EA:5D:36:60",
       "certificateFingerprint": "62:03:AE:3F:A5:56:E3:29:31:9F:BC:4C:C8:B7:0F:29:72:EC:75:43:A5:06:7A:9A:23:24:5F:F2:EA:5D:36:60",
       "mandatory": false

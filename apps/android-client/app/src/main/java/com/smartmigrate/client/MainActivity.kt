@@ -728,6 +728,34 @@ private fun PlayPauseVector(isPlaying: Boolean, modifier: Modifier = Modifier, c
 }
 
 @Composable
+private fun PowerVector(modifier: Modifier = Modifier, color: Color = Danger, size: Dp = 10.dp) {
+    Canvas(modifier = modifier.size(size)) {
+        val s = 1.3.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        val r = (w.coerceAtMost(h) / 2f) - s
+        val cx = w / 2f
+        val cy = h / 2f
+        drawArc(
+            color = color,
+            startAngle = -60f,
+            sweepAngle = 300f,
+            useCenter = false,
+            topLeft = Offset(cx - r, cy - r),
+            size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
+            style = Stroke(width = s, cap = StrokeCap.Round)
+        )
+        drawLine(
+            color = color,
+            start = Offset(cx, cy - r),
+            end = Offset(cx, cy),
+            strokeWidth = s,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
 private fun SkipPrevVector(modifier: Modifier = Modifier, color: Color = TextPrimary, size: Dp = 16.dp) {
     Canvas(modifier = modifier.size(size)) {
         val w = this.size.width
@@ -1368,10 +1396,15 @@ private fun DedicatedRemoteSessionScreen(
     var cursorNormY by rememberSaveable { mutableFloatStateOf(0.5f) }
     var viewportSize by remember { mutableStateOf(IntSize(1, 1)) }
 
+    val context = LocalContext.current
+    val effectiveToken = remember(sessionToken) {
+        sessionToken.trim().ifEmpty { SessionPreferences.loadToken(context).trim() }
+    }
+
     // Automatically initiate stream on enter
-    LaunchedEffect(hostAddress, sessionToken, isVirtualExtendedDisplay) {
+    LaunchedEffect(hostAddress, effectiveToken, isVirtualExtendedDisplay) {
         val h = hostAddress.trim().ifEmpty { "10.0.2.2" }
-        val tok = sessionToken.trim().ifEmpty { null }
+        val tok = effectiveToken.ifEmpty { null }
         streamEngine.startStreaming(h, 7890, tok, isVirtualExtendedDisplay = isVirtualExtendedDisplay)
     }
 
@@ -1534,9 +1567,9 @@ private fun DedicatedRemoteSessionScreen(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Text("⏻", color = Danger, fontSize = 10.sp)
+                                PowerVector(color = Danger, size = 10.dp)
                                 Text("End", color = Danger, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
@@ -1555,13 +1588,18 @@ private fun DedicatedRemoteSessionScreen(
                     // Continuous Remote Stream Canvas with Viewport Normalization
                     val containerW = viewportSize.width.toFloat()
                     val containerH = viewportSize.height.toFloat()
+                    val currentBmp = streamEngine.latestBitmap.value
 
-                    val (drawX, drawY, drawW, drawH) = remember(containerW, containerH, displayScalingMode) {
+                    val (drawX, drawY, drawW, drawH) = remember(containerW, containerH, displayScalingMode, currentBmp?.width, currentBmp?.height) {
                         if (displayScalingMode == "Fill" || containerW <= 0f || containerH <= 0f) {
                             floatArrayOf(0f, 0f, containerW.coerceAtLeast(1f), containerH.coerceAtLeast(1f))
                         } else {
                             val containerAspect = containerW / containerH
-                            val imgAspect = 16f / 9f // Default desktop aspect ratio
+                            val imgAspect = if (currentBmp != null && currentBmp.width > 0 && currentBmp.height > 0) {
+                                currentBmp.width.toFloat() / currentBmp.height.toFloat()
+                            } else {
+                                16f / 9f // Default desktop aspect ratio
+                            }
                             if (containerAspect > imgAspect) {
                                 // Pillarbox: letterboxing on left and right
                                 val dH = containerH
@@ -1578,7 +1616,12 @@ private fun DedicatedRemoteSessionScreen(
                         }
                     }
 
-                    fun mapTouchToDesktop(touchX: Float, touchY: Float): Pair<Float, Float> {
+                    fun mapTouchToDesktop(touchX: Float, touchY: Float): Pair<Float, Float>? {
+                        if (displayScalingMode == "Fit") {
+                            if (touchX < drawX || touchX > drawX + drawW || touchY < drawY || touchY > drawY + drawH) {
+                                return null
+                            }
+                        }
                         val safeW = if (drawW > 0f) drawW else 1f
                         val safeH = if (drawH > 0f) drawH else 1f
                         val nx = ((touchX - drawX) / safeW).coerceIn(0f, 1f)
@@ -1594,7 +1637,8 @@ private fun DedicatedRemoteSessionScreen(
                                 if (controlMode == "Touch") {
                                     detectTapGestures(
                                         onTap = { offset ->
-                                            val (nx, ny) = mapTouchToDesktop(offset.x, offset.y)
+                                            val coords = mapTouchToDesktop(offset.x, offset.y) ?: return@detectTapGestures
+                                            val (nx, ny) = coords
                                             val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
@@ -1603,12 +1647,13 @@ private fun DedicatedRemoteSessionScreen(
                                                     normalizedX = nx,
                                                     normalizedY = ny,
                                                     sequence = seq,
-                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                    sessionToken = effectiveToken.ifEmpty { null }
                                                 )
                                             }
                                         },
                                         onDoubleTap = { offset ->
-                                            val (nx, ny) = mapTouchToDesktop(offset.x, offset.y)
+                                            val coords = mapTouchToDesktop(offset.x, offset.y) ?: return@detectTapGestures
+                                            val (nx, ny) = coords
                                             val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
@@ -1617,12 +1662,13 @@ private fun DedicatedRemoteSessionScreen(
                                                     normalizedX = nx,
                                                     normalizedY = ny,
                                                     sequence = seq,
-                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                    sessionToken = effectiveToken.ifEmpty { null }
                                                 )
                                             }
                                         },
                                         onLongPress = { offset ->
-                                            val (nx, ny) = mapTouchToDesktop(offset.x, offset.y)
+                                            val coords = mapTouchToDesktop(offset.x, offset.y) ?: return@detectTapGestures
+                                            val (nx, ny) = coords
                                             val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
@@ -1631,7 +1677,7 @@ private fun DedicatedRemoteSessionScreen(
                                                     normalizedX = nx,
                                                     normalizedY = ny,
                                                     sequence = seq,
-                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                    sessionToken = effectiveToken.ifEmpty { null }
                                                 )
                                             }
                                             onNotice("Right click dispatched")
@@ -1658,7 +1704,7 @@ private fun DedicatedRemoteSessionScreen(
                                                 dx = (dx * 1.6f).toInt(),
                                                 dy = (dy * 1.6f).toInt(),
                                                 sequence = seq,
-                                                sessionToken = sessionToken.ifEmpty { null }
+                                                sessionToken = effectiveToken.ifEmpty { null }
                                             )
                                         }
                                     }
@@ -1666,7 +1712,8 @@ private fun DedicatedRemoteSessionScreen(
                                     // Touch Mode Drag
                                     detectDragGestures(
                                         onDragStart = { offset ->
-                                            val (nx, ny) = mapTouchToDesktop(offset.x, offset.y)
+                                            val coords = mapTouchToDesktop(offset.x, offset.y) ?: return@detectDragGestures
+                                            val (nx, ny) = coords
                                             val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
@@ -1676,13 +1723,14 @@ private fun DedicatedRemoteSessionScreen(
                                                     normalizedX = nx,
                                                     normalizedY = ny,
                                                     sequence = seq,
-                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                    sessionToken = effectiveToken.ifEmpty { null }
                                                 )
                                             }
                                         },
                                         onDrag = { change, _ ->
                                             change.consume()
-                                            val (nx, ny) = mapTouchToDesktop(change.position.x, change.position.y)
+                                            val coords = mapTouchToDesktop(change.position.x, change.position.y) ?: return@detectDragGestures
+                                            val (nx, ny) = coords
                                             val seq = nextSeq()
                                             scope.launch {
                                                 SmpClient.sendInput(
@@ -1691,7 +1739,7 @@ private fun DedicatedRemoteSessionScreen(
                                                     normalizedX = nx,
                                                     normalizedY = ny,
                                                     sequence = seq,
-                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                    sessionToken = effectiveToken.ifEmpty { null }
                                                 )
                                             }
                                         },
@@ -1703,7 +1751,7 @@ private fun DedicatedRemoteSessionScreen(
                                                     action = "mouse_up",
                                                     button = "left",
                                                     sequence = seq,
-                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                    sessionToken = effectiveToken.ifEmpty { null }
                                                 )
                                             }
                                         }
@@ -1803,7 +1851,7 @@ private fun DedicatedRemoteSessionScreen(
                                     .background(Brand600)
                                     .clickable {
                                         val h = hostAddress.trim().ifEmpty { "10.0.2.2" }
-                                        val tok = sessionToken.trim().ifEmpty { null }
+                                        val tok = effectiveToken.ifEmpty { null }
                                         streamEngine.startStreaming(h, 7890, tok, isVirtualExtendedDisplay = isVirtualExtendedDisplay)
                                     }
                                     .padding(horizontal = 16.dp, vertical = 10.dp)
@@ -1968,7 +2016,7 @@ private fun DedicatedRemoteSessionScreen(
                                                 action = "hotkey",
                                                 hotkey = "show_desktop",
                                                 sequence = seq,
-                                                sessionToken = sessionToken.ifEmpty { null }
+                                                sessionToken = effectiveToken.ifEmpty { null }
                                             )
                                         }
                                         onNotice("Sent Show Desktop (Win+D)")
@@ -2005,7 +2053,7 @@ private fun DedicatedRemoteSessionScreen(
                                                 action = "hotkey",
                                                 hotkey = "task_switch",
                                                 sequence = seq,
-                                                sessionToken = sessionToken.ifEmpty { null }
+                                                sessionToken = effectiveToken.ifEmpty { null }
                                             )
                                         }
                                         onNotice("Sent Task Switcher (Alt+Tab)")
@@ -2141,7 +2189,7 @@ private fun DedicatedRemoteSessionScreen(
                                                 host = hostAddress.ifEmpty { "10.0.2.2" },
                                                 action = "left_click",
                                                 sequence = seq,
-                                                sessionToken = sessionToken.ifEmpty { null }
+                                                sessionToken = effectiveToken.ifEmpty { null }
                                             )
                                         }
                                     },
@@ -2164,7 +2212,7 @@ private fun DedicatedRemoteSessionScreen(
                                                 host = hostAddress.ifEmpty { "10.0.2.2" },
                                                 action = "right_click",
                                                 sequence = seq,
-                                                sessionToken = sessionToken.ifEmpty { null }
+                                                sessionToken = effectiveToken.ifEmpty { null }
                                             )
                                         }
                                     },
@@ -2187,7 +2235,7 @@ private fun DedicatedRemoteSessionScreen(
                                                 host = hostAddress.ifEmpty { "10.0.2.2" },
                                                 action = "double_click",
                                                 sequence = seq,
-                                                sessionToken = sessionToken.ifEmpty { null }
+                                                sessionToken = effectiveToken.ifEmpty { null }
                                             )
                                         }
                                     },
@@ -2220,7 +2268,7 @@ private fun DedicatedRemoteSessionScreen(
                                                     action = "scroll",
                                                     scrollDelta = delta,
                                                     sequence = seq,
-                                                    sessionToken = sessionToken.ifEmpty { null }
+                                                    sessionToken = effectiveToken.ifEmpty { null }
                                                 )
                                             }
                                         }
@@ -2313,7 +2361,7 @@ private fun DedicatedRemoteSessionScreen(
                                                 action = "text",
                                                 text = textToSend,
                                                 sequence = seq,
-                                                sessionToken = sessionToken.ifEmpty { null }
+                                                sessionToken = effectiveToken.ifEmpty { null }
                                             )
                                         }
                                         onNotice("Sent: '$textToSend'")
@@ -2343,7 +2391,7 @@ private fun DedicatedRemoteSessionScreen(
                                                 action = "hotkey",
                                                 hotkey = actionCode,
                                                 sequence = seq,
-                                                sessionToken = sessionToken.ifEmpty { null }
+                                                sessionToken = effectiveToken.ifEmpty { null }
                                             )
                                         }
                                     }
@@ -2438,7 +2486,7 @@ private fun DedicatedRemoteSessionScreen(
                                         .border(1.dp, Color(0xFFEF4444), CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text("⏻", color = Color(0xFFEF4444), fontSize = 14.sp)
+                                    PowerVector(color = Color(0xFFEF4444), size = 15.dp)
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 Text("Disconnect", color = Color(0xFFEF4444), fontSize = 9.sp, fontWeight = FontWeight.Bold)
