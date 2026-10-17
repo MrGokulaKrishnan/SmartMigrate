@@ -328,7 +328,9 @@ impl SoftwareJpegEncoder {
         let q = if quality == 0 { self.default_quality } else { quality };
         self.out_buffer.clear();
 
-        let encoder = jpeg_encoder::Encoder::new(&mut self.out_buffer, q);
+        let mut encoder = jpeg_encoder::Encoder::new(&mut self.out_buffer, q);
+        // Full-resolution chroma (4:4:4). The default 4:2:0 below quality 90 smears coloured text and UI edges.
+        encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_1_1);
         encoder
             .encode(
                 bgra_data,

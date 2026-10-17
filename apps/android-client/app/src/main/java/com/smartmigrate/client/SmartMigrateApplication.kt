@@ -23,7 +23,7 @@ class SmartMigrateApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         installGlobalExceptionHandler()
-        Log.i(TAG, "Smart Migrate Application initialized (v1.4.1)")
+        Log.i(TAG, "Smart Migrate Application initialized (v1.4.2)")
     }
 
     private fun installGlobalExceptionHandler() {

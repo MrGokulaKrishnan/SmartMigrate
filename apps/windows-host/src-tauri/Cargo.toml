@@ -1,6 +1,6 @@
 [package]
 name = "smart-migrate-windows-host"
-version = "1.4.1"
+version = "1.4.2"
 description = "Smart Migrate Windows host shell"
 authors = ["Smart Migrate"]
 edition = "2021"

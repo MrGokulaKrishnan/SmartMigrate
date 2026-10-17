@@ -12,8 +12,8 @@ android {
         applicationId = "com.smartmigrate.client"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4.1"
+        versionCode = 6
+        versionName = "1.4.2"
     }
 
     signingConfigs {
@@ -41,6 +41,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -55,6 +59,10 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 
     compileOptions {
@@ -85,6 +93,8 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.1")
     implementation("com.google.zxing:core:3.5.3")
 
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

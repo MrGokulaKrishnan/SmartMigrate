@@ -1064,9 +1064,16 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     return;
                 }
             };
-            let mut encoder = SoftwareJpegEncoder::new(65);
-            let mut current_quality: u8 = 65;
-            let target_fps: u64 = if query.contains("fps=120") { 120 } else { 60 };
+            // Start sharp: desktop text needs high JPEG quality. Older clients asked for fps=120, which the
+            // software encoder cannot reach and which pushed quality to its floor, so clamp the request.
+            let mut encoder = SoftwareJpegEncoder::new(82);
+            let mut current_quality: u8 = 82;
+            let requested_fps: u64 = query
+                .split(|c| c == '&' || c == '?')
+                .find_map(|kv| kv.strip_prefix("fps="))
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(60);
+            let target_fps: u64 = requested_fps.clamp(15, 60);
             let mut frame_interval = Duration::from_millis(1000 / target_fps);
 
             // Rolling 1-second FPS and bitrate measurement window
@@ -1113,12 +1120,15 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                         let write_duration_ms = t_write.elapsed().as_secs_f32() * 1000.0;
 
                         // Adaptive backpressure controller
-                        if write_duration_ms > 25.0 {
-                            current_quality = current_quality.saturating_sub(4).max(45);
-                            frame_interval = Duration::from_millis(33);
-                        } else if write_duration_ms < 6.0 && (cap_duration_ms + enc_duration_ms) < 14.0 {
-                            current_quality = (current_quality + 1).min(75);
-                            frame_interval = Duration::from_millis(16);
+                        // Shed frame rate before image quality so text stays readable on a slow link.
+                        if write_duration_ms > 40.0 {
+                            frame_interval = Duration::from_millis(50); // ~20 fps
+                            if write_duration_ms > 80.0 {
+                                current_quality = current_quality.saturating_sub(3).max(60);
+                            }
+                        } else if write_duration_ms < 15.0 && (cap_duration_ms + enc_duration_ms) < 30.0 {
+                            current_quality = (current_quality + 1).min(90);
+                            frame_interval = Duration::from_millis(1000 / target_fps);
                         }
 
                         fps_window_frames += 1;

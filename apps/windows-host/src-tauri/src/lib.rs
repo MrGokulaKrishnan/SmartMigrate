@@ -787,30 +787,33 @@ fn check_windows_update() -> Result<UpdateCheckDto, String> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
 
     let script = r#"
-        $OutputEncoding = [System.Text.Encoding]::UTF8;
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
-        $ProgressPreference = 'SilentlyContinue';
-        try {
-            $resp = Invoke-RestMethod -Uri 'https://smartmigrate.web.app/releases/manifest.json' -TimeoutSec 6 -Headers @{'User-Agent'='SmartMigrate-Windows/1.4.1'}
-            $json = $resp | ConvertTo-Json -Depth 6 -Compress
-            Write-Output $json
-        } catch {
+        $ProgressPreference = 'SilentlyContinue'
+        [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+        try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+        $ua = 'SmartMigrate-Windows/' + $env:SM_CURRENT_VERSION
+        foreach ($u in @('https://smartmigrate.web.app/releases/manifest.json', 'https://smartmigrated.web.app/releases/manifest.json')) {
             try {
-                $resp = Invoke-RestMethod -Uri 'https://smartmigrated.web.app/releases/manifest.json' -TimeoutSec 6
-                $json = $resp | ConvertTo-Json -Depth 6 -Compress
-                Write-Output $json
-            } catch {
-                Write-Error $_.Exception.Message
-            }
+                $r = Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 8 -Headers @{ 'User-Agent' = $ua }
+                # Decode as UTF-8 explicitly. Windows PowerShell 5.1 assumes ISO-8859-1 when the server sends no
+                # charset, which turned the release-note bullets into garbage characters.
+                [Console]::Out.Write([System.Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()))
+                exit 0
+            } catch { }
         }
+        exit 1
     "#;
 
     let output = std::process::Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .env("SM_CURRENT_VERSION", &current_version)
         .output()
         .map_err(|e| format!("PowerShell error checking update: {e}"))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().trim_start_matches('\u{feff}').to_string();
+    if stdout.is_empty() && !output.status.success() {
+        // Do not claim "you are up to date" when the update server could not be reached.
+        return Err("Could not reach the Smart Migrate update server. Check your internet connection and try again.".to_string());
+    }
     if stdout.is_empty() {
         return Ok(UpdateCheckDto {
             has_update: false,
@@ -827,7 +830,7 @@ fn check_windows_update() -> Result<UpdateCheckDto, String> {
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .map_err(|e| format!("Failed to parse release manifest JSON: {e}"))?;
 
-    let latest_version = parsed.get("version").and_then(|v| v.as_str()).unwrap_or("1.4.1").to_string();
+    let latest_version = parsed.get("version").and_then(|v| v.as_str()).unwrap_or(current_version.as_str()).to_string();
     let release_notes = parsed.get("releaseNotes").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
     let release_highlights: Vec<String> = if let Some(arr) = parsed.get("releaseHighlights").and_then(|h| h.as_array()) {
@@ -871,20 +874,32 @@ fn check_windows_update() -> Result<UpdateCheckDto, String> {
 /// Downloads and cryptographically verifies the Windows installer update package.
 #[tauri::command]
 fn download_windows_update(download_url: String, expected_sha256: String) -> Result<String, String> {
+    // The URL comes from a remote manifest: accept only HTTPS on the official release hosts and pass it to
+    // PowerShell through an environment variable rather than splicing it into the script text.
+    const OFFICIAL_PREFIXES: [&str; 2] = ["https://smartmigrate.web.app/", "https://smartmigrated.web.app/"];
+    let url_ok = OFFICIAL_PREFIXES.iter().any(|p| download_url.starts_with(p))
+        && !download_url.chars().any(|c| c.is_whitespace() || c.is_control());
+    if !url_ok {
+        return Err("Refusing to download: the update URL is not an official Smart Migrate release URL.".to_string());
+    }
+    let expected = expected_sha256.trim().to_uppercase();
+    if expected.len() != 64 || !expected.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("Refusing to install: the release manifest has no valid SHA-256 digest.".to_string());
+    }
+
     let update_dir = std::env::var("APPDATA")
         .map(|d| std::path::PathBuf::from(d).join("SmartMigrate").join("updates"))
         .unwrap_or_else(|_| std::path::PathBuf::from("updates"));
 
     let _ = std::fs::create_dir_all(&update_dir);
     let target_file = update_dir.join("SmartMigrate-Setup-x64.exe");
+    let _ = std::fs::remove_file(&target_file);
 
-    let script = format!(
-        "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri '{}' -OutFile '{}'",
-        download_url, target_file.display()
-    );
-
+    let download_script = "$ProgressPreference = 'SilentlyContinue'; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}; Invoke-WebRequest -UseBasicParsing -Uri $env:SM_UPDATE_URL -OutFile $env:SM_UPDATE_OUT";
     let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .args(["-NoProfile", "-NonInteractive", "-Command", download_script])
+        .env("SM_UPDATE_URL", &download_url)
+        .env("SM_UPDATE_OUT", &target_file)
         .output()
         .map_err(|e| format!("Failed to download update: {e}"))?;
 
@@ -892,137 +907,73 @@ fn download_windows_update(download_url: String, expected_sha256: String) -> Res
         return Err(format!("Download failed: {}", String::from_utf8_lossy(&output.stderr)));
     }
 
-    // Verify SHA-256
-    if !expected_sha256.is_empty() {
-        let hash_script = format!(
-            "(Get-FileHash -Path '{}' -Algorithm SHA256).Hash",
-            target_file.display()
-        );
-        let hash_out = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &hash_script])
-            .output()
-            .map_err(|e| format!("Failed to compute SHA256: {e}"))?;
+    // Verify SHA-256 (mandatory)
+    let hash_out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", "(Get-FileHash -Path $env:SM_UPDATE_OUT -Algorithm SHA256).Hash"])
+        .env("SM_UPDATE_OUT", &target_file)
+        .output()
+        .map_err(|e| format!("Failed to compute SHA256: {e}"))?;
 
-        let actual_hash = String::from_utf8_lossy(&hash_out.stdout).trim().to_uppercase();
-        if actual_hash != expected_sha256.trim().to_uppercase() {
-            let _ = std::fs::remove_file(&target_file);
-            return Err(format!(
-                "Integrity failure: expected SHA-256 {} but got {}",
-                expected_sha256, actual_hash
-            ));
-        }
+    let actual_hash = String::from_utf8_lossy(&hash_out.stdout).trim().to_uppercase();
+    if actual_hash != expected {
+        let _ = std::fs::remove_file(&target_file);
+        return Err(format!("Integrity failure: expected SHA-256 {} but got {}", expected, actual_hash));
     }
 
     Ok(target_file.to_string_lossy().to_string())
 }
 
+/// Starts the Windows installer with an elevation (UAC) prompt.
+///
+/// `std::process::Command` uses CreateProcess, which cannot start an installer whose manifest requests
+/// administrator rights: it fails with "The requested operation requires elevation (os error 740)".
+/// `ShellExecuteW` with the "runas" verb shows the UAC prompt and starts it correctly.
 #[cfg(windows)]
-mod win_installer {
-    use std::ffi::OsStr;
+fn launch_installer_elevated(installer_path: &str) -> Result<(), String> {
+    use std::ffi::{c_void, OsStr};
     use std::os::windows::ffi::OsStrExt;
-    use std::path::Path;
-
-    #[repr(C)]
-    struct SHELLEXECUTEINFOW {
-        cb_size: u32,
-        f_mask: u32,
-        hwnd: isize,
-        lp_verb: *const u16,
-        lp_file: *const u16,
-        lp_parameters: *const u16,
-        lp_directory: *const u16,
-        n_show: i32,
-        h_inst_app: isize,
-        lp_id_list: *mut core::ffi::c_void,
-        lp_class: *const u16,
-        hkey_class: isize,
-        dw_hot_key: u32,
-        h_icon_or_monitor: isize,
-        h_process: isize,
-    }
-
-    const SEE_MASK_NOCLOSEPROCESS: u32 = 0x00000040;
-    const SW_SHOWNORMAL: i32 = 1;
-    const ERROR_CANCELLED: u32 = 1223;
 
     #[link(name = "shell32")]
     extern "system" {
-        fn ShellExecuteExW(p_exec_info: *mut SHELLEXECUTEINFOW) -> i32;
+        fn ShellExecuteW(
+            hwnd: *mut c_void,
+            operation: *const u16,
+            file: *const u16,
+            parameters: *const u16,
+            directory: *const u16,
+            show_cmd: i32,
+        ) -> isize;
     }
 
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn GetLastError() -> u32;
-        fn CloseHandle(handle: isize) -> i32;
+    fn wide(s: &str) -> Vec<u16> {
+        OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
     }
 
-    pub fn launch_elevated(installer_path: &Path) -> Result<(), String> {
-        let is_msi = installer_path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|s| s.eq_ignore_ascii_case("msi"))
-            .unwrap_or(false);
+    let operation = wide("runas");
+    let file = wide(installer_path);
+    // Same switches the Tauri updater uses for NSIS installers: passive progress UI, relaunch the app after install.
+    let parameters = wide("/P /R /UPDATE");
+    let directory = std::path::Path::new(installer_path)
+        .parent()
+        .map(|p| wide(&p.to_string_lossy()));
 
-        let (target_file, params): (String, Option<String>) = if is_msi {
-            (
-                "msiexec.exe".to_string(),
-                Some(format!("/i \"{}\"", installer_path.display())),
-            )
-        } else {
-            (installer_path.to_string_lossy().to_string(), None)
-        };
+    let code = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            operation.as_ptr(),
+            file.as_ptr(),
+            parameters.as_ptr(),
+            directory.as_ref().map_or(std::ptr::null(), |d| d.as_ptr()),
+            1, // SW_SHOWNORMAL
+        )
+    };
 
-        let mut file_wide: Vec<u16> = OsStr::new(&target_file).encode_wide().collect();
-        file_wide.push(0);
-
-        let mut verb_wide: Vec<u16> = OsStr::new("runas").encode_wide().collect();
-        verb_wide.push(0);
-
-        let param_wide: Option<Vec<u16>> = params.map(|p| {
-            let mut v: Vec<u16> = OsStr::new(&p).encode_wide().collect();
-            v.push(0);
-            v
-        });
-
-        let dir = installer_path.parent().unwrap_or(Path::new(""));
-        let mut dir_wide: Vec<u16> = dir.as_os_str().encode_wide().collect();
-        dir_wide.push(0);
-
-        let mut exec_info = SHELLEXECUTEINFOW {
-            cb_size: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-            f_mask: SEE_MASK_NOCLOSEPROCESS,
-            hwnd: 0,
-            lp_verb: verb_wide.as_ptr(),
-            lp_file: file_wide.as_ptr(),
-            lp_parameters: param_wide.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null()),
-            lp_directory: dir_wide.as_ptr(),
-            n_show: SW_SHOWNORMAL,
-            h_inst_app: 0,
-            lp_id_list: std::ptr::null_mut(),
-            lp_class: std::ptr::null(),
-            hkey_class: 0,
-            dw_hot_key: 0,
-            h_icon_or_monitor: 0,
-            h_process: 0,
-        };
-
-        let success = unsafe { ShellExecuteExW(&mut exec_info) };
-
-        if success != 0 {
-            if exec_info.h_process != 0 {
-                unsafe { CloseHandle(exec_info.h_process) };
-            }
-            Ok(())
-        } else {
-            let error_code = unsafe { GetLastError() };
-            if error_code == ERROR_CANCELLED {
-                Err("UAC_CANCELLED: Administrator approval was cancelled by the user.".to_string())
-            } else {
-                Err(format!(
-                    "Failed to launch installer via ShellExecute (Windows error {error_code})."
-                ))
-            }
-        }
+    if code > 32 {
+        Ok(())
+    } else if code == 5 {
+        Err("The update needs administrator permission. Choose \"Yes\" on the Windows prompt and try again.".to_string())
+    } else {
+        Err(format!("Windows could not start the installer (ShellExecute code {code})."))
     }
 }
 
@@ -1048,7 +999,7 @@ fn apply_windows_update_and_restart(installer_path: String) -> Result<(), String
 
     #[cfg(windows)]
     {
-        win_installer::launch_elevated(&path)?;
+        launch_installer_elevated(&installer_path)?;
     }
     #[cfg(not(windows))]
     {
@@ -1057,13 +1008,9 @@ fn apply_windows_update_and_restart(installer_path: String) -> Result<(), String
             .map_err(|e| format!("Failed to spawn installer: {e}"))?;
     }
 
-    // Spawn a brief detachment thread to cleanly exit the host process after handing off to Windows installer
-    std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_millis(1000));
-        std::process::exit(0);
-    });
-
-    Ok(())
+    // Give the installer a moment to take over, then exit so it can replace the running files.
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    std::process::exit(0);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1084,6 +1031,15 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(app_state)
+        .setup(|app| {
+            // Set the taskbar / title-bar icon explicitly. The packaged exe has no embedded icon resource, so
+            // without this Windows falls back to its generic application icon.
+            use tauri::Manager;
+            if let (Some(window), Some(icon)) = (app.get_webview_window("main"), app.default_window_icon()) {
+                let _ = window.set_icon(icon.clone());
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             host_status,
             get_host_lan_ips,

@@ -188,10 +188,14 @@ class StreamEngine {
         stopStreaming()
         inputSeq.set(1L)
 
-        val resolvedHost = if (hostAddress.isBlank() || hostAddress == "10.0.2.2") {
-            "${SmpClient.getLocalSubnetPrefix()}33"
-        } else {
-            hostAddress.trim()
+        val resolvedHost = hostAddress.trim()
+        if (resolvedHost.isEmpty()) {
+            _state.value = StreamConnectionState.FAILED
+            _diagnostics.value = _diagnostics.value.copy(
+                connectionState = StreamConnectionState.FAILED,
+                failureReason = "No Windows host selected. Pair or choose a host first."
+            )
+            return
         }
 
         val sessionId = "smp-sess-" + UUID.randomUUID().toString().take(8)
@@ -211,7 +215,8 @@ class StreamEngine {
                 failureReason = null
             )
 
-            var reconnectAttempts = 0
+            // Reset only when a real frame is decoded (see decoder), never merely because HTTP 200 arrived.
+            val reconnectAttempts = java.util.concurrent.atomic.AtomicInteger(0)
             while (isActive && activeSessionAttemptId == attemptId) {
                 // Conflated channel guarantees zero buffer bloat: newest frame always replaces un-decoded older frame
                 val frameChannel = Channel<FramePacket>(
@@ -226,7 +231,7 @@ class StreamEngine {
                     Log.w(TAG, "[$sessionId] Decoder coroutine error: ${t.message}")
                 }) {
                     val decodeOptions = BitmapFactory.Options().apply {
-                        inPreferredConfig = Bitmap.Config.RGB_565
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
                         inMutable = true
                     }
 
@@ -298,8 +303,12 @@ class StreamEngine {
 
                             _latestBitmap.value = decodedBitmap
 
-                            // Transition to STREAMING on first valid decoded frame
-                            if (_state.value != StreamConnectionState.STREAMING) {
+                            // A real frame decoded: the link is healthy, so restore the full retry budget.
+                            reconnectAttempts.set(0)
+
+                            // Promote to STREAMING only from CONNECTED. Never override RECONNECTING / FAILED /
+                            // DISCONNECTING, otherwise a late frame hides the reconnect state and the UI flickers.
+                            if (_state.value == StreamConnectionState.CONNECTED) {
                                 Log.i(TAG, "[$sessionId] First frame rendered (${decodedBitmap.width}x${decodedBitmap.height}) -> Transition to STREAMING")
                                 _state.value = StreamConnectionState.STREAMING
                             }
@@ -323,7 +332,7 @@ class StreamEngine {
                                 sessionId = sessionId,
                                 connectionState = _state.value,
                                 currentFps = currentFps,
-                                targetFps = 120,
+                                targetFps = 60,
                                 latencyMs = decodeLatency + 3.5f,
                                 bitrateKbps = bitrate,
                                 resolution = if (decodedBitmap != null) "${decodedBitmap.width} × ${decodedBitmap.height}" else "1920 × 1080",
@@ -361,9 +370,9 @@ class StreamEngine {
                     // Send HTTP/1.1 GET /live request
                     val sourceParam = if (isVirtualExtendedDisplay) "&source=display-virtual-extended" else "&source=display-primary"
                     val tokenQuery = if (!authToken.isNullOrBlank()) {
-                        "?token=${java.net.URLEncoder.encode(authToken, "UTF-8")}&fps=120$sourceParam"
+                        "?token=${java.net.URLEncoder.encode(authToken, "UTF-8")}&fps=60$sourceParam"
                     } else {
-                        "?fps=120$sourceParam"
+                        "?fps=60$sourceParam"
                     }
                     val writer = OutputStreamWriter(sock.getOutputStream(), Charsets.US_ASCII)
                     writer.write("GET /live$tokenQuery HTTP/1.1\r\n")
@@ -404,22 +413,22 @@ class StreamEngine {
                     Log.i(TAG, "[$sessionId] Media channel connected (HTTP 200). Awaiting stream frames...")
                     _state.value = StreamConnectionState.CONNECTED
                     _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.CONNECTED)
-                    reconnectAttempts = 0
 
                     readMultipartFrames(bis, frameChannel, attemptId)
 
                 } catch (e: Exception) {
                     if (!isActive || activeSessionAttemptId != attemptId) break
 
-                    reconnectAttempts++
+                    val attempt = reconnectAttempts.incrementAndGet()
                     totalDropped++
-                    Log.w(TAG, "[$sessionId] Stream network disconnect (attempt $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS): ${e.message}")
+                    val reason = "${e.javaClass.simpleName}${e.message?.let { ": $it" } ?: ""}"
+                    Log.w(TAG, "[$sessionId] Stream network disconnect (attempt $attempt/$MAX_RECONNECT_ATTEMPTS): $reason")
 
-                    if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+                    if (attempt > MAX_RECONNECT_ATTEMPTS) {
                         _state.value = StreamConnectionState.FAILED
                         _diagnostics.value = _diagnostics.value.copy(
                             connectionState = StreamConnectionState.FAILED,
-                            failureReason = "Connection failed after $MAX_RECONNECT_ATTEMPTS attempts: ${e.message ?: "Host unreachable"}",
+                            failureReason = "Connection failed after $MAX_RECONNECT_ATTEMPTS attempts without receiving a video frame ($reason). Update the Windows host to the latest version and retry.",
                             droppedFrames = totalDropped
                         )
                         decodeJob.cancel()
@@ -430,11 +439,11 @@ class StreamEngine {
                     _state.value = StreamConnectionState.RECONNECTING
                     _diagnostics.value = _diagnostics.value.copy(
                         connectionState = StreamConnectionState.RECONNECTING,
-                        failureReason = e.message ?: "Socket reset",
+                        failureReason = reason,
                         droppedFrames = totalDropped
                     )
 
-                    val backoffMs = (reconnectAttempts * 800L).coerceAtMost(3000L)
+                    val backoffMs = (attempt * 800L).coerceAtMost(3000L)
                     delay(backoffMs)
                 } finally {
                     try {

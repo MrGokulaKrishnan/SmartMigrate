@@ -1,15 +1,17 @@
-$target = "..\..\target\release\smart-migrate-windows-host.exe"
-if (-not (Test-Path $target)) {
-    $target = "target\release\smart-migrate-windows-host.exe"
-}
-if (-not (Test-Path $target)) {
-    $target = "..\..\..\target\release\smart-migrate-windows-host.exe"
-}
+# Locate the freshly built host exe regardless of the working directory or --target triple.
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+$candidates = @(
+    (Join-Path $repoRoot "target\release\smart-migrate-windows-host.exe"),
+    (Join-Path $repoRoot "target\x86_64-pc-windows-gnu\release\smart-migrate-windows-host.exe"),
+    (Join-Path $repoRoot "target\x86_64-pc-windows-msvc\release\smart-migrate-windows-host.exe"),
+    (Join-Path $PSScriptRoot "target\release\smart-migrate-windows-host.exe")
+) | Where-Object { Test-Path $_ }
 
-if (-not (Test-Path $target)) {
+if (-not $candidates) {
     Write-Error "Cannot locate smart-migrate-windows-host.exe"
     exit 1
 }
+$target = ($candidates | Sort-Object { (Get-Item $_).LastWriteTime } -Descending | Select-Object -First 1)
 
 $fullPath = (Resolve-Path $target).Path
 Write-Host "Embedding RT_MANIFEST into: $fullPath"
@@ -38,7 +40,7 @@ $manifest = @"
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity
-    version="1.4.1.0"
+    version="1.4.2.0"
     processorArchitecture="*"
     name="SmartMigrate.WindowsHost"
     type="win32"
@@ -90,10 +92,60 @@ if (-not $res) {
     exit 1
 }
 
+# ── Application icon: RT_ICON (3) per image + RT_GROUP_ICON (14) ──
+# The GNU/lld build does not carry tauri-build's icon resource into the exe, so Explorer, shortcuts and the
+# taskbar showed the generic Windows icon. Embed icons\icon.ico directly.
+$icoPath = Join-Path $PSScriptRoot "icons\icon.ico"
+if (-not (Test-Path $icoPath)) {
+    $type::EndUpdateResourceW($hUpdate, $true) | Out-Null
+    Write-Error "Missing icon file: $icoPath"
+    exit 1
+}
+$ico = [System.IO.File]::ReadAllBytes($icoPath)
+$iconCount = [int][BitConverter]::ToUInt16($ico, 4)
+$group = New-Object System.IO.MemoryStream
+$bw = New-Object System.IO.BinaryWriter($group)
+$bw.Write([uint16]0)           # reserved
+$bw.Write([uint16]1)           # type = icon
+$bw.Write([uint16]$iconCount)
+for ($i = 0; $i -lt $iconCount; $i++) {
+    $entry  = 6 + (16 * $i)
+    $size   = [int][BitConverter]::ToUInt32($ico, $entry + 8)
+    $offset = [int][BitConverter]::ToUInt32($ico, $entry + 12)
+    $img = New-Object byte[] $size
+    [Array]::Copy($ico, $offset, $img, 0, $size)
+    $iconId = $i + 1
+    $ok = $type::UpdateResourceW($hUpdate, [IntPtr]3, [IntPtr]$iconId, 1033, $img, [uint32]$size)
+    if (-not $ok) {
+        $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        $type::EndUpdateResourceW($hUpdate, $true) | Out-Null
+        Write-Error "UpdateResourceW(RT_ICON $iconId) failed: $err"
+        exit 1
+    }
+    $bw.Write([byte]$ico[$entry])         # width  (0 = 256)
+    $bw.Write([byte]$ico[$entry + 1])     # height (0 = 256)
+    $bw.Write([byte]$ico[$entry + 2])     # colour count
+    $bw.Write([byte]0)                    # reserved
+    $bw.Write([uint16][BitConverter]::ToUInt16($ico, $entry + 4))   # planes
+    $bw.Write([uint16][BitConverter]::ToUInt16($ico, $entry + 6))   # bit count
+    $bw.Write([uint32]$size)                                        # bytes in resource
+    $bw.Write([uint16]$iconId)                                      # RT_ICON id
+}
+$bw.Flush()
+$groupBytes = $group.ToArray()
+$ok = $type::UpdateResourceW($hUpdate, [IntPtr]14, [IntPtr]1, 1033, $groupBytes, [uint32]$groupBytes.Length)
+if (-not $ok) {
+    $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    $type::EndUpdateResourceW($hUpdate, $true) | Out-Null
+    Write-Error "UpdateResourceW(RT_GROUP_ICON) failed: $err"
+    exit 1
+}
+Write-Host "Embedded $iconCount icon image(s) from $icoPath"
+
 $endRes = $type::EndUpdateResourceW($hUpdate, $false)
 if (-not $endRes) {
     Write-Error "EndUpdateResourceW failed: $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error())"
     exit 1
 }
 
-Write-Host "Successfully embedded RT_MANIFEST into $fullPath!"
+Write-Host "Successfully embedded RT_MANIFEST + icon into $fullPath!"

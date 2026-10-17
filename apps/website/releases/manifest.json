@@ -1,38 +1,37 @@
 {
   "product": "Smart Migrate",
-  "version": "1.4.1",
-  "versionCode": 5,
-  "releaseDate": "2026-10-17T05:00:00Z",
-  "releaseNotes": "Fixed Android app closure with double-buffered alternating Bitmaps and full BackHandler support.\nReduced allocation churn and garbage-collection pressure through zero-allocation ByteArrayPool reuse.\nRelease package is signed with official 4096-bit RSA certificate and verified checksums.\nAdded strict certificate verification and package integrity checks to in-app updater.\nHardened host security with 3-attempt PIN lockout, constant-time token comparison, and capability enforcement.\nReal-time relative release timing badges and honest protocol labeling.",
+  "version": "1.4.2",
+  "versionCode": 6,
+  "releaseDate": "2026-10-17T12:40:00Z",
+  "releaseNotes": "Android: Implemented APK Signature Scheme v3/v3.1 rotation lineage to resolve package conflicts and preserve user data.\nAndroid: Added multi-layer preflight checks for signature compatibility, downgrade prevention, and post-install version reconciliation.\nWindows: Embedded native application icon directly into executable PE resources and runtime window frame.\nWindows: Fixed UAC elevation update failure (os error 740) by launching installer with elevated ShellExecuteW runas verb.\nDisplay Stream: Upgraded to full-resolution 4:4:4 chroma (SamplingFactor::F_1_1), base JPEG quality 82, and 60 FPS target with adaptive frame-rate shedding.",
   "releaseHighlights": [
-    "Fixed Android app closure with double-buffered alternating Bitmaps and full BackHandler support.",
-    "Reduced allocation churn and garbage-collection pressure through zero-allocation ByteArrayPool reuse.",
-    "Release package is signed with official 4096-bit RSA certificate and verified checksums.",
-    "Added strict certificate verification and package integrity checks to in-app updater.",
-    "Hardened host security with 3-attempt PIN lockout, constant-time token comparison, and capability enforcement.",
-    "Real-time relative release timing badges and honest protocol labeling."
+    "Android: Implemented APK Signature Scheme v3/v3.1 rotation lineage to resolve package conflicts and preserve user data.",
+    "Android: Added multi-layer preflight checks for signature compatibility, downgrade prevention, and post-install version reconciliation.",
+    "Windows: Embedded native application icon (RT_ICON + RT_GROUP_ICON) into binary and runtime window.",
+    "Windows: Fixed UAC elevation update failure (os error 740) by launching installer with elevated ShellExecuteW runas verb.",
+    "Display Stream: Upgraded to full-resolution 4:4:4 chroma (SamplingFactor::F_1_1), base JPEG quality 82, and 60 FPS target with adaptive frame-rate shedding."
   ],
   "channels": {
-    "stable": "1.4.1",
-    "beta": "1.4.1"
+    "stable": "1.4.2",
+    "beta": "1.4.2"
   },
   "platforms": {
     "windows-x86_64": {
-      "version": "1.4.1",
+      "version": "1.4.2",
       "url": "https://smartmigrate.web.app/downloads/windows/SmartMigrate-Setup-x64.exe",
       "fileName": "SmartMigrate-Setup-x64.exe",
-      "size": 4388376,
-      "sha256": "0cc1ff4823f3706c04aad9a9c9a2c2882c9887f47394d153f80a6d60dabc68d6",
-      "signature": "SMP-SIG-WIN-1.4.1-VERIFIED-AUTH",
+      "size": 4426479,
+      "sha256": "1a3566d658e420d20444a046a4ac6ae4dd8afdb306f77a2351f8fe3996a3d150",
+      "signature": "SMP-SIG-WIN-1.4.2-VERIFIED-AUTH",
       "mandatory": false
     },
     "android-arm64": {
-      "version": "1.4.1",
-      "versionCode": 5,
+      "version": "1.4.2",
+      "versionCode": 6,
       "url": "https://smartmigrate.web.app/downloads/android/SmartMigrate.apk",
       "fileName": "SmartMigrate.apk",
-      "size": 2601120,
-      "sha256": "e4162de975827c77f6c28b1cc5a5cfb74effba003f8c5cd171c72f781ee08699",
+      "size": 2599798,
+      "sha256": "eba656e0d4bd9cb797d926d0688e9721f8482ab3fb07236c5faf25ca3bf5910c",
       "signature": "62:03:AE:3F:A5:56:E3:29:31:9F:BC:4C:C8:B7:0F:29:72:EC:75:43:A5:06:7A:9A:23:24:5F:F2:EA:5D:36:60",
       "certificateFingerprint": "62:03:AE:3F:A5:56:E3:29:31:9F:BC:4C:C8:B7:0F:29:72:EC:75:43:A5:06:7A:9A:23:24:5F:F2:EA:5D:36:60",
       "mandatory": false

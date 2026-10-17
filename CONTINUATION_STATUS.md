@@ -393,6 +393,40 @@ All subsystem builds are verified: 66/66 unit tests passing (63 MigRoute + 3 Win
     - `node tests/release_notes_test.mjs` passes all assertions.
     - `npm run brand:check` passes with zero violations.
 
+22. **Android In-App Update Conflict Fix & APK Signature Rotation Lineage (SEC-04, UPD-01 to UPD-05)**:
+   - **Root Cause Confirmed with Cryptographic Evidence**:
+     - Previously published builds (`smart-migrate.apk`, 12.8 MB) were signed with the Android SDK debug keystore:
+       - Certificate: `CN=Android Debug`, SHA-256: `B0:66:97:E6:4E:92:2E:B4:36:FE:BB:9D:C4:96:49:5F:93:DC:04:07:E3:A5:03:8C:F1:73:4C:1A:0E:60:A8:50`
+     - Newer release builds were signed exclusively with the 4096-bit production keystore:
+       - Certificate: `CN=Smart Migrate Release`, SHA-256: `62:03:AE:3F:A5:56:E3:29:31:9F:BC:4C:C8:B7:0F:29:72:EC:75:43:A5:06:7A:9A:23:24:5F:F2:EA:5D:36:60`
+     - When Android PackageInstaller attempted an in-place upgrade, Android OS rejected it with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` ("App not installed as package conflicts with an existing package.") due to the missing cryptographic rotation lineage.
+   - **APK Signature Scheme v3/v3.1 Rotation Lineage (`apps/android-client/app/signing_lineage`)**:
+     - Generated official `SigningCertificateLineage` using `apksigner rotate` linking predecessor `debug.keystore` to successor `release.keystore`.
+     - Explicitly enabled `--set-installed-data true` to preserve all app-private databases, preferences, and pairing tokens across the upgrade.
+   - **Automated Packaging Pipeline (`scripts/package-android-release.ps1`)**:
+     - Invokes `./gradlew assembleRelease` with ProGuard/R8 shrinking.
+     - Signs with `apksigner sign` using predecessor (`debug.keystore`), successor (`release.keystore`), and `--lineage`.
+     - Validates both v2, v3, and v3.1 scheme signatures with `apksigner verify --verbose --print-certs`.
+   - **Separated Debug and Release Application IDs (`apps/android-client/app/build.gradle.kts`)**:
+     - Debug builds now automatically receive `applicationIdSuffix = ".debug"` (`com.smartmigrate.client.debug`), preventing future development builds from colliding with official production installs.
+     - Added `testImplementation("junit:junit:4.13.2")` and `testImplementation("org.json:json:20240303")`.
+   - **Hardened In-App Updater Preflight (`apps/android-client/app/src/main/java/com/smartmigrate/client/AppUpdater.kt`)**:
+     - Preflights package name identity, downgrade prevention (`versionCode < installed`), cryptographic SHA-256, and multi-layer signing certificate compatibility before opening Package Installer.
+     - Lineage-aware: allows in-place upgrade when candidate contains a valid rotation lineage matching the installed certificate.
+     - Aborts before launching Package Installer if signatures conflict, providing actionable feedback rather than letting the system fail generically.
+     - Added `recordInstallIntentDispatched` and `reconcileInstalledVersion` to truthfully confirm installed version upon `ON_RESUME`.
+     - Added `exportSettingsJson` allowing users to export settings and pairing keys to clipboard.
+   - **UI & Lifecycle Integration (`apps/android-client/app/src/main/java/com/smartmigrate/client/MainActivity.kt`)**:
+     - Added `LifecycleEventObserver` for `ON_RESUME` reconciliation of pending updates.
+     - Enhanced update error box with "Backup Settings & Keys" action.
+     - Added "Signing Identity" and "Export Settings & Pairing Data" in `AboutScreen`.
+     - Removed hardcoded developer subnet `.33` IP guess.
+   - **Automated Unit Regression Tests (`apps/android-client/app/src/test/java/com/smartmigrate/client/AppUpdaterTest.kt`)**:
+     - 5/5 unit tests passing covering certificate fingerprint formats, downgrade blocking, manifest parsing, and SHA-256 verification.
+   - **Staged & Deployed**:
+     - Deployed to `smartmigrate.web.app` and `smartmigrated.web.app` with updated checksums and manifest headers.
+     - Release APK SHA-256: `eba656e0d4bd9cb797d926d0688e9721f8482ab3fb07236c5faf25ca3bf5910c` (2,599,798 bytes).
+
 ---
 
 ## Verification Commands
@@ -413,4 +447,10 @@ node tests/release_notes_test.mjs
 
 # 5. Brand naming consistency check
 npm run brand:check
+
+# 6. Android Unit Tests
+cd apps/android-client; $env:JAVA_HOME = "C:\Program Files\Java\jdk-17"; .\gradlew test; cd ../..
+
+# 7. Package and sign Android release with lineage
+powershell -ExecutionPolicy Bypass -File scripts\package-android-release.ps1
 ```

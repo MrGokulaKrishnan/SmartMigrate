@@ -27,6 +27,19 @@
       ],
       "headers": [
         {
+          "source": "/releases/manifest.json",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
           "source": "**",
           "headers": [
             {
@@ -122,6 +135,19 @@
         }
       ],
       "headers": [
+        {
+          "source": "/releases/manifest.json",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
         {
           "source": "**",
           "headers": [

@@ -16,6 +16,9 @@ import androidx.activity.compose.BackHandler
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.camera.core.CameraSelector
@@ -196,7 +199,7 @@ private fun SmartMigrateApp() {
     var qrScannerOpen by rememberSaveable { mutableStateOf(false) }
     var notice by rememberSaveable { mutableStateOf("Smart Migrate Core online. Direct LAN active.") }
     var batterySaverMode by rememberSaveable { mutableStateOf(false) }
-    val initialHost = remember { "${SmpClient.getLocalSubnetPrefix()}33" }
+    val initialHost = remember { "" }
     var targetHostAddress by rememberSaveable { mutableStateOf(initialHost) }
     var currentSessionToken by rememberSaveable { mutableStateOf("") }
     var isDedicatedRemoteSessionActive by rememberSaveable { mutableStateOf(false) }
@@ -209,6 +212,24 @@ private fun SmartMigrateApp() {
     var updateModalOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     var lastBackPressTime by remember { mutableLongStateOf(0L) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                AppUpdater.reconcileInstalledVersion(context) { msg, isSuccess ->
+                    notice = msg
+                    if (isSuccess) {
+                        updateInfo = null
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // Intercept hardware and gesture back button to prevent accidental app termination
     BackHandler(enabled = !isDedicatedRemoteSessionActive) {
@@ -1427,7 +1448,7 @@ private fun DedicatedRemoteSessionScreen(
 
                         Text(
                             when (connState) {
-                                StreamConnectionState.STREAMING -> "• ${String.format(java.util.Locale.US, "%.0f", streamDiag.currentFps)} FPS"
+                                StreamConnectionState.STREAMING -> if (streamDiag.currentFps < 1f) "• Live" else "• ${String.format(java.util.Locale.US, "%.0f", streamDiag.currentFps)} FPS"
                                 StreamConnectionState.CONNECTED -> "• Ready"
                                 StreamConnectionState.CONNECTING -> "• Connecting"
                                 StreamConnectionState.AUTHENTICATING -> "• Auth"
@@ -1846,7 +1867,15 @@ private fun DedicatedRemoteSessionScreen(
                 }
 
                 // ── OVERLAYS (ONLY ACTIVE WHEN STREAMING / RECONNECTING) ───────────
-                if (connState == StreamConnectionState.STREAMING || connState == StreamConnectionState.RECONNECTING) {
+                // Keep the toolbar mounted while a frame is on screen, even during brief AUTH/CONNECTED hops,
+                // so a reconnect never makes the controls blink in and out.
+                val hasFrameOnScreen = streamEngine.latestBitmap.value != null
+                val keepOverlays = connState == StreamConnectionState.STREAMING ||
+                    connState == StreamConnectionState.RECONNECTING ||
+                    (hasFrameOnScreen && (connState == StreamConnectionState.CONNECTED ||
+                        connState == StreamConnectionState.AUTHENTICATING ||
+                        connState == StreamConnectionState.CONNECTING))
+                if (keepOverlays) {
                     // 1. StarDesk Right Slim Floating Toolbar
                     Box(
                         modifier = Modifier
@@ -2976,6 +3005,7 @@ private fun AboutScreen(
                 AboutMetaRow("Application Version", "v$versionName")
                 AboutMetaRow("Build Number (versionCode)", "$versionCode")
                 AboutMetaRow("Package Identifier", packageName, isMono = true)
+                AboutMetaRow("Signing Identity", AppUpdater.getInstalledCertificateFingerprint(context)?.take(23) + "...", isMono = true)
                 AboutMetaRow("Systems Engine", "MigRoute v1.4.0 (Rust)")
                 AboutMetaRow("Network Protocol", "SMP/1 (Smart Migrate Protocol)")
                 AboutMetaRow("Native Target SDK", "API 35 (Android 15)")
@@ -3071,6 +3101,15 @@ private fun AboutScreen(
                             }
                         }
                     }
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                SecondaryButton("Export Settings & Pairing Data") {
+                    val backupJson = AppUpdater.exportSettingsJson(context)
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("Smart Migrate Backup", backupJson))
+                    onNotice("Settings & pairing keys exported to clipboard.")
                 }
             }
         }
@@ -3914,7 +3953,18 @@ private fun UpdateAvailableModal(
                             .border(1.dp, Danger.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
                             .padding(10.dp)
                     ) {
-                        Text(errorMessage ?: "", color = Danger, fontSize = 11.sp)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(errorMessage ?: "", color = Danger, fontSize = 11.sp)
+                            if (errorMessage?.contains("certificate", ignoreCase = true) == true ||
+                                errorMessage?.contains("signature", ignoreCase = true) == true) {
+                                SecondaryButton("Backup Settings & Keys") {
+                                    val backupJson = AppUpdater.exportSettingsJson(context)
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                    clipboard?.setPrimaryClip(ClipData.newPlainText("Smart Migrate Backup", backupJson))
+                                    Toast.makeText(context, "Settings & pairing keys copied to clipboard", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
                     }
                 }
 
