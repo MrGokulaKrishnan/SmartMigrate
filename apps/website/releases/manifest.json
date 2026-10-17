@@ -23,8 +23,8 @@
       "versionCode": 5,
       "url": "https://smartmigrate.web.app/downloads/android/SmartMigrate.apk",
       "fileName": "SmartMigrate.apk",
-      "size": 2601113,
-      "sha256": "df8f861b7612bb55a1a9e1559f6938fc029d7399af7383827a8ed825e14661b7",
+      "size": 2601120,
+      "sha256": "e4162de975827c77f6c28b1cc5a5cfb74effba003f8c5cd171c72f781ee08699",
       "signature": "62:03:AE:3F:A5:56:E3:29:31:9F:BC:4C:C8:B7:0F:29:72:EC:75:43:A5:06:7A:9A:23:24:5F:F2:EA:5D:36:60",
       "certificateFingerprint": "62:03:AE:3F:A5:56:E3:29:31:9F:BC:4C:C8:B7:0F:29:72:EC:75:43:A5:06:7A:9A:23:24:5F:F2:EA:5D:36:60",
       "mandatory": false

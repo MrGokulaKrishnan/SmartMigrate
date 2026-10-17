@@ -57,10 +57,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -3694,6 +3696,7 @@ private fun PairingPinModal(
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
+                                        .heightIn(min = 48.dp)
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(Surface2)
                                         .clickable {
@@ -3703,10 +3706,10 @@ private fun PairingPinModal(
                                                 else -> if (enteredPin.length < 6) enteredPin += key
                                             }
                                         }
-                                        .padding(vertical = 10.dp),
+                                        .padding(vertical = 12.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(key, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(key, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -3978,6 +3981,7 @@ private fun PrimaryButton(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Brush.horizontalGradient(listOf(Brand500, Brand600)))
             .border(1.dp, LineStrong, RoundedCornerShape(10.dp))
@@ -3994,6 +3998,7 @@ private fun SecondaryButton(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Surface2)
             .border(1.dp, Line, RoundedCornerShape(10.dp))
@@ -4031,13 +4036,15 @@ private fun QuickActionPill(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = modifier.clickable { onClick() },
+        modifier = modifier
+            .defaultMinSize(minHeight = 48.dp)
+            .clickable { onClick() },
         color = Surface1,
         shape = RoundedCornerShape(10.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Line)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
