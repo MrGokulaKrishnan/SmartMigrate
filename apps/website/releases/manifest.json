@@ -3,7 +3,15 @@
   "version": "1.4.1",
   "versionCode": 5,
   "releaseDate": "2026-10-17T05:00:00Z",
-  "releaseNotes": "• Fixed Android app closure: added double-buffered alternating Bitmaps and full BackHandler\n• Zero-allocation ByteArrayPool eliminating GC memory churn and Low Memory Killer terminations\n• Genuine release build signed with official 4096-bit RSA certificate\n• Strict certificate verification in in-app updater\n• Hardened host server: 3-attempt PIN lockout, constant-time token comparison, and capability enforcement\n• Real-time relative release timing badges and honest protocol labeling",
+  "releaseNotes": "Fixed Android app closure with double-buffered alternating Bitmaps and full BackHandler support.\nReduced allocation churn and garbage-collection pressure through zero-allocation ByteArrayPool reuse.\nRelease package is signed with official 4096-bit RSA certificate and verified checksums.\nAdded strict certificate verification and package integrity checks to in-app updater.\nHardened host security with 3-attempt PIN lockout, constant-time token comparison, and capability enforcement.\nReal-time relative release timing badges and honest protocol labeling.",
+  "releaseHighlights": [
+    "Fixed Android app closure with double-buffered alternating Bitmaps and full BackHandler support.",
+    "Reduced allocation churn and garbage-collection pressure through zero-allocation ByteArrayPool reuse.",
+    "Release package is signed with official 4096-bit RSA certificate and verified checksums.",
+    "Added strict certificate verification and package integrity checks to in-app updater.",
+    "Hardened host security with 3-attempt PIN lockout, constant-time token comparison, and capability enforcement.",
+    "Real-time relative release timing badges and honest protocol labeling."
+  ],
   "channels": {
     "stable": "1.4.1",
     "beta": "1.4.1"

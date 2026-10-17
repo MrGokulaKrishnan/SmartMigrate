@@ -51,6 +51,7 @@ export type HostStatus = {
   fingerprint: string;
   trustedDeviceCount: number;
   privilegedFeaturesEnabled: boolean;
+  version: string;
 };
 
 export type PairingSession = {
@@ -168,6 +169,7 @@ const previewStatus: HostStatus = {
   fingerprint: "SM-HOST-AUTHORITY",
   trustedDeviceCount: 1,
   privilegedFeaturesEnabled: true,
+  version: "1.4.1",
 };
 
 function formatCode(raw: unknown): string {
@@ -291,6 +293,7 @@ export type UpdateCheckDto = {
   currentVersion: string;
   latestVersion: string;
   releaseNotes: string;
+  releaseHighlights?: string[];
   downloadUrl: string;
   sizeBytes: number;
   sha256: string;
@@ -364,24 +367,44 @@ export function StartupIntro({ onComplete }: { onComplete: () => void }) {
   );
 }
 
+export type UpdatePhase =
+  | "idle"
+  | "downloading"
+  | "verified_ready"
+  | "requesting_elevation"
+  | "installer_started"
+  | "uac_cancelled"
+  | "error";
+
 export function UpdateModal({
   updateInfo,
   onClose,
-  onDownloadAndApply,
-  onRestart,
-  isDownloading,
-  downloadError,
+  onDownload,
+  onInstall,
+  phase,
+  errorMessage,
   installerStagedPath,
 }: {
   updateInfo: UpdateCheckDto | null;
   onClose: () => void;
-  onDownloadAndApply: () => void;
-  onRestart: () => void;
-  isDownloading: boolean;
-  downloadError: string | null;
+  onDownload: () => void;
+  onInstall: () => void;
+  phase: UpdatePhase;
+  errorMessage: string | null;
   installerStagedPath: string | null;
 }) {
   if (!updateInfo) return null;
+
+  const highlights: string[] = useMemo(() => {
+    if (updateInfo.releaseHighlights && updateInfo.releaseHighlights.length > 0) {
+      return updateInfo.releaseHighlights;
+    }
+    if (!updateInfo.releaseNotes) return [];
+    return updateInfo.releaseNotes
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^[\s•\-\*\u2022\uFFFD\?]+\s*/, "").trim())
+      .filter((line) => line.length > 0);
+  }, [updateInfo]);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -442,18 +465,18 @@ export function UpdateModal({
 
               <div>
                 <h4 style={{ margin: "0 0 8px", fontSize: "0.85rem", color: "var(--sm-text-2)" }}>Release Highlights</h4>
-                <div style={{
-                  background: "rgba(0, 0, 0, 0.4)",
-                  border: "1px solid var(--sm-line)",
-                  borderRadius: "8px",
-                  padding: "12px 14px",
-                  fontSize: "0.82rem",
-                  color: "var(--sm-text-2)",
-                  lineHeight: "1.5",
-                  whiteSpace: "pre-wrap",
-                  fontFamily: "var(--sm-font-sans)"
-                }}>
-                  {updateInfo.releaseNotes}
+                <div className="release-highlights-box">
+                  {highlights.length > 0 ? (
+                    <ul className="release-highlights">
+                      {highlights.map((highlight, index) => (
+                        <li key={index}>{highlight}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div style={{ fontSize: "0.82rem", color: "var(--sm-text-2)", lineHeight: "1.5" }}>
+                      {updateInfo.releaseNotes || "Performance enhancements, security hardening, and protocol stability improvements."}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -465,7 +488,8 @@ export function UpdateModal({
                 </span>
               </div>
 
-              {isDownloading && (
+              {/* Explicit Single-State Status Panels (Eliminating Contradictions) */}
+              {phase === "downloading" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--sm-text-2)" }}>
                     <span>Downloading signed installer package...</span>
@@ -481,33 +505,113 @@ export function UpdateModal({
                 </div>
               )}
 
-              {downloadError && (
+              {phase === "verified_ready" && (
                 <div style={{
-                  padding: "10px 14px",
-                  background: "rgba(239, 68, 68, 0.12)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  borderRadius: "8px",
-                  color: "#fca5a5",
-                  fontSize: "0.8rem"
-                }}>
-                  {downloadError}
-                </div>
-              )}
-
-              {installerStagedPath && (
-                <div style={{
-                  padding: "10px 14px",
+                  padding: "12px 14px",
                   background: "rgba(16, 185, 129, 0.12)",
                   border: "1px solid rgba(16, 185, 129, 0.3)",
                   borderRadius: "8px",
                   color: "#6ee7b7",
-                  fontSize: "0.8rem",
+                  fontSize: "0.82rem",
                   display: "flex",
-                  alignItems: "center",
-                  gap: "8px"
+                  alignItems: "flex-start",
+                  gap: "10px"
                 }}>
-                  <span>✓</span>
-                  <span>Update package downloaded and cryptographic SHA-256 verified successfully. Ready to restart.</span>
+                  <span style={{ fontSize: "1rem", lineHeight: 1 }}>✓</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Update package downloaded and verified.</div>
+                    <div style={{ fontSize: "0.76rem", color: "#a7f3d0", marginTop: "2px" }}>
+                      Ready to install. Click "Install Update" to proceed.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {phase === "requesting_elevation" && (
+                <div style={{
+                  padding: "12px 14px",
+                  background: "rgba(56, 189, 248, 0.12)",
+                  border: "1px solid rgba(56, 189, 248, 0.3)",
+                  borderRadius: "8px",
+                  color: "#7dd3fc",
+                  fontSize: "0.82rem",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "10px"
+                }}>
+                  <span style={{ fontSize: "1rem", lineHeight: 1 }}>ℹ</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Windows needs your approval to install this update.</div>
+                    <div style={{ fontSize: "0.76rem", color: "#bae6fd", marginTop: "2px" }}>
+                      Please approve the Windows elevation prompt (UAC) when prompted.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {phase === "installer_started" && (
+                <div style={{
+                  padding: "12px 14px",
+                  background: "rgba(124, 77, 255, 0.14)",
+                  border: "1px solid rgba(124, 77, 255, 0.35)",
+                  borderRadius: "8px",
+                  color: "#c4b5fd",
+                  fontSize: "0.82rem",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "10px"
+                }}>
+                  <span style={{ fontSize: "1rem", lineHeight: 1 }}>✓</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Installer started successfully.</div>
+                    <div style={{ fontSize: "0.76rem", color: "#ddd6fe", marginTop: "2px" }}>
+                      Closing Smart Migrate to allow setup to complete...
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {phase === "uac_cancelled" && (
+                <div style={{
+                  padding: "12px 14px",
+                  background: "rgba(245, 158, 11, 0.12)",
+                  border: "1px solid rgba(245, 158, 11, 0.35)",
+                  borderRadius: "8px",
+                  color: "#fcd34d",
+                  fontSize: "0.82rem",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "10px"
+                }}>
+                  <span style={{ fontSize: "1rem", lineHeight: 1 }}>⚠</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Update was not installed because administrator approval was cancelled.</div>
+                    <div style={{ fontSize: "0.76rem", color: "#fef3c7", marginTop: "2px" }}>
+                      Your current version remains active and unchanged. You can try again whenever ready.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {phase === "error" && (
+                <div style={{
+                  padding: "12px 14px",
+                  background: "rgba(239, 68, 68, 0.12)",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  borderRadius: "8px",
+                  color: "#fca5a5",
+                  fontSize: "0.82rem",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "10px"
+                }}>
+                  <span style={{ fontSize: "1rem", lineHeight: 1 }}>✗</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Windows could not start the installer.</div>
+                    <div style={{ fontSize: "0.76rem", color: "#fecaca", marginTop: "2px" }}>
+                      {errorMessage || "An unexpected error occurred. Your current version is still installed."}
+                    </div>
+                  </div>
                 </div>
               )}
             </>
@@ -524,20 +628,76 @@ export function UpdateModal({
 
         <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
           {updateInfo.hasUpdate ? (
-            installerStagedPath ? (
-              <button className="btn btn-primary" onClick={onRestart}>
-                Restart & Apply Now
-              </button>
-            ) : (
-              <>
-                <button className="btn btn-secondary" onClick={onClose} disabled={isDownloading}>
-                  Later
+            <>
+              {phase === "idle" && (
+                <>
+                  <button className="btn btn-secondary" onClick={onClose}>
+                    Later
+                  </button>
+                  <button className="btn btn-primary" onClick={onDownload}>
+                    Update Now
+                  </button>
+                </>
+              )}
+              {phase === "downloading" && (
+                <>
+                  <button className="btn btn-secondary" disabled>
+                    Later
+                  </button>
+                  <button className="btn btn-primary" disabled>
+                    Downloading...
+                  </button>
+                </>
+              )}
+              {phase === "verified_ready" && (
+                <>
+                  <button className="btn btn-secondary" onClick={onClose}>
+                    Later
+                  </button>
+                  <button className="btn btn-primary" onClick={onInstall}>
+                    Install Update
+                  </button>
+                </>
+              )}
+              {phase === "requesting_elevation" && (
+                <>
+                  <button className="btn btn-secondary" disabled>
+                    Cancel
+                  </button>
+                  <button className="btn btn-primary" disabled>
+                    Requesting Approval...
+                  </button>
+                </>
+              )}
+              {phase === "installer_started" && (
+                <button className="btn btn-primary" disabled>
+                  Closing Smart Migrate...
                 </button>
-                <button className="btn btn-primary" onClick={onDownloadAndApply} disabled={isDownloading}>
-                  {isDownloading ? "Downloading..." : "Update Now"}
-                </button>
-              </>
-            )
+              )}
+              {phase === "uac_cancelled" && (
+                <>
+                  <button className="btn btn-secondary" onClick={onClose}>
+                    Cancel
+                  </button>
+                  <button className="btn btn-primary" onClick={onInstall}>
+                    Try Again
+                  </button>
+                </>
+              )}
+              {phase === "error" && (
+                <>
+                  <button className="btn btn-secondary" onClick={onClose}>
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={installerStagedPath ? onInstall : onDownload}
+                  >
+                    Retry
+                  </button>
+                </>
+              )}
+            </>
           ) : (
             <button className="btn btn-primary" onClick={onClose}>
               OK
@@ -554,8 +714,8 @@ export function App() {
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckDto | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
-  const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [updatePhase, setUpdatePhase] = useState<UpdatePhase>("idle");
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const [installerStagedPath, setInstallerStagedPath] = useState<string | null>(null);
 
   const [destination, setDestination] = useState<Destination>("Home");
@@ -624,6 +784,9 @@ export function App() {
       const res = await invoke<UpdateCheckDto>("check_windows_update");
       setUpdateInfo(res);
       if (res.hasUpdate) {
+        if (!installerStagedPath) {
+          setUpdatePhase("idle");
+        }
         setUpdateModalOpen(true);
       } else if (!silent) {
         setNotice(`Smart Migrate v${res.currentVersion} is up to date.`);
@@ -638,31 +801,69 @@ export function App() {
     }
   };
 
-  const handleDownloadAndApplyUpdate = async () => {
+  const handleDownloadUpdate = async () => {
     if (!updateInfo || !updateInfo.downloadUrl) return;
-    setIsDownloadingUpdate(true);
-    setDownloadError(null);
+    setUpdatePhase("downloading");
+    setUpdateError(null);
     try {
       const targetPath = await invoke<string>("download_windows_update", {
         downloadUrl: updateInfo.downloadUrl,
         expectedSha256: updateInfo.sha256,
       });
       setInstallerStagedPath(targetPath);
+      setUpdatePhase("verified_ready");
     } catch (err: any) {
-      setDownloadError(err?.toString() || "Failed to download update package.");
-    } finally {
-      setIsDownloadingUpdate(false);
+      setUpdatePhase("error");
+      setUpdateError(err?.toString() || "Failed to download update package.");
     }
   };
 
-  const handleExecuteRestart = async () => {
-    if (!installerStagedPath) return;
+  const handleInstallUpdate = async () => {
+    if (!installerStagedPath || updatePhase === "requesting_elevation" || updatePhase === "installer_started") return;
+    setUpdatePhase("requesting_elevation");
+    setUpdateError(null);
     try {
       await invoke("apply_windows_update_and_restart", { installerPath: installerStagedPath });
+      setUpdatePhase("installer_started");
+      if (updateInfo) {
+        try {
+          localStorage.setItem(
+            "sm_pending_update",
+            JSON.stringify({
+              targetVersion: updateInfo.latestVersion,
+              timestamp: Date.now(),
+            })
+          );
+        } catch (_) {}
+      }
     } catch (err: any) {
-      setDownloadError(err?.toString() || "Failed to launch installer.");
+      const errStr = err?.toString() || "Failed to launch installer.";
+      if (errStr.includes("UAC_CANCELLED")) {
+        setUpdatePhase("uac_cancelled");
+      } else {
+        setUpdatePhase("error");
+        setUpdateError(errStr);
+      }
     }
   };
+
+  // Reconcile pending update upon startup
+  useEffect(() => {
+    try {
+      const pendingStr = localStorage.getItem("sm_pending_update");
+      if (pendingStr) {
+        const pending = JSON.parse(pendingStr);
+        localStorage.removeItem("sm_pending_update");
+        invoke<HostStatus>("host_status")
+          .then((s) => {
+            if (s.version === pending.targetVersion) {
+              setNotice(`Smart Migrate updated successfully to v${s.version}.`);
+            }
+          })
+          .catch(() => {});
+      }
+    } catch (_) {}
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1576,10 +1777,10 @@ export function App() {
         <UpdateModal
           updateInfo={updateInfo}
           onClose={() => setUpdateModalOpen(false)}
-          onDownloadAndApply={handleDownloadAndApplyUpdate}
-          onRestart={handleExecuteRestart}
-          isDownloading={isDownloadingUpdate}
-          downloadError={downloadError}
+          onDownload={handleDownloadUpdate}
+          onInstall={handleInstallUpdate}
+          phase={updatePhase}
+          errorMessage={updateError}
           installerStagedPath={installerStagedPath}
         />
       )}

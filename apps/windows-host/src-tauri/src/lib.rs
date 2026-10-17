@@ -49,6 +49,7 @@ struct HostStatus {
     fingerprint: String,
     trusted_device_count: usize,
     privileged_features_enabled: bool,
+    version: &'static str,
 }
 
 #[tauri::command]
@@ -63,6 +64,7 @@ fn host_status(state: State<'_, AppState>) -> HostStatus {
         fingerprint: state.identity.fingerprint.clone(),
         trusted_device_count: trust_store.active_count(),
         privileged_features_enabled: stream.is_active,
+        version: env!("CARGO_PKG_VERSION"),
     }
 }
 
@@ -773,6 +775,7 @@ struct UpdateCheckDto {
     current_version: String,
     latest_version: String,
     release_notes: String,
+    release_highlights: Vec<String>,
     download_url: String,
     size_bytes: u64,
     sha256: String,
@@ -784,9 +787,11 @@ fn check_windows_update() -> Result<UpdateCheckDto, String> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
 
     let script = r#"
+        $OutputEncoding = [System.Text.Encoding]::UTF8;
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
         $ProgressPreference = 'SilentlyContinue';
         try {
-            $resp = Invoke-RestMethod -Uri 'https://smartmigrate.web.app/releases/manifest.json' -TimeoutSec 6 -Headers @{'User-Agent'='SmartMigrate-Windows/1.4.0'}
+            $resp = Invoke-RestMethod -Uri 'https://smartmigrate.web.app/releases/manifest.json' -TimeoutSec 6 -Headers @{'User-Agent'='SmartMigrate-Windows/1.4.1'}
             $json = $resp | ConvertTo-Json -Depth 6 -Compress
             Write-Output $json
         } catch {
@@ -812,6 +817,7 @@ fn check_windows_update() -> Result<UpdateCheckDto, String> {
             current_version: current_version.clone(),
             latest_version: current_version,
             release_notes: "You are running the latest verified release.".to_string(),
+            release_highlights: vec!["You are running the latest verified release.".to_string()],
             download_url: String::new(),
             size_bytes: 0,
             sha256: String::new(),
@@ -821,8 +827,27 @@ fn check_windows_update() -> Result<UpdateCheckDto, String> {
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .map_err(|e| format!("Failed to parse release manifest JSON: {e}"))?;
 
-    let latest_version = parsed.get("version").and_then(|v| v.as_str()).unwrap_or("1.4.0").to_string();
+    let latest_version = parsed.get("version").and_then(|v| v.as_str()).unwrap_or("1.4.1").to_string();
     let release_notes = parsed.get("releaseNotes").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+    let release_highlights: Vec<String> = if let Some(arr) = parsed.get("releaseHighlights").and_then(|h| h.as_array()) {
+        arr.iter()
+            .filter_map(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    } else {
+        release_notes
+            .lines()
+            .map(|line| {
+                let trimmed = line.trim();
+                let clean = trimmed
+                    .trim_start_matches(|c: char| c == '•' || c == '-' || c == '*' || c == '+' || c == '\u{FFFD}' || c == '?' || c.is_whitespace());
+                clean.trim().to_string()
+            })
+            .filter(|line| !line.is_empty())
+            .collect()
+    };
 
     let win_platform = parsed.get("platforms").and_then(|p| p.get("windows-x86_64"));
     let download_url = win_platform.and_then(|w| w.get("url")).and_then(|u| u.as_str()).unwrap_or("").to_string();
@@ -836,6 +861,7 @@ fn check_windows_update() -> Result<UpdateCheckDto, String> {
         current_version,
         latest_version,
         release_notes,
+        release_highlights,
         download_url,
         size_bytes,
         sha256,
@@ -890,21 +916,139 @@ fn download_windows_update(download_url: String, expected_sha256: String) -> Res
     Ok(target_file.to_string_lossy().to_string())
 }
 
-/// Stages and executes the official Windows installer and cleanly exits the host.
+#[cfg(windows)]
+mod win_installer {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::Path;
+
+    #[repr(C)]
+    struct SHELLEXECUTEINFOW {
+        cb_size: u32,
+        f_mask: u32,
+        hwnd: isize,
+        lp_verb: *const u16,
+        lp_file: *const u16,
+        lp_parameters: *const u16,
+        lp_directory: *const u16,
+        n_show: i32,
+        h_inst_app: isize,
+        lp_id_list: *mut core::ffi::c_void,
+        lp_class: *const u16,
+        hkey_class: isize,
+        dw_hot_key: u32,
+        h_icon_or_monitor: isize,
+        h_process: isize,
+    }
+
+    const SEE_MASK_NOCLOSEPROCESS: u32 = 0x00000040;
+    const SW_SHOWNORMAL: i32 = 1;
+    const ERROR_CANCELLED: u32 = 1223;
+
+    #[link(name = "shell32")]
+    extern "system" {
+        fn ShellExecuteExW(p_exec_info: *mut SHELLEXECUTEINFOW) -> i32;
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetLastError() -> u32;
+        fn CloseHandle(handle: isize) -> i32;
+    }
+
+    pub fn launch_elevated(installer_path: &Path) -> Result<(), String> {
+        let is_msi = installer_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|s| s.eq_ignore_ascii_case("msi"))
+            .unwrap_or(false);
+
+        let (target_file, params): (String, Option<String>) = if is_msi {
+            (
+                "msiexec.exe".to_string(),
+                Some(format!("/i \"{}\"", installer_path.display())),
+            )
+        } else {
+            (installer_path.to_string_lossy().to_string(), None)
+        };
+
+        let mut file_wide: Vec<u16> = OsStr::new(&target_file).encode_wide().collect();
+        file_wide.push(0);
+
+        let mut verb_wide: Vec<u16> = OsStr::new("runas").encode_wide().collect();
+        verb_wide.push(0);
+
+        let param_wide: Option<Vec<u16>> = params.map(|p| {
+            let mut v: Vec<u16> = OsStr::new(&p).encode_wide().collect();
+            v.push(0);
+            v
+        });
+
+        let dir = installer_path.parent().unwrap_or(Path::new(""));
+        let mut dir_wide: Vec<u16> = dir.as_os_str().encode_wide().collect();
+        dir_wide.push(0);
+
+        let mut exec_info = SHELLEXECUTEINFOW {
+            cb_size: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+            f_mask: SEE_MASK_NOCLOSEPROCESS,
+            hwnd: 0,
+            lp_verb: verb_wide.as_ptr(),
+            lp_file: file_wide.as_ptr(),
+            lp_parameters: param_wide.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null()),
+            lp_directory: dir_wide.as_ptr(),
+            n_show: SW_SHOWNORMAL,
+            h_inst_app: 0,
+            lp_id_list: std::ptr::null_mut(),
+            lp_class: std::ptr::null(),
+            hkey_class: 0,
+            dw_hot_key: 0,
+            h_icon_or_monitor: 0,
+            h_process: 0,
+        };
+
+        let success = unsafe { ShellExecuteExW(&mut exec_info) };
+
+        if success != 0 {
+            if exec_info.h_process != 0 {
+                unsafe { CloseHandle(exec_info.h_process) };
+            }
+            Ok(())
+        } else {
+            let error_code = unsafe { GetLastError() };
+            if error_code == ERROR_CANCELLED {
+                Err("UAC_CANCELLED: Administrator approval was cancelled by the user.".to_string())
+            } else {
+                Err(format!(
+                    "Failed to launch installer via ShellExecute (Windows error {error_code})."
+                ))
+            }
+        }
+    }
+}
+
+/// Stages and executes the official Windows installer with UAC elevation, cleanly exiting the host.
 #[tauri::command]
 fn apply_windows_update_and_restart(installer_path: String) -> Result<(), String> {
     let path = std::path::PathBuf::from(&installer_path);
     if !path.exists() {
-        return Err("Installer file does not exist.".to_string());
+        return Err("Installer file does not exist on disk.".to_string());
+    }
+
+    // Security validation: verify extension is .exe or .msi
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if ext != "exe" && ext != "msi" {
+        return Err("Invalid installer package type. Only .exe and .msi packages are permitted.".to_string());
+    }
+
+    // Security validation: ensure file is non-empty
+    let metadata = std::fs::metadata(&path).map_err(|e| format!("Cannot read installer metadata: {e}"))?;
+    if metadata.len() == 0 {
+        return Err("Installer package is empty or truncated.".to_string());
     }
 
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new(&installer_path)
-            .creation_flags(0x00000008 | 0x00000200) // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-            .spawn()
-            .map_err(|e| format!("Failed to spawn installer: {e}"))?;
+        win_installer::launch_elevated(&path)?;
     }
     #[cfg(not(windows))]
     {
@@ -913,7 +1057,13 @@ fn apply_windows_update_and_restart(installer_path: String) -> Result<(), String
             .map_err(|e| format!("Failed to spawn installer: {e}"))?;
     }
 
-    std::process::exit(0);
+    // Spawn a brief detachment thread to cleanly exit the host process after handing off to Windows installer
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+        std::process::exit(0);
+    });
+
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

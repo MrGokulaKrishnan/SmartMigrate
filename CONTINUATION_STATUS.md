@@ -345,7 +345,6 @@ All subsystem builds are verified: 66/66 unit tests passing (63 MigRoute + 3 Win
     - **81/81 Rust unit tests passing** (75 in `migroute` + 6 in `smart_migrate_windows_host_lib`).
     - Windows Host Tauri shell compiles with **0 errors and 0 warnings** (`cargo check`).
     - Android Debug APK cleanly built with Gradle (`assembleDebug` 37/37 tasks up-to-date).
-    - Windows React/TypeScript frontend passes `tsc --noEmit` and Vite production build in 9.6s.
 - [x] **Milestone 15 — Android Crash Hardening, Gestural Back Navigation Guards & Dynamic Live Website Relative Versioning**:
   - **Android Gesture & Navigation Resilience (`apps/android-client/.../MainActivity.kt`)**:
     - Resolved abrupt app termination root-cause: Added nested `BackHandler` barriers for both active stream sessions (`DedicatedRemoteSessionScreen`) and global app navigation (`SmartMigrateApp`).
@@ -367,6 +366,32 @@ All subsystem builds are verified: 66/66 unit tests passing (63 MigRoute + 3 Win
     - Android APK built cleanly (`assembleDebug` 37 tasks completed) and deployed.
     - Windows Host React/TypeScript frontend passes `tsc --noEmit` and Vite build in 6.47s.
     - Brand naming consistency verified (`node scripts/check-brand.mjs`).
+- [x] **Milestone 16 — Windows Auto-Updater UAC Elevation (os error 740) & Release Highlights Semantic List Architecture**:
+  - **Windows UAC Elevation Architecture (`apps/windows-host/src-tauri/src/lib.rs`)**:
+    - Resolved `os error 740` (`ERROR_ELEVATION_REQUIRED`): Replaced unprivileged `std::process::Command::spawn()` with Win32 `ShellExecuteExW` (`shell32.dll`) using verb `"runas"`.
+    - Supports both NSIS `.exe` installers and MSI `.msi` packages (dispatched via `msiexec.exe /i "<path>"`).
+    - Preserves least privilege: Smart Migrate desktop host continues running in non-elevated user context; only the verified update installer requests elevation.
+    - Explicit UAC rejection handling: Catches `ERROR_CANCELLED (1223)` when user declines the Windows UAC consent dialog and returns `UAC_CANCELLED`.
+    - Clean shutdown sequence: Spawns delayed exit thread (1000ms) ensuring the Tauri IPC promise resolves before calling `std::process::exit(0)`.
+  - **Release Highlights Semantic Markup & UTF-8 Encoding Pipeline (`manifest.json`, `lib.rs`, `main.tsx`, `styles.css`)**:
+    - Eliminated `?` bullet corruption caused by PowerShell 5.1 CP437 console output encoding.
+    - Injected `$OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;` into PowerShell manifest fetcher in Rust.
+    - Added structured `releaseHighlights: string[]` to `apps/website/releases/manifest.json` and `apps/website/public/releases/manifest.json`.
+    - Added fallback regex sanitization: `line.replace(/^[\s•\-\*\u2022\uFFFD\?]+\s*/, "").trim()`.
+    - Replaced raw text block with semantic `<ul className="release-highlights">` and `<li className="release-highlight-item">`.
+    - Added violet disc marker styling (`::marker { color: var(--sm-brand-300); }`) and scrollable container.
+  - **Single-Phase UI State Machine (`apps/windows-host/src/main.tsx`)**:
+    - Eliminated contradictory UI states by introducing `UpdatePhase = "idle" | "downloading" | "verified_ready" | "requesting_elevation" | "installer_started" | "uac_cancelled" | "error"`.
+    - Retains verified installer path on UAC cancellation, allowing one-click "Try Again" without re-downloading.
+    - Added post-restart reconciliation in `useEffect` tracking `sm_pending_update` in `localStorage` and confirming installed version via `HostStatus.version`.
+  - **Automated Regression Suite (`tests/release_notes_test.mjs`, `package.json`)**:
+    - Added automated unit test validating manifest schema, absence of `\uFFFD` replacement chars, and edge-case regex parsing.
+    - Registered `npm run test:release-notes` in `package.json`.
+  - **Verification Status**:
+    - `cargo check -p smart-migrate-windows-host` passes with **0 errors and 0 warnings**.
+    - `tsc --noEmit` and Vite production build pass cleanly (32 modules transformed).
+    - `node tests/release_notes_test.mjs` passes all assertions.
+    - `npm run brand:check` passes with zero violations.
 
 ---
 
@@ -381,9 +406,11 @@ $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
 cargo check -p smart-migrate-windows-host
 
 # 3. Verify Windows Host React / TypeScript & Vite build
-node apps/windows-host/node_modules/typescript/bin/tsc --noEmit --project apps/windows-host/tsconfig.json
-cd apps/windows-host; node node_modules/vite/bin/vite.js build; cd ../..
+cd apps/windows-host; npm run build; cd ../..
 
-# 4. Brand naming consistency check
-node scripts/check-brand.mjs
+# 4. Run Release Notes & Manifest Regression Test
+node tests/release_notes_test.mjs
+
+# 5. Brand naming consistency check
+npm run brand:check
 ```

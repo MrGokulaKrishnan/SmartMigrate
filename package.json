@@ -6,7 +6,8 @@
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "brand:check": "node scripts/check-brand.mjs",
+    "test:release-notes": "node tests/release_notes_test.mjs",
     "test:engine": "cargo test -p migroute",
-    "verify": "pnpm brand:check && cargo test -p migroute"
+    "verify": "pnpm brand:check && node tests/release_notes_test.mjs && cargo test -p migroute"
   }
 }
