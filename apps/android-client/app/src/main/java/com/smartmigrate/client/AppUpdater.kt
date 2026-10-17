@@ -115,6 +115,62 @@ object AppUpdater {
     }
 
     /**
+     * Extracts SHA-256 fingerprint of the signing certificate from an uninstalled APK.
+     */
+    fun getCertificateFingerprint(context: Context, apkFile: File): String? {
+        try {
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                PackageManager.GET_SIGNING_CERTIFICATES
+            } else {
+                @Suppress("DEPRECATION")
+                PackageManager.GET_SIGNATURES
+            }
+            val archiveInfo = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, flags) ?: return null
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                archiveInfo.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                archiveInfo.signatures
+            }
+            val certBytes = signatures?.firstOrNull()?.toByteArray() ?: return null
+            val md = MessageDigest.getInstance("SHA-256")
+            val digest = md.digest(certBytes)
+            return digest.joinToString(":") { "%02X".format(it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read certificate from APK: ${e.message}")
+            return null
+        }
+    }
+
+    /**
+     * Extracts SHA-256 fingerprint of the currently installed app's signing certificate.
+     */
+    fun getInstalledCertificateFingerprint(context: Context): String? {
+        try {
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                PackageManager.GET_SIGNING_CERTIFICATES
+            } else {
+                @Suppress("DEPRECATION")
+                PackageManager.GET_SIGNATURES
+            }
+            val info = context.packageManager.getPackageInfo(context.packageName, flags)
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                info.signatures
+            }
+            val certBytes = signatures?.firstOrNull()?.toByteArray() ?: return null
+            val md = MessageDigest.getInstance("SHA-256")
+            val digest = md.digest(certBytes)
+            return digest.joinToString(":") { "%02X".format(it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read installed application certificate: ${e.message}")
+            return null
+        }
+    }
+
+    /**
      * Checks the official release manifest for newer versions.
      */
     suspend fun checkForUpdate(context: Context): Result<UpdateInfo> = withContext(Dispatchers.IO) {
@@ -308,6 +364,21 @@ object AppUpdater {
             }
 
             Log.i(TAG, "Validated update binary: v${inspection.versionName} (code ${inspection.versionCode})")
+
+            // 2b. Verify Signing Certificate Fingerprint against running application
+            val installedFingerprint = getInstalledCertificateFingerprint(context)
+            val downloadedFingerprint = getCertificateFingerprint(context, apkFile)
+            if (!installedFingerprint.isNullOrBlank() && !downloadedFingerprint.isNullOrBlank()) {
+                if (!installedFingerprint.equals(downloadedFingerprint, ignoreCase = true)) {
+                    apkFile.delete()
+                    return Result.failure(
+                        SecurityException(
+                            "Untrusted APK signature: Signing certificate ($downloadedFingerprint) does not match the installed Smart Migrate application certificate ($installedFingerprint)."
+                        )
+                    )
+                }
+                Log.i(TAG, "Signing certificate fingerprint verified: $downloadedFingerprint")
+            }
 
             // 3. Check Unknown App Sources permission on Android 8.0+ (Oreo+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {

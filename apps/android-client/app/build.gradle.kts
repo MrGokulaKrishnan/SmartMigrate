@@ -21,11 +21,19 @@ android {
             val keystoreFile = file("release.keystore")
             if (keystoreFile.exists()) {
                 storeFile = keystoreFile
-                storePassword = System.getenv("SM_KEYSTORE_PASSWORD") ?: "smartmigrate_keystore_pass"
-                keyAlias = System.getenv("SM_KEY_ALIAS") ?: "smartmigrate_release"
-                keyPassword = System.getenv("SM_KEY_PASSWORD") ?: "smartmigrate_keystore_pass"
+                storePassword = (project.findProperty("SM_KEYSTORE_PASSWORD") as? String)
+                    ?: System.getenv("SM_KEYSTORE_PASSWORD")
+                    ?: "smartmigrate_keystore_pass"
+                keyAlias = (project.findProperty("SM_KEY_ALIAS") as? String)
+                    ?: System.getenv("SM_KEY_ALIAS")
+                    ?: "smartmigrate_release"
+                keyPassword = (project.findProperty("SM_KEY_PASSWORD") as? String)
+                    ?: System.getenv("SM_KEY_PASSWORD")
+                    ?: "smartmigrate_keystore_pass"
+                enableV1Signing = true
+                enableV2Signing = true
             } else {
-                initWith(getByName("debug"))
+                throw GradleException("release.keystore is required for release build and must not fall back to debug")
             }
         }
     }

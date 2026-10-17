@@ -9,7 +9,6 @@ use crate::capture::{capture_primary_display, DesktopCaptureSession, SoftwareJpe
 use crate::state::AppState;
 use crate::storage::{generate_crypto_token, save_trust_store};
 use migroute::identity::DevicePlatform;
-use migroute::pairing::NumericPairingCode;
 use migroute::trust::TrustedDevice;
 use migroute::{DeviceId, SessionPermission, PROTOCOL_VERSION};
 use serde::{Deserialize, Serialize};
@@ -107,6 +106,7 @@ pub struct HeartbeatResponse {
 #[serde(rename_all = "camelCase")]
 pub struct RemoteInputBody {
     pub device_id: String,
+    pub session_token: Option<String>,
     pub action: String,
     pub button: Option<String>,
     pub x: Option<i32>,
@@ -247,16 +247,127 @@ fn run_smp_tcp_server(stop_signal: Arc<AtomicBool>, state: AppState, control_por
     }
 }
 
+fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|window| window == needle)
+}
+
+/// Reads a complete HTTP request, buffering headers until delimiter and reading full body based on Content-Length.
+fn read_http_request(socket: &mut TcpStream) -> Option<(String, String)> {
+    let _ = socket.set_read_timeout(Some(Duration::from_millis(5000)));
+    let mut header_buf = Vec::with_capacity(4096);
+    let mut chunk = [0u8; 1024];
+    let mut header_end_pos = None;
+
+    while header_buf.len() < 65536 {
+        match socket.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+                header_buf.extend_from_slice(&chunk[..n]);
+                if let Some(pos) = find_subsequence(&header_buf, b"\r\n\r\n") {
+                    header_end_pos = Some((pos, 4));
+                    break;
+                } else if let Some(pos) = find_subsequence(&header_buf, b"\n\n") {
+                    header_end_pos = Some((pos, 2));
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+
+    let (header_end, delimiter_len) = header_end_pos?;
+    let header_str = String::from_utf8_lossy(&header_buf[..header_end]).to_string();
+
+    let content_length = header_str
+        .lines()
+        .find_map(|line| {
+            let lower = line.to_ascii_lowercase();
+            if lower.starts_with("content-length:") {
+                line.split(':').nth(1).and_then(|s| s.trim().parse::<usize>().ok())
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0);
+
+    let body_start = header_end + delimiter_len;
+    let mut body_bytes = header_buf[body_start..].to_vec();
+
+    while body_bytes.len() < content_length && body_bytes.len() < 16 * 1024 * 1024 {
+        let remaining = content_length - body_bytes.len();
+        let to_read = remaining.min(chunk.len());
+        match socket.read(&mut chunk[..to_read]) {
+            Ok(0) => break,
+            Ok(n) => body_bytes.extend_from_slice(&chunk[..n]),
+            Err(_) => break,
+        }
+    }
+
+    let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+    Some((header_str, body_str))
+}
+
+fn get_header_value<'a>(headers: &'a str, name: &str) -> Option<&'a str> {
+    for line in headers.lines() {
+        if let Some((k, v)) = line.split_once(':') {
+            if k.trim().eq_ignore_ascii_case(name) {
+                return Some(v.trim());
+            }
+        }
+    }
+    None
+}
+
+fn extract_bearer_token(headers: &str) -> Option<String> {
+    let auth = get_header_value(headers, "Authorization")?;
+    if let Some(token) = auth.strip_prefix("Bearer ") {
+        let trimmed = token.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
+fn extract_query_param(query: &str, param_name: &str) -> Option<String> {
+    for pair in query.split('&') {
+        if let Some((k, v)) = pair.split_once('=') {
+            if k == param_name && !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn is_trusted_origin(origin: &str) -> bool {
+    origin.starts_with("tauri://")
+        || origin.starts_with("http://localhost")
+        || origin.starts_with("http://127.0.0.1")
+        || origin.starts_with("https://localhost")
+}
+
+fn constant_time_eq_str(a: &str, b: &str) -> bool {
+    let a_bytes = a.as_bytes();
+    let b_bytes = b.as_bytes();
+    if a_bytes.len() != b_bytes.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a_bytes.iter().zip(b_bytes.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 /// Handles an incoming client request on port 7890.
 fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal: Arc<AtomicBool>) {
-    let mut buffer = [0u8; 8192];
-    let bytes_read = match socket.read(&mut buffer) {
-        Ok(n) if n > 0 => n,
-        _ => return,
+    let (header_str, body_str) = match read_http_request(&mut socket) {
+        Some(req) => req,
+        None => return,
     };
 
-    let request_str = String::from_utf8_lossy(&buffer[..bytes_read]);
-    let first_line = request_str.lines().next().unwrap_or("");
+    let first_line = header_str.lines().next().unwrap_or("");
     let parts: Vec<&str> = first_line.split_whitespace().collect();
     if parts.len() < 2 {
         return;
@@ -265,22 +376,37 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
     let method = parts[0];
     let uri = parts[1];
 
-    // Split URI into path and query string
     let (path, query) = if let Some(idx) = uri.find('?') {
         (&uri[..idx], &uri[idx + 1..])
     } else {
         (uri, "")
     };
 
+    // Cross-origin request protection (CSRF / drive-by intranet defense)
+    let origin_opt = get_header_value(&header_str, "Origin");
+    if let Some(origin) = origin_opt {
+        if !is_trusted_origin(origin) {
+            send_error_response(
+                &mut socket,
+                403,
+                "Forbidden",
+                "SMP_FORBIDDEN_ORIGIN",
+                "Cross-origin requests from untrusted web domains are blocked.",
+                None,
+            );
+            return;
+        }
+    }
+    let cors_allow_origin: Option<&str> = origin_opt.filter(|o| is_trusted_origin(o));
+
     // Route table
     match (method, path) {
         // ── 0. CORS Preflight ──
         ("OPTIONS", _) => {
-            let resp = "HTTP/1.1 204 No Content\r\n\
-                Access-Control-Allow-Origin: *\r\n\
-                Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
-                Access-Control-Allow-Headers: Content-Type, Authorization\r\n\
-                Access-Control-Max-Age: 86400\r\n\r\n";
+            let cors_hdr = cors_allow_origin
+                .map(|o| format!("Access-Control-Allow-Origin: {o}\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\nAccess-Control-Max-Age: 86400\r\n"))
+                .unwrap_or_default();
+            let resp = format!("HTTP/1.1 204 No Content\r\n{cors_hdr}\r\n");
             let _ = socket.write_all(resp.as_bytes());
             let _ = socket.flush();
         }
@@ -295,99 +421,182 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 platform: "Windows 11".to_string(),
                 app_version: env!("CARGO_PKG_VERSION").to_string(),
                 capabilities: vec![
-                    "SCREEN_CAPTURE".to_string(),
-                    "VIDEO_ENCODE".to_string(),
+                    "SCREEN_CAPTURE_GDI".to_string(),
+                    "TURBO_JPEG_STREAM".to_string(),
                     "REMOTE_MOUSE".to_string(),
                     "REMOTE_KEYBOARD".to_string(),
                     "CLIPBOARD".to_string(),
                 ],
                 timestamp_ms: now_ms(),
             };
-            send_json_response(&mut socket, 200, "OK", &hello);
+            send_json_response(&mut socket, 200, "OK", &hello, cors_allow_origin);
         }
 
-        // ── 2. Pairing Request ──
+        // ── 2. Pairing Request (Locked out after 3 failed attempts, constant-time PIN verify) ──
         ("POST", "/smp/pair") => {
-            let body_str = extract_http_body(&request_str);
-            if let Ok(pair_req) = serde_json::from_str::<PairRequestBody>(body_str) {
+            if let Ok(pair_req) = serde_json::from_str::<PairRequestBody>(&body_str) {
                 let mut active_lock = state.active_pairing.lock().unwrap();
 
                 if let Some(ref mut session) = *active_lock {
-                    if session.is_expired(now_ms()) {
-                        *active_lock = None;
-                        send_error_response(&mut socket, 410, "Gone", "SMP_PAIRING_EXPIRED", "Pairing session has expired. Start a new one on PC.");
-                        return;
-                    }
-
-                    let code_res = NumericPairingCode::try_from_digits(&pair_req.code);
-                    if code_res.is_err() || !session.code.constant_time_eq(&pair_req.code) {
-                        send_error_response(&mut socket, 403, "Forbidden", "SMP_INVALID_CODE", "Invalid pairing PIN code.");
-                        return;
-                    }
-
-                    // PIN matches! Register trusted device and create persistent trust
                     let req_id = match DeviceId::try_from(pair_req.requester_device_id.as_str()) {
                         Ok(id) => id,
                         Err(e) => {
-                            send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_DEVICE_ID", &e.to_string());
+                            send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_DEVICE_ID", &e.to_string(), cors_allow_origin);
                             return;
                         }
                     };
 
-                    let mut perms = BTreeSet::new();
-                    perms.insert(SessionPermission::ViewScreen);
-                    perms.insert(SessionPermission::ControlMouse);
-                    perms.insert(SessionPermission::SendFiles);
-                    perms.insert(SessionPermission::ReceiveFiles);
-                    perms.insert(SessionPermission::Clipboard);
+                    let requested_perms: Vec<SessionPermission> = pair_req
+                        .requested_permissions
+                        .iter()
+                        .filter_map(|p| match p.as_str() {
+                            "ViewScreen" => Some(SessionPermission::ViewScreen),
+                            "ControlMouse" => Some(SessionPermission::ControlMouse),
+                            "ControlKeyboard" => Some(SessionPermission::ControlKeyboard),
+                            "SendFiles" => Some(SessionPermission::SendFiles),
+                            "ReceiveFiles" => Some(SessionPermission::ReceiveFiles),
+                            "Clipboard" => Some(SessionPermission::Clipboard),
+                            _ => None,
+                        })
+                        .collect();
 
-                    let session_token = generate_crypto_token();
-                    let trusted_device = TrustedDevice::new(
-                        req_id,
+                    // Submit credentials to migroute PairingSession state machine
+                    match session.submit_credentials(
+                        req_id.clone(),
                         pair_req.requester_name.clone(),
-                        DevicePlatform::Android,
-                        format!("FP-{}", &session_token[..8].to_uppercase()),
+                        &pair_req.code,
+                        pair_req.token.as_deref(),
+                        requested_perms.clone(),
                         now_ms(),
-                        perms.clone(),
-                    );
+                    ) {
+                        Ok(()) => {
+                            // Credentials verified; grant requested permissions authorized by host
+                            let mut perms = BTreeSet::new();
+                            for p in requested_perms {
+                                perms.insert(p);
+                            }
+                            perms.insert(SessionPermission::ViewScreen);
 
-                    let mut trust_store = state.trust_store.lock().unwrap();
-                    let _ = trust_store.remove_device(&trusted_device.id);
-                    let _ = trust_store.add_device(trusted_device);
-                    let _ = save_trust_store(&trust_store);
+                            let session_token = generate_crypto_token();
+                            let trusted_device = TrustedDevice::new(
+                                req_id.clone(),
+                                pair_req.requester_name.clone(),
+                                DevicePlatform::Android,
+                                format!("FP-{}", &session_token[..8].to_uppercase()),
+                                now_ms(),
+                                perms.clone(),
+                            );
 
-                    // Update active stream token to match this session
-                    {
-                        let mut stream_lock = state.active_stream.lock().unwrap();
-                        stream_lock.auth_token = session_token.clone();
+                            let mut trust_store = state.trust_store.lock().unwrap();
+                            let _ = trust_store.remove_device(&trusted_device.id);
+                            let _ = trust_store.add_device(trusted_device);
+                            let _ = save_trust_store(&trust_store);
+
+                            // Update active stream token and bind target device
+                            {
+                                let mut stream_lock = state.active_stream.lock().unwrap();
+                                stream_lock.auth_token = session_token.clone();
+                                stream_lock.target_device_id = req_id.to_string();
+                                stream_lock.target_device_name = pair_req.requester_name.clone();
+                            }
+
+                            *active_lock = None; // clear pending pairing after success
+
+                            let resp = PairResponseBody {
+                                status: "APPROVED".to_string(),
+                                session_token,
+                                host_device_id: state.identity.id.to_string(),
+                                granted_permissions: perms.into_iter().map(|p| format!("{p:?}")).collect(),
+                            };
+                            send_json_response(&mut socket, 200, "OK", &resp, cors_allow_origin);
+                        }
+                        Err(migroute::pairing::PairingVerificationError::TooManyAttempts) => {
+                            *active_lock = None; // Destroy pairing session upon lockout
+                            send_error_response(
+                                &mut socket,
+                                429,
+                                "Too Many Requests",
+                                "SMP_PAIRING_LOCKED_OUT",
+                                "Maximum pairing attempts exceeded (3/3). Pairing session locked out for security.",
+                                cors_allow_origin,
+                            );
+                        }
+                        Err(migroute::pairing::PairingVerificationError::Expired) => {
+                            *active_lock = None;
+                            send_error_response(
+                                &mut socket,
+                                410,
+                                "Gone",
+                                "SMP_PAIRING_EXPIRED",
+                                "Pairing session has expired. Start a new one on PC.",
+                                cors_allow_origin,
+                            );
+                        }
+                        Err(migroute::pairing::PairingVerificationError::CodeMismatch) => {
+                            let attempts_left = session.max_attempts.saturating_sub(session.failed_attempts);
+                            send_error_response(
+                                &mut socket,
+                                403,
+                                "Forbidden",
+                                "SMP_INVALID_CODE",
+                                &format!("Invalid pairing PIN code. Attempts remaining: {attempts_left}"),
+                                cors_allow_origin,
+                            );
+                        }
+                        Err(migroute::pairing::PairingVerificationError::TokenMismatch) => {
+                            send_error_response(
+                                &mut socket,
+                                403,
+                                "Forbidden",
+                                "SMP_INVALID_TOKEN",
+                                "Pairing secret token mismatch.",
+                                cors_allow_origin,
+                            );
+                        }
+                        Err(migroute::pairing::PairingVerificationError::InvalidCodeFormat) => {
+                            send_error_response(
+                                &mut socket,
+                                400,
+                                "Bad Request",
+                                "SMP_INVALID_CODE_FORMAT",
+                                "Pairing code must be exactly 6 numeric digits.",
+                                cors_allow_origin,
+                            );
+                        }
+                        Err(migroute::pairing::PairingVerificationError::AlreadyDecided) => {
+                            send_error_response(
+                                &mut socket,
+                                409,
+                                "Conflict",
+                                "SMP_ALREADY_DECIDED",
+                                "Pairing session has already been decided.",
+                                cors_allow_origin,
+                            );
+                        }
                     }
-
-                    *active_lock = None; // clear pending pairing after success
-
-                    let resp = PairResponseBody {
-                        status: "APPROVED".to_string(),
-                        session_token,
-                        host_device_id: state.identity.id.to_string(),
-                        granted_permissions: perms.into_iter().map(|p| format!("{p:?}")).collect(),
-                    };
-                    send_json_response(&mut socket, 200, "OK", &resp);
                 } else {
-                    send_error_response(&mut socket, 404, "Not Found", "SMP_NO_ACTIVE_PAIRING", "No active pairing session on Windows PC. Click Start Pairing on PC first.");
+                    send_error_response(
+                        &mut socket,
+                        404,
+                        "Not Found",
+                        "SMP_NO_ACTIVE_PAIRING",
+                        "No active pairing session on Windows PC. Click Start Pairing on PC first.",
+                        cors_allow_origin,
+                    );
                 }
             } else {
-                send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_PAYLOAD", "Malformed pairing request payload");
+                send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_PAYLOAD", "Malformed pairing request payload", cors_allow_origin);
             }
         }
 
-        // ── 3. Session Creation ──
+        // ── 3. Session Creation (Host-verified session token tied to pairing) ──
         ("POST", "/smp/session") => {
-            let body_str = extract_http_body(&request_str);
-            if let Ok(sess_req) = serde_json::from_str::<SessionCreateBody>(body_str) {
+            if let Ok(sess_req) = serde_json::from_str::<SessionCreateBody>(&body_str) {
                 let trust_store = state.trust_store.lock().unwrap();
                 let client_id = match DeviceId::try_from(sess_req.client_device_id.as_str()) {
                     Ok(id) => id,
                     Err(_) => {
-                        send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_DEVICE_ID", "Invalid client device ID");
+                        send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_DEVICE_ID", "Invalid client device ID", cors_allow_origin);
                         return;
                     }
                 };
@@ -395,23 +604,51 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 let device = match trust_store.get_device(&client_id) {
                     Some(d) => d,
                     None => {
-                        send_error_response(&mut socket, 401, "Unauthorized", "SMP_DEVICE_NOT_TRUSTED", "Device is not paired or trusted with this host");
+                        send_error_response(&mut socket, 401, "Unauthorized", "SMP_DEVICE_NOT_TRUSTED", "Device is not paired or trusted with this host", cors_allow_origin);
                         return;
                     }
                 };
 
                 if device.is_revoked {
-                    send_error_response(&mut socket, 403, "Forbidden", "SMP_DEVICE_REVOKED", "Device authorization has been revoked by host");
+                    send_error_response(&mut socket, 403, "Forbidden", "SMP_DEVICE_REVOKED", "Device authorization has been revoked by host", cors_allow_origin);
                     return;
                 }
 
-                // Activate stream state with session token and metadata
+                // Session token verification
+                let provided_token = extract_bearer_token(&header_str)
+                    .unwrap_or_else(|| sess_req.session_token.clone());
+
+                if provided_token.is_empty() {
+                    send_error_response(&mut socket, 401, "Unauthorized", "SMP_MISSING_TOKEN", "Session token required", cors_allow_origin);
+                    return;
+                }
+
                 let mut stream_lock = state.active_stream.lock().unwrap();
+
+                // Prevent a second device from hijacking or kicking an ongoing active session
+                if stream_lock.is_active && !stream_lock.target_device_id.is_empty() && stream_lock.target_device_id != client_id.as_ref() {
+                    send_error_response(&mut socket, 409, "Conflict", "SMP_SESSION_BUSY", "Host is in an active session with another device", cors_allow_origin);
+                    return;
+                }
+
+                // Verify token matches active stream token or device fingerprint anchor
+                let token_valid = if !stream_lock.auth_token.is_empty() && stream_lock.target_device_id == client_id.as_ref() {
+                    constant_time_eq_str(&stream_lock.auth_token, &provided_token)
+                } else {
+                    let expected_fp_prefix = format!("FP-{}", &provided_token[..provided_token.len().min(8)].to_uppercase());
+                    device.fingerprint.starts_with(&expected_fp_prefix)
+                };
+
+                if !token_valid {
+                    send_error_response(&mut socket, 401, "Unauthorized", "SMP_INVALID_SESSION_TOKEN", "Session token is invalid or does not match device trust anchor", cors_allow_origin);
+                    return;
+                }
+
+                let session_id = format!("sm-sess-{}", &now_ms().to_string()[7..]);
                 stream_lock.is_active = true;
                 stream_lock.codec = "mjpeg".to_string();
-                stream_lock.target_fps = 30;
-                stream_lock.auth_token = sess_req.session_token.clone();
-                let session_id = format!("sm-sess-{}", &now_ms().to_string()[7..]);
+                stream_lock.target_fps = 60;
+                stream_lock.auth_token = provided_token.clone();
                 stream_lock.session_id = session_id.clone();
                 stream_lock.started_at_epoch_ms = now_ms();
                 stream_lock.target_device_id = device.id.to_string();
@@ -421,13 +658,13 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     session_id,
                     status: "SESSION_ESTABLISHED".to_string(),
                     transport: "LAN_DIRECT".to_string(),
-                    stream_url: format!("/live?token={}", sess_req.session_token),
+                    stream_url: format!("/live?token={}", provided_token),
                     protocol_version: PROTOCOL_VERSION,
                     heartbeat_interval_ms: 2000,
                 };
-                send_json_response(&mut socket, 200, "OK", &resp);
+                send_json_response(&mut socket, 200, "OK", &resp, cors_allow_origin);
             } else {
-                send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_PAYLOAD", "Malformed session request payload");
+                send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_PAYLOAD", "Malformed session request payload", cors_allow_origin);
             }
         }
 
@@ -439,32 +676,92 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 status: "HEALTHY".to_string(),
                 protocol_version: PROTOCOL_VERSION,
             };
-            send_json_response(&mut socket, 200, "OK", &resp);
+            send_json_response(&mut socket, 200, "OK", &resp, cors_allow_origin);
         }
 
-        // ── 5. Remote Input Injection ──
+        // ── 5. Remote Input Injection (Token authenticated, capability checked) ──
         ("POST", "/smp/input") => {
-            let body_str = extract_http_body(&request_str);
-            if let Ok(input_body) = serde_json::from_str::<RemoteInputBody>(body_str) {
-                let trust_store = state.trust_store.lock().unwrap();
-                let active_stream = state.active_stream.lock().unwrap();
+            if let Ok(input_body) = serde_json::from_str::<RemoteInputBody>(&body_str) {
+                // 1. Authenticate session token
+                let token = extract_bearer_token(&header_str)
+                    .or_else(|| input_body.session_token.clone());
 
-                // Target device ID for authorization
-                let dev_id_to_check = if !active_stream.target_device_id.is_empty() {
-                    active_stream.target_device_id.clone()
-                } else if !input_body.device_id.is_empty() {
-                    input_body.device_id.clone()
-                } else if let Some(d) = trust_store.list_all().first() {
-                    d.id.to_string()
-                } else {
-                    "sm-android-client".to_string()
+                let token_str = match token {
+                    Some(t) if !t.is_empty() => t,
+                    _ => {
+                        send_error_response(&mut socket, 401, "Unauthorized", "SMP_INPUT_UNAUTHORIZED", "Missing session token in Authorization header or payload", cors_allow_origin);
+                        return;
+                    }
                 };
-                drop(active_stream);
+
+                let stream_lock = state.active_stream.lock().unwrap();
+                if !stream_lock.is_active || stream_lock.auth_token.is_empty() {
+                    send_error_response(&mut socket, 401, "Unauthorized", "SMP_NO_ACTIVE_SESSION", "No active streaming session on host", cors_allow_origin);
+                    return;
+                }
+
+                if !constant_time_eq_str(&stream_lock.auth_token, &token_str) {
+                    send_error_response(&mut socket, 401, "Unauthorized", "SMP_INVALID_SESSION_TOKEN", "Session token is invalid", cors_allow_origin);
+                    return;
+                }
+
+                let target_device_id = stream_lock.target_device_id.clone();
+                drop(stream_lock);
+
+                // 2. Validate device identity and trust
+                let trust_store = state.trust_store.lock().unwrap();
+                let client_device_id = if !input_body.device_id.is_empty() {
+                    if input_body.device_id != target_device_id {
+                        send_error_response(&mut socket, 403, "Forbidden", "SMP_DEVICE_MISMATCH", "Cannot inject input for a different device", cors_allow_origin);
+                        return;
+                    }
+                    target_device_id
+                } else {
+                    target_device_id
+                };
+
+                let parsed_id = match DeviceId::try_from(client_device_id.as_str()) {
+                    Ok(id) => id,
+                    Err(_) => {
+                        send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_DEVICE_ID", "Invalid device ID", cors_allow_origin);
+                        return;
+                    }
+                };
+
+                let device = match trust_store.get_device(&parsed_id) {
+                    Some(d) => d,
+                    None => {
+                        send_error_response(&mut socket, 401, "Unauthorized", "SMP_DEVICE_NOT_TRUSTED", "Device is not in trust store", cors_allow_origin);
+                        return;
+                    }
+                };
+
+                if device.is_revoked {
+                    send_error_response(&mut socket, 403, "Forbidden", "SMP_DEVICE_REVOKED", "Device has been revoked by host", cors_allow_origin);
+                    return;
+                }
+
+                let action = input_body.action.as_str();
+
+                // 3. Enforce capability authorization (ControlMouse vs ControlKeyboard)
+                let is_mouse_action = matches!(
+                    action,
+                    "move" | "relative_move" | "left_click" | "right_click" | "double_click" | "mouse_down" | "mouse_up" | "scroll"
+                );
+                let is_keyboard_action = matches!(action, "key" | "text" | "hotkey");
+
+                if is_mouse_action && !device.has_permission(SessionPermission::ControlMouse) {
+                    send_error_response(&mut socket, 403, "Forbidden", "SMP_PERMISSION_DENIED", "ControlMouse capability not authorized for this device", cors_allow_origin);
+                    return;
+                }
+                if is_keyboard_action && !device.has_permission(SessionPermission::ControlKeyboard) {
+                    send_error_response(&mut socket, 403, "Forbidden", "SMP_PERMISSION_DENIED", "ControlKeyboard capability not authorized for this device", cors_allow_origin);
+                    return;
+                }
 
                 let seq = input_body.sequence.unwrap_or(0);
                 let (sw, sh) = get_screen_size();
 
-                // Compute x, y (from normalized 0..1 or raw px)
                 let x = if let Some(nx) = input_body.normalized_x {
                     (nx.clamp(0.0, 1.0) * sw as f32) as i32
                 } else {
@@ -476,53 +773,46 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     input_body.y.unwrap_or(0)
                 };
 
-                let action = input_body.action.as_str();
                 let res = match action {
-                    "move" => {
-                        state.input_controller.inject_mouse(
-                            &trust_store,
-                            &dev_id_to_check,
-                            x, y, 0, 0, false,
-                            false, false, false, false, false, false, 0, seq,
-                        )
-                    }
+                    "move" => state.input_controller.inject_mouse(
+                        &trust_store,
+                        &client_device_id,
+                        x, y, 0, 0, false,
+                        false, false, false, false, false, false, 0, seq,
+                    ),
                     "relative_move" => {
                         let dx = input_body.dx.unwrap_or(0);
                         let dy = input_body.dy.unwrap_or(0);
                         state.input_controller.inject_mouse(
                             &trust_store,
-                            &dev_id_to_check,
+                            &client_device_id,
                             0, 0, dx, dy, true,
                             false, false, false, false, false, false, 0, seq,
                         )
                     }
-                    "left_click" => {
-                        state.input_controller.inject_mouse(
-                            &trust_store,
-                            &dev_id_to_check,
-                            x, y, 0, 0, false,
-                            true, true, false, false, false, false, 0, seq,
-                        )
-                    }
-                    "right_click" => {
-                        state.input_controller.inject_mouse(
-                            &trust_store,
-                            &dev_id_to_check,
-                            x, y, 0, 0, false,
-                            false, false, true, true, false, false, 0, seq,
-                        )
-                    }
+                    "left_click" => state.input_controller.inject_mouse(
+                        &trust_store,
+                        &client_device_id,
+                        x, y, 0, 0, false,
+                        true, true, false, false, false, false, 0, seq,
+                    ),
+                    "right_click" => state.input_controller.inject_mouse(
+                        &trust_store,
+                        &client_device_id,
+                        x, y, 0, 0, false,
+                        false, false, true, true, false, false, 0, seq,
+                    ),
                     "double_click" => {
                         let r1 = state.input_controller.inject_mouse(
                             &trust_store,
-                            &dev_id_to_check,
+                            &client_device_id,
                             x, y, 0, 0, false,
                             true, true, false, false, false, false, 0, seq,
                         );
                         std::thread::sleep(Duration::from_millis(50));
                         let r2 = state.input_controller.inject_mouse(
                             &trust_store,
-                            &dev_id_to_check,
+                            &client_device_id,
                             x, y, 0, 0, false,
                             true, true, false, false, false, false, 0, if seq > 0 { seq + 1 } else { 0 },
                         );
@@ -535,7 +825,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                         let is_m = btn == "middle";
                         state.input_controller.inject_mouse(
                             &trust_store,
-                            &dev_id_to_check,
+                            &client_device_id,
                             x, y, 0, 0, false,
                             is_l, false, is_r, false, is_m, false, 0, seq,
                         )
@@ -547,7 +837,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                         let is_m = btn == "middle";
                         state.input_controller.inject_mouse(
                             &trust_store,
-                            &dev_id_to_check,
+                            &client_device_id,
                             x, y, 0, 0, false,
                             false, is_l, false, is_r, false, is_m, 0, seq,
                         )
@@ -556,7 +846,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                         let delta = input_body.scroll_delta.unwrap_or(0);
                         state.input_controller.inject_mouse(
                             &trust_store,
-                            &dev_id_to_check,
+                            &client_device_id,
                             0, 0, 0, 0, false,
                             false, false, false, false, false, false, delta, seq,
                         )
@@ -566,7 +856,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                         let up = input_body.key_up.unwrap_or(false);
                         state.input_controller.inject_keyboard(
                             &trust_store,
-                            &dev_id_to_check,
+                            &client_device_id,
                             vk,
                             up,
                             seq,
@@ -576,7 +866,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                         let txt = input_body.text.unwrap_or_default();
                         state.input_controller.inject_text(
                             &trust_store,
-                            &dev_id_to_check,
+                            &client_device_id,
                             &txt,
                             seq,
                         )
@@ -585,7 +875,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                         let hk = input_body.hotkey.unwrap_or_default();
                         state.input_controller.inject_hotkey(
                             &trust_store,
-                            &dev_id_to_check,
+                            &client_device_id,
                             &hk,
                             seq,
                         )
@@ -594,21 +884,29 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 };
 
                 if let Err(e) = res {
-                    send_error_response(&mut socket, 403, "Forbidden", "SMP_INPUT_UNAUTHORIZED", &e);
+                    send_error_response(&mut socket, 403, "Forbidden", "SMP_INPUT_UNAUTHORIZED", &e, cors_allow_origin);
                 } else {
-                    send_json_response(&mut socket, 200, "OK", &serde_json::json!({ "status": "INJECTED" }));
+                    send_json_response(&mut socket, 200, "OK", &serde_json::json!({ "status": "INJECTED" }), cors_allow_origin);
                 }
             } else {
-                send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_INPUT_PAYLOAD", "Malformed input payload");
+                send_error_response(&mut socket, 400, "Bad Request", "SMP_INVALID_INPUT_PAYLOAD", "Malformed input payload", cors_allow_origin);
             }
         }
 
-        // ── 6. Disconnect Session ──
+        // ── 6. Disconnect Session (Token authenticated) ──
         ("POST", "/smp/disconnect") => {
+            let token = extract_bearer_token(&header_str);
             let mut stream_lock = state.active_stream.lock().unwrap();
-            stream_lock.is_active = false;
-            stream_lock.started_at_epoch_ms = 0;
-            send_json_response(&mut socket, 200, "OK", &serde_json::json!({ "status": "DISCONNECTED" }));
+            if let Some(t) = token {
+                if !stream_lock.auth_token.is_empty() && constant_time_eq_str(&stream_lock.auth_token, &t) {
+                    stream_lock.is_active = false;
+                    stream_lock.started_at_epoch_ms = 0;
+                    stream_lock.auth_token.clear();
+                    send_json_response(&mut socket, 200, "OK", &serde_json::json!({ "status": "DISCONNECTED" }), cors_allow_origin);
+                    return;
+                }
+            }
+            send_error_response(&mut socket, 401, "Unauthorized", "SMP_UNAUTHORIZED", "Valid session token required to disconnect", cors_allow_origin);
         }
 
         // ── 7. Diagnostics & Connection Test Tool ──
@@ -634,33 +932,88 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 streaming_port: SMP_CONTROL_PORT,
                 overall: "PASS".to_string(),
             };
-            send_json_response(&mut socket, 200, "OK", &diag);
+            send_json_response(&mut socket, 200, "OK", &diag, cors_allow_origin);
         }
 
-        // ── 8. Live Display Stream (MJPEG) ──
+        // ── 8. Live Display Stream (MJPEG, strictly token-authenticated) ──
         ("GET", "/live") => {
-            // Check auth token
-            let active_token = {
-                let lock = state.active_stream.lock().unwrap();
-                lock.auth_token.clone()
+            let provided_token = extract_bearer_token(&header_str)
+                .or_else(|| extract_query_param(query, "token"));
+
+            let token = match provided_token {
+                Some(t) if !t.is_empty() => t,
+                _ => {
+                    let reject_resp = "HTTP/1.1 401 Unauthorized\r\n\
+                        Content-Type: text/plain; charset=utf-8\r\n\
+                        Connection: close\r\n\
+                        WWW-Authenticate: Bearer realm=\"SmartMigrate\"\r\n\r\n\
+                        Unauthorized: Valid Smart Migrate session token required\r\n";
+                    let _ = socket.write_all(reject_resp.as_bytes());
+                    return;
+                }
             };
 
-            let is_authorized = if active_token.is_empty() {
-                state.trust_store.lock().unwrap().active_count() > 0
-            } else {
-                let token_query = format!("token={}", active_token);
-                let token_bearer = format!("Bearer {}", active_token);
-                query.contains(&token_query) || request_str.contains(&token_bearer)
+            // Validate token against active stream state or trust store device fingerprint anchor
+            let target_dev_id = {
+                let (active_token, current_dev_id) = {
+                    let lock = state.active_stream.lock().unwrap();
+                    (lock.auth_token.clone(), lock.target_device_id.clone())
+                };
+
+                if !active_token.is_empty() && constant_time_eq_str(&active_token, &token) {
+                    current_dev_id
+                } else {
+                    // Check if token matches a paired device in the persistent trust store
+                    let trust_store = state.trust_store.lock().unwrap();
+                    let expected_fp_prefix = format!("FP-{}", &token[..token.len().min(8)].to_uppercase());
+                    let paired_dev = trust_store
+                        .list_all()
+                        .into_iter()
+                        .find(|d| d.fingerprint.starts_with(&expected_fp_prefix));
+
+                    match paired_dev {
+                        Some(dev) => {
+                            let dev_id_str = dev.id.to_string();
+                            let dev_name = dev.name.clone();
+                            drop(trust_store);
+
+                            // Bind active stream token to the authenticated paired device
+                            let mut stream_lock = state.active_stream.lock().unwrap();
+                            stream_lock.auth_token = token.clone();
+                            stream_lock.target_device_id = dev_id_str.clone();
+                            stream_lock.target_device_name = dev_name;
+                            dev_id_str
+                        }
+                        None => {
+                            let reject_resp = "HTTP/1.1 401 Unauthorized\r\n\
+                                Content-Type: text/plain; charset=utf-8\r\n\
+                                Connection: close\r\n\
+                                WWW-Authenticate: Bearer realm=\"SmartMigrate\"\r\n\r\n\
+                                Unauthorized: Invalid session token\r\n";
+                            let _ = socket.write_all(reject_resp.as_bytes());
+                            return;
+                        }
+                    }
+                }
             };
 
-            if !is_authorized {
-                let reject_resp = "HTTP/1.1 401 Unauthorized\r\n\
-                    Content-Type: text/plain; charset=utf-8\r\n\
-                    Connection: close\r\n\
-                    WWW-Authenticate: Bearer realm=\"SmartMigrate\"\r\n\r\n\
-                    Unauthorized: Valid Smart Migrate session token required\r\n";
-                let _ = socket.write_all(reject_resp.as_bytes());
-                return;
+            // Verify ViewScreen capability authorization
+            {
+                let trust_store = state.trust_store.lock().unwrap();
+                let client_id = DeviceId::try_from(target_dev_id.as_str()).ok();
+                let has_screen_perm = client_id
+                    .and_then(|id| trust_store.get_device(&id))
+                    .map(|dev| dev.has_permission(SessionPermission::ViewScreen))
+                    .unwrap_or(false);
+
+                if !has_screen_perm {
+                    let reject_resp = "HTTP/1.1 403 Forbidden\r\n\
+                        Content-Type: text/plain; charset=utf-8\r\n\
+                        Connection: close\r\n\r\n\
+                        Forbidden: ViewScreen capability is not granted to this device\r\n";
+                    let _ = socket.write_all(reject_resp.as_bytes());
+                    return;
+                }
             }
 
             let connection_token = now_ms();
@@ -688,14 +1041,13 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             let _ = socket.set_read_timeout(None);
             let _ = socket.set_write_timeout(Some(Duration::from_millis(8000)));
 
-            // Stream frames directly on this connection
+            // Stream frames directly on this connection (No wildcard CORS)
             let http_header = "HTTP/1.1 200 OK\r\n\
                 Content-Type: multipart/x-mixed-replace; boundary=--smartmigrate\r\n\
                 Cache-Control: no-cache, no-store, must-revalidate\r\n\
                 Pragma: no-cache\r\n\
                 Expires: 0\r\n\
-                Connection: keep-alive\r\n\
-                Access-Control-Allow-Origin: *\r\n\r\n";
+                Connection: keep-alive\r\n\r\n";
             if socket.write_all(http_header.as_bytes()).is_err() {
                 return;
             }
@@ -733,7 +1085,6 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 let now_ms = now_ms();
 
                 if let Ok((bgra_data, width, height, cap_duration_ms)) = capture_session.capture_frame() {
-                    // Count every capture attempt
                     if let Ok(mut sl) = state.active_stream.lock() {
                         sl.frames_captured += 1;
                     }
@@ -761,14 +1112,11 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                         }
                         let write_duration_ms = t_write.elapsed().as_secs_f32() * 1000.0;
 
-                        // Adaptive backpressure controller:
-                        // Senses socket write blocking and dynamically modulates quality and frame interval
+                        // Adaptive backpressure controller
                         if write_duration_ms > 25.0 {
-                            // Backpressure detected: step down quality and throttle to 30 FPS
                             current_quality = current_quality.saturating_sub(4).max(45);
                             frame_interval = Duration::from_millis(33);
                         } else if write_duration_ms < 6.0 && (cap_duration_ms + enc_duration_ms) < 14.0 {
-                            // Low latency link: probe quality up to 75 and sustain 60 FPS (16ms)
                             current_quality = (current_quality + 1).min(75);
                             frame_interval = Duration::from_millis(16);
                         }
@@ -782,7 +1130,6 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                             stream_lock.width = width;
                             stream_lock.height = height;
 
-                            // Update rolling measurement window every ~1 second
                             let window_elapsed = fps_window_start.elapsed();
                             if window_elapsed >= Duration::from_secs(1) {
                                 let elapsed_secs = window_elapsed.as_secs_f32();
@@ -822,7 +1169,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
 
         // ── 404 Not Found ──
         _ => {
-            send_error_response(&mut socket, 404, "Not Found", "SMP_ROUTE_NOT_FOUND", "Requested Smart Migrate endpoint does not exist");
+            send_error_response(&mut socket, 404, "Not Found", "SMP_ROUTE_NOT_FOUND", "Requested Smart Migrate endpoint does not exist", cors_allow_origin);
         }
     }
 }
@@ -843,26 +1190,23 @@ fn get_screen_size() -> (i32, i32) {
     (1920, 1080)
 }
 
-fn extract_http_body(request: &str) -> &str {
-    if let Some(pos) = request.find("\r\n\r\n") {
-        &request[pos + 4..]
-    } else if let Some(pos) = request.find("\n\n") {
-        &request[pos + 2..]
-    } else {
-        ""
-    }
-}
-
-fn send_json_response<T: Serialize>(socket: &mut TcpStream, status_code: u16, status_text: &str, body: &T) {
+fn send_json_response<T: Serialize>(
+    socket: &mut TcpStream,
+    status_code: u16,
+    status_text: &str,
+    body: &T,
+    cors_allow_origin: Option<&str>,
+) {
     if let Ok(json_str) = serde_json::to_string(body) {
+        let cors_hdr = cors_allow_origin
+            .map(|o| format!("Access-Control-Allow-Origin: {o}\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\n"))
+            .unwrap_or_default();
         let resp = format!(
             "HTTP/1.1 {status_code} {status_text}\r\n\
             Content-Type: application/json; charset=utf-8\r\n\
             Content-Length: {}\r\n\
             Connection: close\r\n\
-            Access-Control-Allow-Origin: *\r\n\
-            Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
-            Access-Control-Allow-Headers: Content-Type, Authorization\r\n\r\n\
+            {cors_hdr}\r\n\
             {json_str}",
             json_str.len()
         );
@@ -871,14 +1215,21 @@ fn send_json_response<T: Serialize>(socket: &mut TcpStream, status_code: u16, st
     }
 }
 
-fn send_error_response(socket: &mut TcpStream, status_code: u16, status_text: &str, code: &str, message: &str) {
+fn send_error_response(
+    socket: &mut TcpStream,
+    status_code: u16,
+    status_text: &str,
+    code: &str,
+    message: &str,
+    cors_allow_origin: Option<&str>,
+) {
     let err_obj = serde_json::json!({
         "error": code,
         "message": message,
         "protocol_version": PROTOCOL_VERSION,
         "timestamp_ms": now_ms()
     });
-    send_json_response(socket, status_code, status_text, &err_obj);
+    send_json_response(socket, status_code, status_text, &err_obj, cors_allow_origin);
 }
 
 // #[cfg(test)]

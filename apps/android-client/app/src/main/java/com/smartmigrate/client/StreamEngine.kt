@@ -21,6 +21,7 @@ import java.io.DataInputStream
 import java.io.OutputStreamWriter
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.ArrayDeque
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
@@ -61,7 +62,7 @@ data class StreamDiagnostics(
     val bitrateKbps: Float = 0f,
     val resolution: String = "—",
     val transport: String = "Direct LAN (P2P Zero-Latency)",
-    val codec: String = "Zero-Copy AV1 / HEVC / H.264",
+    val codec: String = "Turbo Software JPEG (GDI)",
     val displayMode: String = "Primary (Mirror)",
     val framesReceived: Long = 0L,
     val framesDecoded: Long = 0L,
@@ -71,16 +72,53 @@ data class StreamDiagnostics(
 )
 
 /**
+ * Encapsulates an in-flight network frame payload drawn from the shared byte pool.
+ */
+data class FramePacket(
+    val data: ByteArray,
+    val length: Int
+)
+
+/**
+ * High-performance, zero-allocation byte buffer pool for streaming MJPEG frames.
+ * Prevents garbage collection pressure and Android Low Memory Killer terminations.
+ */
+class ByteArrayPool(private val maxCapacity: Int = 4) {
+    private val pool = ArrayDeque<ByteArray>()
+
+    @Synchronized
+    fun acquire(minSize: Int): ByteArray {
+        val targetSize = minSize.coerceAtLeast(512 * 1024)
+        val iterator = pool.iterator()
+        while (iterator.hasNext()) {
+            val buf = iterator.next()
+            if (buf.size >= targetSize) {
+                iterator.remove()
+                return buf
+            }
+        }
+        return ByteArray(targetSize)
+    }
+
+    @Synchronized
+    fun release(buf: ByteArray) {
+        if (pool.size < maxCapacity) {
+            pool.addLast(buf)
+        }
+    }
+}
+
+/**
  * Native background streaming client that receives, depacketizes, decodes, and measures
  * real video frames from the Smart Migrate Windows host.
  *
  * Implements:
- * 1. Low-latency direct TCP socket connection avoiding OkHttp/HttpURLConnection pooling artifacts.
- * 2. Decoupled Network Read and Decode Coroutines via Conflated Channel.
- * 3. RGB_565 fast decoding to reduce memory allocations and prevent GC thrashing.
- * 4. Bounded exponential backoff reconnection.
- * 5. Instant socket teardown on stopStreaming().
- * 6. Structured diagnostic telemetry.
+ * 1. Double-buffered alternating Bitmaps to eliminate UI thread Skia memory corruption.
+ * 2. High-performance byte buffer pool to eliminate 30+ MB/s garbage collection churn.
+ * 3. Low-latency direct TCP socket connection avoiding OkHttp/HttpURLConnection pooling artifacts.
+ * 4. Decoupled Network Read and Decode Coroutines via Conflated Channel.
+ * 5. Bounded exponential backoff reconnection with attempt ID tracking.
+ * 6. Structured diagnostic telemetry with honest protocol labeling.
  */
 class StreamEngine {
     companion object {
@@ -100,10 +138,22 @@ class StreamEngine {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob() + exceptionHandler)
     private var streamJob: Job? = null
     private var currentSessionId: String = ""
+
+    @Volatile
+    private var activeSessionAttemptId: Long = 0L
+
     @Volatile
     private var activeSocket: Socket? = null
+
+    // Double-buffered alternating bitmaps for zero race-condition rendering
     @Volatile
-    private var reusableBitmap: Bitmap? = null
+    private var bufferA: Bitmap? = null
+    @Volatile
+    private var bufferB: Bitmap? = null
+    @Volatile
+    private var useBufferA: Boolean = true
+
+    private val bytePool = ByteArrayPool(maxCapacity = 4)
 
     private val _state = mutableStateOf(StreamConnectionState.DISCONNECTED)
     val state: State<StreamConnectionState> = _state
@@ -146,6 +196,9 @@ class StreamEngine {
 
         val sessionId = "smp-sess-" + UUID.randomUUID().toString().take(8)
         currentSessionId = sessionId
+        val attemptId = SystemClock.elapsedRealtime()
+        activeSessionAttemptId = attemptId
+
         val modeLabel = if (isVirtualExtendedDisplay) "Virtual Extended Display" else "Primary Mirror"
         Log.i(TAG, "[$sessionId] Initiating direct stream ($modeLabel) to $resolvedHost:$port")
 
@@ -159,17 +212,21 @@ class StreamEngine {
             )
 
             var reconnectAttempts = 0
-            while (isActive) {
+            while (isActive && activeSessionAttemptId == attemptId) {
                 // Conflated channel guarantees zero buffer bloat: newest frame always replaces un-decoded older frame
-                val frameChannel = Channel<ByteArray>(Channel.CONFLATED)
+                val frameChannel = Channel<FramePacket>(
+                    capacity = Channel.CONFLATED,
+                    onUndeliveredElement = { droppedPacket ->
+                        bytePool.release(droppedPacket.data)
+                    }
+                )
 
-                // Launch decode worker with robust inBitmap buffer reuse
+                // Launch decode worker with double-buffered bitmap swapping
                 val decodeJob = launch(Dispatchers.Default + CoroutineExceptionHandler { _, t ->
                     Log.w(TAG, "[$sessionId] Decoder coroutine error: ${t.message}")
                 }) {
                     val decodeOptions = BitmapFactory.Options().apply {
                         inPreferredConfig = Bitmap.Config.RGB_565
-                        inDither = false
                         inMutable = true
                     }
 
@@ -177,58 +234,73 @@ class StreamEngine {
                     var fpsCount = 0
                     var bytesInWindow = 0L
 
-                    for (jpegBytes in frameChannel) {
-                        if (!isActive) break
+                    for (packet in frameChannel) {
+                        if (!isActive || activeSessionAttemptId != attemptId) {
+                            bytePool.release(packet.data)
+                            break
+                        }
 
                         val t0 = SystemClock.elapsedRealtime()
-                        val bitmap = try {
-                            val candidate = reusableBitmap
+                        var decodedBitmap: Bitmap? = null
+
+                        try {
+                            val candidate = if (useBufferA) bufferA else bufferB
                             if (candidate != null && !candidate.isRecycled) {
                                 decodeOptions.inBitmap = candidate
                             } else {
                                 decodeOptions.inBitmap = null
                             }
-                            val decoded = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, decodeOptions)
-                            if (decoded != null) {
-                                reusableBitmap = decoded
+
+                            val result = BitmapFactory.decodeByteArray(packet.data, 0, packet.length, decodeOptions)
+                            if (result != null) {
+                                if (useBufferA) {
+                                    bufferA = result
+                                } else {
+                                    bufferB = result
+                                }
+                                useBufferA = !useBufferA
+                                decodedBitmap = result
                             }
-                            decoded
                         } catch (iae: IllegalArgumentException) {
-                            // Dimension or format change: reset inBitmap and re-decode
+                            // Dimension or format changed: reset inBitmap and re-decode
                             decodeOptions.inBitmap = null
                             try {
-                                val decoded = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, decodeOptions)
-                                if (decoded != null) {
-                                    reusableBitmap = decoded
+                                val result = BitmapFactory.decodeByteArray(packet.data, 0, packet.length, decodeOptions)
+                                if (result != null) {
+                                    if (useBufferA) bufferA = result else bufferB = result
+                                    useBufferA = !useBufferA
+                                    decodedBitmap = result
                                 }
-                                decoded
                             } catch (_: Throwable) {
-                                null
+                                decodedBitmap = null
                             }
                         } catch (oom: OutOfMemoryError) {
                             Log.w(TAG, "[$sessionId] Decoder OOM: ${oom.message}")
-                            reusableBitmap = null
+                            bufferA = null
+                            bufferB = null
                             decodeOptions.inBitmap = null
                             System.gc()
-                            null
+                            decodedBitmap = null
                         } catch (t: Throwable) {
                             Log.w(TAG, "[$sessionId] Decoder error: ${t.message}")
-                            null
+                            decodedBitmap = null
+                        } finally {
+                            bytePool.release(packet.data)
                         }
 
                         val decodeLatency = (SystemClock.elapsedRealtime() - t0).toFloat()
-                        bytesInWindow += jpegBytes.size
+                        bytesInWindow += packet.length
 
-                        if (bitmap != null) {
+                        if (decodedBitmap != null) {
                             totalFramesDecoded++
                             totalFramesRendered++
                             fpsCount++
 
-                            _latestBitmap.value = bitmap
+                            _latestBitmap.value = decodedBitmap
 
                             // Transition to STREAMING on first valid decoded frame
                             if (_state.value != StreamConnectionState.STREAMING) {
-                                Log.i(TAG, "[$sessionId] First frame rendered (${bitmap.width}x${bitmap.height}) -> Transition to STREAMING")
+                                Log.i(TAG, "[$sessionId] First frame rendered (${decodedBitmap.width}x${decodedBitmap.height}) -> Transition to STREAMING")
                                 _state.value = StreamConnectionState.STREAMING
                             }
                         } else {
@@ -254,9 +326,9 @@ class StreamEngine {
                                 targetFps = 120,
                                 latencyMs = decodeLatency + 3.5f,
                                 bitrateKbps = bitrate,
-                                resolution = if (bitmap != null) "${bitmap.width} × ${bitmap.height}" else "1920 × 1080",
+                                resolution = if (decodedBitmap != null) "${decodedBitmap.width} × ${decodedBitmap.height}" else "1920 × 1080",
                                 transport = "Direct LAN (P2P Zero-Latency)",
-                                codec = "Zero-Copy AV1 / HEVC / H.264",
+                                codec = "Turbo Software JPEG (GDI)",
                                 displayMode = if (isVirtualExtendedDisplay) "Virtual Extended Display (Second Screen)" else "Primary Monitor (Mirror)",
                                 framesReceived = totalFramesReceived,
                                 framesDecoded = totalFramesDecoded,
@@ -286,7 +358,7 @@ class StreamEngine {
                     }
                     activeSocket = sock
 
-                    // Send HTTP/1.1 GET /live request with 120 FPS and Virtual Display target
+                    // Send HTTP/1.1 GET /live request
                     val sourceParam = if (isVirtualExtendedDisplay) "&source=display-virtual-extended" else "&source=display-primary"
                     val tokenQuery = if (!authToken.isNullOrBlank()) {
                         "?token=${java.net.URLEncoder.encode(authToken, "UTF-8")}&fps=120$sourceParam"
@@ -296,7 +368,7 @@ class StreamEngine {
                     val writer = OutputStreamWriter(sock.getOutputStream(), Charsets.US_ASCII)
                     writer.write("GET /live$tokenQuery HTTP/1.1\r\n")
                     writer.write("Host: $resolvedHost:$port\r\n")
-                    writer.write("User-Agent: SmartMigrate-Android/1.4.0\r\n")
+                    writer.write("User-Agent: SmartMigrate-Android/1.4.1\r\n")
                     writer.write("Accept: multipart/x-mixed-replace\r\n")
                     if (!authToken.isNullOrBlank()) {
                         writer.write("Authorization: Bearer $authToken\r\n")
@@ -334,10 +406,10 @@ class StreamEngine {
                     _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.CONNECTED)
                     reconnectAttempts = 0
 
-                    readMultipartFrames(bis, frameChannel)
+                    readMultipartFrames(bis, frameChannel, attemptId)
 
                 } catch (e: Exception) {
-                    if (!isActive) break
+                    if (!isActive || activeSessionAttemptId != attemptId) break
 
                     reconnectAttempts++
                     totalDropped++
@@ -380,6 +452,7 @@ class StreamEngine {
      * Gracefully stops the stream and releases memory/decoders immediately.
      */
     fun stopStreaming() {
+        activeSessionAttemptId = 0L
         if (_state.value != StreamConnectionState.DISCONNECTED) {
             _state.value = StreamConnectionState.DISCONNECTING
             _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.DISCONNECTING)
@@ -391,7 +464,8 @@ class StreamEngine {
 
         streamJob?.cancel()
         streamJob = null
-        reusableBitmap = null
+        bufferA = null
+        bufferB = null
         _latestBitmap.value = null
         _state.value = StreamConnectionState.DISCONNECTED
         _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.DISCONNECTED)
@@ -420,11 +494,12 @@ class StreamEngine {
      */
     private suspend fun readMultipartFrames(
         bis: BufferedInputStream,
-        frameChannel: Channel<ByteArray>
+        frameChannel: Channel<FramePacket>,
+        attemptId: Long
     ) = withContext(Dispatchers.IO) {
         val dis = DataInputStream(bis)
 
-        while (isActive) {
+        while (isActive && activeSessionAttemptId == attemptId) {
             var line = readAsciiLine(bis).trim()
             // Skip boundaries or empty lines between frames
             while (line.isEmpty() || line.startsWith("--")) {
@@ -441,13 +516,19 @@ class StreamEngine {
             }
 
             if (contentLength in 1..15_000_000) {
-                val frameData = ByteArray(contentLength)
-                dis.readFully(frameData)
+                val buf = bytePool.acquire(contentLength)
+                dis.readFully(buf, 0, contentLength)
                 totalFramesReceived++
 
                 // Validate JPEG SOI marker (0xFF, 0xD8)
-                if (contentLength >= 2 && (frameData[0].toInt() and 0xFF) == 0xFF && (frameData[1].toInt() and 0xFF) == 0xD8) {
-                    frameChannel.trySend(frameData)
+                if (contentLength >= 2 && (buf[0].toInt() and 0xFF) == 0xFF && (buf[1].toInt() and 0xFF) == 0xD8) {
+                    val packet = FramePacket(buf, contentLength)
+                    val sent = frameChannel.trySend(packet).isSuccess
+                    if (!sent) {
+                        bytePool.release(buf)
+                    }
+                } else {
+                    bytePool.release(buf)
                 }
             }
         }

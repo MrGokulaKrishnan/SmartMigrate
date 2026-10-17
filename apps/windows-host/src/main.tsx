@@ -1610,9 +1610,9 @@ function HomeView({
       {/* Hero Banner */}
       <div className="home-hero-banner">
         <div className="hero-left">
-          <h2>Hardware Display Stream. Seamless Phone Remote Control.</h2>
+          <h2>Low-Latency Display Stream. Seamless Phone Remote Control.</h2>
           <p>
-            Smart Migrate streams your Windows PC display to your mobile device at 60 FPS hardware acceleration over direct LAN, with encrypted touch, touchpad, and keyboard remote control.
+            Smart Migrate streams your Windows PC display to your mobile device with adaptive low-latency streaming over direct LAN, with multi-touch trackpad, precision mouse, and keyboard remote control.
           </p>
           <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
             <button className="btn btn-primary" onClick={onConnect}>
@@ -2626,7 +2626,7 @@ function RemoteControlView({
     durationSeconds: 120,
     totalFrames: 7200,
     droppedFrames: 0,
-    encoderName: "Windows Graphics Capture (NVENC)",
+    encoderName: "Turbo Software JPEG (GDI)",
     resolution: "1920x1080",
   });
 
@@ -2643,8 +2643,8 @@ function RemoteControlView({
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <div className="workspace-header" style={{ marginBottom: 0 }}>
         <div className="workspace-title-group">
-          <h1>Remote Desktop 2.0 Workspace</h1>
-          <p>Hardware-accelerated screen capture and sub-millisecond input injection.</p>
+          <h1>Remote Desktop Workspace</h1>
+          <p>Low-latency desktop display capture and precision input injection.</p>
         </div>
         <div className="header-action-group">
           <select value={qualityMode} onChange={(e) => setQualityMode(e.target.value)} style={{ width: "160px" }}>
@@ -2668,7 +2668,7 @@ function RemoteControlView({
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <span style={{ fontWeight: 600, color: "#ffffff" }}>Remote Stream Session</span>
             <span className="device-status-badge badge-connected" style={{ display: "inline-flex", alignItems: "center" }}>
-              <StatusDot status="connected" /> 1080p 60 FPS
+              <StatusDot status="connected" /> 1080p Adaptive Stream
             </span>
           </div>
 
@@ -2676,7 +2676,7 @@ function RemoteControlView({
             <span>Latency: <strong>14 ms</strong></span>
             <span>Bitrate: <strong>8.4 Mbps</strong></span>
             <span>Loss: <strong>0.0%</strong></span>
-            <span>Encoder: <strong>NVENC</strong></span>
+            <span>Encoder: <strong>Turbo JPEG</strong></span>
           </div>
 
           <div>

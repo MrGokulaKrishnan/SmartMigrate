@@ -148,7 +148,7 @@
               </span>
               <span class="trust-item">
                 <svg class="trust-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                AES-256-GCM Encryption
+                Host-Side Auth & Lockout
               </span>
               <span class="trust-item">
                 <svg class="trust-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
@@ -304,7 +304,7 @@
                 <ul class="readiness-list">
                   <li>— MigRoute systems engine in 100% memory-safe Rust</li>
                   <li>— SMP/1 binary envelope protocol framing (monotonic seq)</li>
-                  <li>— AES-256-GCM authenticated session encryption</li>
+                  <li>— Host-side capability authorization & brute-force PIN lockout</li>
                   <li>— SHA-256 Merkle tree chunk verification</li>
                   <li>— UDP Orbit Radar auto-discovery (port 7889)</li>
                   <li>— TCP chunk streaming & display transport (port 7890)</li>
@@ -510,10 +510,10 @@
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                   </svg>
                 </div>
-                <span class="feature-tag-badge">AES-256-GCM</span>
+                <span class="feature-tag-badge">Host-Side Auth</span>
               </div>
-              <h3>AES-256-GCM Encryption</h3>
-              <p>All display packets, remote keystrokes, and file chunks are encrypted with ephemeral session keys derived via X25519 ECDH key exchange.</p>
+              <h3>Host-Side Capability Authorization</h3>
+              <p>All display streams and remote input events require cryptographically generated session tokens validated against the host's trust store with 3-attempt lockout defense.</p>
             </article>
 
             <!-- 05 -->
@@ -640,7 +640,7 @@
               <span style="color: rgba(255,255,255,0.3);">•</span>
               <span id="downloads-last-updated" style="font-size: 12px; color: #A78BFA; font-weight: 600;">Updated recently: 1 hour ago</span>
               <span style="color: rgba(255,255,255,0.3);">•</span>
-              <span id="downloads-exact-date" style="font-size: 11px; color: #94A3B8;">October 16, 2026 (22:30 UTC)</span>
+              <span id="downloads-exact-date" style="font-size: 11px; color: #94A3B8;">October 17, 2026 (05:00 UTC)</span>
             </div>
           </div>
 
@@ -806,12 +806,12 @@
                 <dl class="card-spec-meta" style="margin-top: 1.25rem;">
                   <div><dt>Version</dt><dd id="android-apk-version">1.4.1</dd></div>
                   <div><dt>Architecture</dt><dd>arm64-v8a / universal</dd></div>
-                  <div><dt>File Size</dt><dd id="android-apk-size">12.2 MB</dd></div>
-                  <div><dt>Release Date</dt><dd id="android-release-date">October 16, 2026</dd></div>
+                  <div><dt>File Size</dt><dd id="android-apk-size">2.6 MB</dd></div>
+                  <div><dt>Release Date</dt><dd id="android-release-date">October 17, 2026</dd></div>
                 </dl>
 
                 <!-- Interactive HiddenHash Component -->
-                <div class="hidden-hash-box" data-hash="37dcefc61d935c05c8692c95c4c1cab02c8d44bf76c160ef6c2eb45dec99e15e">
+                <div class="hidden-hash-box" data-hash="66d2673879d5f239fb2bd85da9d8ea20fafd0ea97f258c117937c655d9a69aa7">
                   <div class="hash-toolbar">
                     <span class="hash-label">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
