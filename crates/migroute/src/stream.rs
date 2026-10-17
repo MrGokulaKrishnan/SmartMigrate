@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// 4-byte magic signature at the start of every Smart Migrate Datagram packet: "SMDT".
-pub const DATAGRAM_MAGIC: [u8; 4] = [b'S', b'M', b'D', b'T'];
+pub const DATAGRAM_MAGIC: [u8; 4] = *b"SMDT";
 
 /// Maximum safe UDP payload size to prevent IP-level fragmentation across Wi-Fi networks (MTU ~1400 bytes).
 pub const MAX_DATAGRAM_PAYLOAD_SIZE: usize = 1380;
@@ -47,6 +47,7 @@ pub struct DatagramHeader {
 }
 
 impl DatagramHeader {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         stream_id: u64,
         frame_seq: u64,
@@ -200,7 +201,7 @@ pub fn packetize_frame(
     }
 
     let chunk_payload_size = MAX_DATAGRAM_PAYLOAD_SIZE;
-    let total_chunks = ((payload.len() + chunk_payload_size - 1) / chunk_payload_size) as u16;
+    let total_chunks = payload.len().div_ceil(chunk_payload_size) as u16;
     let mut packets = Vec::with_capacity(total_chunks as usize);
 
     for (idx, slice) in payload.chunks(chunk_payload_size).enumerate() {

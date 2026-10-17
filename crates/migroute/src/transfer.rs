@@ -643,21 +643,16 @@ impl TransferSession {
 // ─── Pure Rust LZ4 Block Compression Engine & Codec ──────────────────────────
 
 /// Supported compression codecs for SMP/1 chunk transfer pipeline.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TransferCompression {
     /// Uncompressed raw bytes (used for media, zip, or high-entropy files).
+    #[default]
     None,
     /// Ultra-fast LZ4 block compression (near memory bandwidth throughput).
     Lz4,
     /// High-ratio Zstandard compression (for network-constrained links).
     Zstd,
-}
-
-impl Default for TransferCompression {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// Computes standard IEEE 802.3 CRC32 checksum over a byte slice.
@@ -737,23 +732,26 @@ pub fn lz4_compress_block(src: &[u8]) -> Vec<u8> {
         table[h] = ip as u32;
 
         let distance = ip.wrapping_sub(ref_pos);
-        if distance > 0 && distance <= 65535 && ip + 4 <= src.len() && ref_pos + 4 <= src.len() {
-            if src[ip..ip + 4] == src[ref_pos..ref_pos + 4] {
-                // Determine match length
-                let mut match_len = 4;
-                while ip + match_len < src.len() && src[ip + match_len] == src[ref_pos + match_len] {
-                    match_len += 1;
-                }
-
-                emit_lz4_sequence(&mut out, &src[anchor..ip], distance as u16, match_len);
-
-                ip += match_len;
-                anchor = ip;
-                if ip < limit {
-                    table[lz4_hash4(src, ip)] = ip as u32;
-                }
-                continue;
+        if distance > 0
+            && distance <= 65535
+            && ip + 4 <= src.len()
+            && ref_pos + 4 <= src.len()
+            && src[ip..ip + 4] == src[ref_pos..ref_pos + 4]
+        {
+            // Determine match length
+            let mut match_len = 4;
+            while ip + match_len < src.len() && src[ip + match_len] == src[ref_pos + match_len] {
+                match_len += 1;
             }
+
+            emit_lz4_sequence(&mut out, &src[anchor..ip], distance as u16, match_len);
+
+            ip += match_len;
+            anchor = ip;
+            if ip < limit {
+                table[lz4_hash4(src, ip)] = ip as u32;
+            }
+            continue;
         }
         ip += 1;
     }
