@@ -2,10 +2,13 @@
   "product": "Smart Migrate",
   "version": "1.4.4",
   "versionCode": 8,
-  "releaseDate": "2026-10-17T15:40:00Z",
-  "releaseNotes": "- Android: Live stream frame decodes immediately promote connection state to STREAMING, eliminating stuck \"Reconnecting to Windows host...\" banners\n- Android: Automatic session token fallback across input handlers ensures mouse and touch coordinates are never dropped due to transient stream reconnects\n- Android: Dynamic desktop aspect ratio mapping prevents letterbox margin mis-clicks in Fit display mode\n- Android: Replaced missing Unicode glyph box with crisp hardware-accelerated vector power icon\n- Windows & Host: Added automatic ControlKeyboard permission grant on mouse authorization and instantaneous auto-dismissal of Pairing & Verification modal\n- Security: Full APK Signature Scheme v3/v3.1 key rotation lineage preserved for smooth seamless in-place updates",
+  "releaseDate": "2026-10-17T16:20:00Z",
+  "releaseNotes": "Smart Migrate v1.4.4 cross-platform update\n- Windows: Unify authoritative runtime versioning across About page, sidebar navigation, and in-app updater\n- Windows: Rebuilt and Authenticode-signed native 1.4.4 installers with automatic file-lock release on upgrade\n- Windows: Platform-specific update notes filtering and semantic versioning verification\n- Android: Active video frame decodes immediately promote connection state to STREAMING and clear reconnect banner\n- Android: SessionToken fallback across input handlers ensures mouse and touch coordinates are never dropped\n- Android: Dynamic desktop aspect ratio mapping prevents letterbox margin mis-clicks\n- Android: Native vector power icon replaces missing system font glyph box\n- Cross-Platform: Automatic ControlKeyboard authorization and instantaneous modal dismissal upon PIN approval",
   "releaseHighlights": [
-    "Android: Instant reconnect recovery — active video frame decodes clear reconnect banner immediately",
+    "Windows: Dynamic runtime versioning across About, Navigation, and In-App Updater",
+    "Windows: Rebuilt Authenticode-signed 1.4.4 installer with elevated execution and file-lock release",
+    "Windows: Platform-separated release notes and semantic versioning integrity checks",
+    "Android: Instant reconnect recovery — live stream decodes clear reconnect banner immediately",
     "Android: Host pairing modal auto-dismisses immediately upon PIN approval",
     "Android: Full touch, mouse, and keyboard input integration with persistent session authorization",
     "Android: Dynamic aspect ratio touch mapping for accurate desktop coordinate scaling",
@@ -18,13 +21,21 @@
   },
   "platforms": {
     "windows-x86_64": {
-      "version": "1.4.2",
+      "version": "1.4.4",
       "url": "https://smartmigrate.web.app/downloads/windows/SmartMigrate-Setup-x64.exe",
       "fileName": "SmartMigrate-Setup-x64.exe",
-      "size": 4426479,
-      "sha256": "1a3566d658e420d20444a046a4ac6ae4dd8afdb306f77a2351f8fe3996a3d150",
-      "signature": "SMP-SIG-WIN-1.4.2-VERIFIED-AUTH",
-      "mandatory": false
+      "size": 4439864,
+      "sha256": "379b99b985975046e00e14fb95afda97b019cbb474f20e16913f4ef539754193",
+      "signature": "SMP-SIG-WIN-1.4.4-VERIFIED-AUTH",
+      "mandatory": false,
+      "releaseNotes": "Smart Migrate v1.4.4 Windows Host Shell\n- Windows: Unified authoritative runtime versioning across About, navigation sidebar, and in-app updater\n- Windows: Fixed UAC elevation, argument handling, and process exit to release file lock during in-place upgrade\n- Windows: Platform-separated release highlights and strict semantic versioning checks\n- Display Stream: Full-resolution 4:4:4 chroma, adaptive frame-rate shedding, and 60 FPS target\n- Security: Authenticode SHA-256 code signing with DigiCert RFC 3161 timestamping",
+      "releaseHighlights": [
+        "Windows: Dynamic runtime versioning across About, Navigation, and In-App Updater",
+        "Windows: Elevated installer execution with automatic file-lock release on upgrade",
+        "Windows: Dedicated Windows-specific update notes and semantic versioning verification",
+        "Display Stream: 4:4:4 chroma, base JPEG quality 82, and 60 FPS adaptive streaming",
+        "Security: Authenticode SHA-256 signed executable and installer bundles"
+      ]
     },
     "android-arm64": {
       "version": "1.4.4",
@@ -35,7 +46,16 @@
       "sha256": "054d325185c9a87dfea9963475296ee8ff964a3cc69b4afe5130ac0aa9c166a1",
       "signature": "62:03:AE:3F:A5:56:E3:29:31:9F:BC:4C:C8:B7:0F:29:72:EC:75:43:A5:06:7A:9A:23:24:5F:F2:EA:5D:36:60",
       "certificateFingerprint": "62:03:AE:3F:A5:56:E3:29:31:9F:BC:4C:C8:B7:0F:29:72:EC:75:43:A5:06:7A:9A:23:24:5F:F2:EA:5D:36:60",
-      "mandatory": false
+      "mandatory": false,
+      "releaseNotes": "Smart Migrate v1.4.4 Android Client\n- Android: Live stream frame decodes immediately promote connection state to STREAMING, eliminating stuck reconnect banner\n- Android: Automatic session token fallback across input handlers ensures mouse and touch coordinates are never dropped\n- Android: Dynamic desktop aspect ratio mapping prevents letterbox margin mis-clicks\n- Android: Replaced missing Unicode glyph box with crisp hardware-accelerated vector power icon\n- Security: Full APK Signature Scheme v3/v3.1 key rotation lineage preserved for smooth in-place updates",
+      "releaseHighlights": [
+        "Android: Instant reconnect recovery — active video frame decodes clear reconnect banner immediately",
+        "Android: Host pairing modal auto-dismisses immediately upon PIN approval",
+        "Android: Full touch, mouse, and keyboard input integration with persistent session authorization",
+        "Android: Dynamic aspect ratio touch mapping for accurate desktop coordinate scaling",
+        "Android: Native vector power icon replaces system font tofu glyphs",
+        "Android: APK Signature Scheme v3/v3.1 rotation lineage for seamless upgrade"
+      ]
     }
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { QRCodeSvg } from "./QRCodeSvg";
 import brandLogoUrl from "./smart_migrate_logo.png";
 import "./styles.css";
@@ -169,7 +170,7 @@ const previewStatus: HostStatus = {
   fingerprint: "SM-HOST-AUTHORITY",
   trustedDeviceCount: 1,
   privilegedFeaturesEnabled: true,
-  version: "1.4.1",
+  version: "1.4.4",
 };
 
 function formatCode(raw: unknown): string {
@@ -838,7 +839,7 @@ export function App() {
       }
     } catch (err: any) {
       const errStr = err?.toString() || "Failed to launch installer.";
-      if (errStr.includes("UAC_CANCELLED")) {
+      if (errStr.includes("UAC_CANCELLED") || errStr.includes("administrator permission")) {
         setUpdatePhase("uac_cancelled");
       } else {
         setUpdatePhase("error");
@@ -846,6 +847,17 @@ export function App() {
       }
     }
   };
+
+  // Dynamic application version query from Tauri runtime
+  useEffect(() => {
+    getVersion()
+      .then((v) => {
+        if (v && v !== "Unknown") {
+          setStatus((prev) => ({ ...prev, version: v }));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Reconcile pending update upon startup
   useEffect(() => {
@@ -1272,7 +1284,7 @@ export function App() {
               <span className="sidebar-footer-engine">MigRoute</span>
             </div>
             <span style={{ fontSize: "0.62rem", color: "var(--sm-text-3)" }}>
-              Windows Host Shell v1.4.0
+              Windows Host Shell v{status.version || "1.4.4"}
             </span>
           </div>
         </aside>
@@ -3390,7 +3402,7 @@ function AboutView({
             Commercial-grade cross-device connectivity and file migration platform.
           </p>
           <div style={{ display: "flex", gap: "12px", fontSize: "0.72rem", color: "var(--sm-brand-300)", fontFamily: "JetBrains Mono" }}>
-            <span>Version: 1.4.0</span>
+            <span>Version: {status?.version || "1.4.4"}</span>
             <span>Protocol: SMP/1</span>
             <span>Engine: MigRoute Core</span>
           </div>

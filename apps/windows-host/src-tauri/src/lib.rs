@@ -781,6 +781,29 @@ struct UpdateCheckDto {
     sha256: String,
 }
 
+/// Compares two semver strings to determine if the candidate release is strictly newer.
+fn is_newer_version(latest: &str, current: &str) -> bool {
+    let parse = |v: &str| -> Vec<u64> {
+        v.trim_start_matches('v')
+            .split('.')
+            .map(|part| part.split(|c: char| !c.is_ascii_digit()).next().unwrap_or("0").parse::<u64>().unwrap_or(0))
+            .collect()
+    };
+    let l_parts = parse(latest);
+    let c_parts = parse(current);
+    let len = l_parts.len().max(c_parts.len());
+    for i in 0..len {
+        let l = l_parts.get(i).copied().unwrap_or(0);
+        let c = c_parts.get(i).copied().unwrap_or(0);
+        if l > c {
+            return true;
+        } else if l < c {
+            return false;
+        }
+    }
+    false
+}
+
 /// Checks the official Smart Migrate CDN release manifest for newer versions.
 #[tauri::command]
 fn check_windows_update() -> Result<UpdateCheckDto, String> {
@@ -830,14 +853,36 @@ fn check_windows_update() -> Result<UpdateCheckDto, String> {
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .map_err(|e| format!("Failed to parse release manifest JSON: {e}"))?;
 
-    let latest_version = parsed.get("version").and_then(|v| v.as_str()).unwrap_or(current_version.as_str()).to_string();
-    let release_notes = parsed.get("releaseNotes").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let win_platform = parsed.get("platforms").and_then(|p| p.get("windows-x86_64"));
+    let latest_version = win_platform
+        .and_then(|w| w.get("version"))
+        .and_then(|v| v.as_str())
+        .or_else(|| parsed.get("version").and_then(|v| v.as_str()))
+        .unwrap_or(current_version.as_str())
+        .to_string();
 
-    let release_highlights: Vec<String> = if let Some(arr) = parsed.get("releaseHighlights").and_then(|h| h.as_array()) {
+    let download_url = win_platform.and_then(|w| w.get("url")).and_then(|u| u.as_str()).unwrap_or("").to_string();
+    let size_bytes = win_platform.and_then(|w| w.get("size")).and_then(|s| s.as_u64()).unwrap_or(0);
+    let sha256 = win_platform.and_then(|w| w.get("sha256")).and_then(|s| s.as_str()).unwrap_or("").to_string();
+
+    let release_notes = win_platform
+        .and_then(|w| w.get("releaseNotes"))
+        .and_then(|v| v.as_str())
+        .or_else(|| parsed.get("releaseNotes").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .to_string();
+
+    let release_highlights: Vec<String> = if let Some(arr) = win_platform.and_then(|w| w.get("releaseHighlights")).and_then(|h| h.as_array()) {
         arr.iter()
             .filter_map(|v| v.as_str())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
+            .collect()
+    } else if let Some(arr) = parsed.get("releaseHighlights").and_then(|h| h.as_array()) {
+        arr.iter()
+            .filter_map(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty() && !s.starts_with("Android:"))
             .collect()
     } else {
         release_notes
@@ -848,16 +893,11 @@ fn check_windows_update() -> Result<UpdateCheckDto, String> {
                     .trim_start_matches(|c: char| c == '•' || c == '-' || c == '*' || c == '+' || c == '\u{FFFD}' || c == '?' || c.is_whitespace());
                 clean.trim().to_string()
             })
-            .filter(|line| !line.is_empty())
+            .filter(|line| !line.is_empty() && !line.starts_with("Android:"))
             .collect()
     };
 
-    let win_platform = parsed.get("platforms").and_then(|p| p.get("windows-x86_64"));
-    let download_url = win_platform.and_then(|w| w.get("url")).and_then(|u| u.as_str()).unwrap_or("").to_string();
-    let size_bytes = win_platform.and_then(|w| w.get("size")).and_then(|s| s.as_u64()).unwrap_or(0);
-    let sha256 = win_platform.and_then(|w| w.get("sha256")).and_then(|s| s.as_str()).unwrap_or("").to_string();
-
-    let has_update = latest_version != current_version && !download_url.is_empty();
+    let has_update = is_newer_version(&latest_version, &current_version) && !download_url.is_empty();
 
     Ok(UpdateCheckDto {
         has_update,
@@ -951,8 +991,8 @@ fn launch_installer_elevated(installer_path: &str) -> Result<(), String> {
 
     let operation = wide("runas");
     let file = wide(installer_path);
-    // Same switches the Tauri updater uses for NSIS installers: passive progress UI, relaunch the app after install.
-    let parameters = wide("/P /R /UPDATE");
+    // Standard invocation so the elevated installer displays without argument rejection
+    let parameters = wide("");
     let directory = std::path::Path::new(installer_path)
         .parent()
         .map(|p| wide(&p.to_string_lossy()));
@@ -971,7 +1011,7 @@ fn launch_installer_elevated(installer_path: &str) -> Result<(), String> {
     if code > 32 {
         Ok(())
     } else if code == 5 {
-        Err("The update needs administrator permission. Choose \"Yes\" on the Windows prompt and try again.".to_string())
+        Err("UAC_CANCELLED: The update needs administrator permission. Choose \"Yes\" on the Windows prompt and try again.".to_string())
     } else {
         Err(format!("Windows could not start the installer (ShellExecute code {code})."))
     }

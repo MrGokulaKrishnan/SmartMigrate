@@ -40,7 +40,7 @@ $manifest = @"
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity
-    version="1.4.2.0"
+    version="1.4.4.0"
     processorArchitecture="*"
     name="SmartMigrate.WindowsHost"
     type="win32"
