@@ -118,9 +118,12 @@ object SmpClient {
             // UDP broadcast blocked or timed out
         }
 
-        // 2. Direct probe against local subnet candidates
+        // 2. Direct probe against local subnet candidates.
+        // Note: We no longer inject a hardcoded .33 developer machine guess. The subnet prefix is
+        // used with common router/host addresses only. Any device at .33 would need to be already
+        // running the host — if not found, we return null so the UI prompts the user.
         val localSubnet = getLocalSubnetPrefix()
-        val candidateIps = listOf("${localSubnet}33", "${localSubnet}1", "${localSubnet}100")
+        val candidateIps = listOf("${localSubnet}1", "${localSubnet}100", "${localSubnet}2")
         for (candidate in candidateIps) {
             try {
                 val url = URL("http://$candidate:7890/smp/hello")
@@ -472,6 +475,44 @@ object SmpClient {
     }
 
     /**
+     * Re-establishes the display session using a previously saved pairing token, without
+     * requiring the user to re-enter the PIN. Called by StreamEngine after a network drop.
+     *
+     * If the host has reset its state (e.g., restarted), this returns failure and the caller
+     * should direct the user to re-pair. Otherwise it returns a fresh session URL with the
+     * same token so /live reconnection proceeds silently.
+     */
+    suspend fun revalidateSession(
+        host: String,
+        port: Int = 7890,
+        clientDeviceId: String,
+        sessionToken: String
+    ): Result<SessionResult> {
+        if (sessionToken.isBlank()) {
+            return Result.failure(Exception("No saved session token — re-pairing required"))
+        }
+        return createSession(host, port, clientDeviceId, sessionToken)
+    }
+
+    /**
+     * Fast TCP liveness check: connects to port 7890 with a 1.5s timeout and checks for
+     * an HTTP response (any code). Used before retrying a full session after a network drop.
+     */
+    suspend fun pingHost(host: String, port: Int = 7890): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = URL("http://$host:$port/smp/ping")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 1500
+                readTimeout = 1500
+            }
+            conn.responseCode in 200..499 // any real HTTP response = host is reachable
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
      * Queries the Windows host for live diagnostic status across all subsystems.
      */
     suspend fun getDiagnostics(host: String, port: Int = 7890): Result<DiagnosticsReport> = withContext(Dispatchers.IO) {
@@ -509,3 +550,4 @@ object SmpClient {
         }
     }
 }
+

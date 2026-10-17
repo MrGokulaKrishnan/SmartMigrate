@@ -199,9 +199,11 @@ private fun SmartMigrateApp() {
     var qrScannerOpen by rememberSaveable { mutableStateOf(false) }
     var notice by rememberSaveable { mutableStateOf("Smart Migrate Core online. Direct LAN active.") }
     var batterySaverMode by rememberSaveable { mutableStateOf(false) }
-    val initialHost = remember { "" }
-    var targetHostAddress by rememberSaveable { mutableStateOf(initialHost) }
-    var currentSessionToken by rememberSaveable { mutableStateOf("") }
+    val context = LocalContext.current
+    val savedHost = remember { SessionPreferences.loadHost(context) }
+    val savedToken = remember { SessionPreferences.loadToken(context) }
+    var targetHostAddress by rememberSaveable { mutableStateOf(savedHost) }
+    var currentSessionToken by rememberSaveable { mutableStateOf(savedToken) }
     var isDedicatedRemoteSessionActive by rememberSaveable { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
@@ -210,7 +212,6 @@ private fun SmartMigrateApp() {
 
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var updateModalOpen by remember { mutableStateOf(false) }
-    val context = LocalContext.current
     var lastBackPressTime by remember { mutableLongStateOf(0L) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -337,6 +338,7 @@ private fun SmartMigrateApp() {
                     onDisconnect = {
                         isDedicatedRemoteSessionActive = false
                         notice = "Remote desktop session disconnected."
+                        StreamSessionService.stop(context)
                     },
                     onNotice = { notice = it }
                 )
@@ -414,6 +416,11 @@ private fun SmartMigrateApp() {
                                 onStartSession = { host, token ->
                                     targetHostAddress = host
                                     currentSessionToken = token
+                                    SessionPreferences.savePairing(
+                                        context, host, token,
+                                        SmpClient.DEFAULT_DEVICE_ID
+                                    )
+                                    StreamSessionService.start(context, host)
                                     isDedicatedRemoteSessionActive = true
                                 },
                                 onScanQR = { qrScannerOpen = true },
@@ -459,6 +466,8 @@ private fun SmartMigrateApp() {
                         qrScannerOpen = false
                         targetHostAddress = host
                         currentSessionToken = token
+                        SessionPreferences.savePairing(context, host, token, SmpClient.DEFAULT_DEVICE_ID, hostId)
+                        StreamSessionService.start(context, host)
                         notice = "Paired with $hostId at $host! Launching remote session."
                         destination = AppDestination.Remote
                         isDedicatedRemoteSessionActive = true
@@ -475,6 +484,8 @@ private fun SmartMigrateApp() {
                         pairingDialog = false
                         targetHostAddress = host
                         currentSessionToken = token
+                        SessionPreferences.savePairing(context, host, token, SmpClient.DEFAULT_DEVICE_ID, hostId)
+                        StreamSessionService.start(context, host)
                         notice = "Paired with $hostId at $host! Launching remote session."
                         destination = AppDestination.Remote
                         isDedicatedRemoteSessionActive = true

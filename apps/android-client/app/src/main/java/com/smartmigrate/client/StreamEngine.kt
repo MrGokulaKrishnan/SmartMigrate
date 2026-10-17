@@ -172,9 +172,27 @@ class StreamEngine {
     private val inputSeq = AtomicLong(1L)
 
     /**
+     * Optional callback invoked when the engine enters RECONNECTING state. Set by
+     * StreamSessionService to trigger an immediate Wi-Fi rebind + session revalidation.
+     */
+    var onReconnectNeeded: (() -> Unit)? = null
+
+    /**
+     * Called by StreamSessionService when Wi-Fi becomes available after a drop. Immediately
+     * closes the current stale socket so the reconnect loop retries without waiting for the
+     * exponential backoff timer.
+     */
+    fun triggerImmediateReconnect() {
+        try {
+            activeSocket?.close()
+        } catch (_: Exception) {}
+    }
+
+    /**
      * Allocates the next strictly monotonic input sequence number for SMP/1 input envelopes.
      */
     fun nextSeq(): Long = inputSeq.getAndIncrement()
+
 
     /**
      * Connects to the host streaming server at the specified host IP/port.
@@ -424,6 +442,22 @@ class StreamEngine {
                     val reason = "${e.javaClass.simpleName}${e.message?.let { ": $it" } ?: ""}"
                     Log.w(TAG, "[$sessionId] Stream network disconnect (attempt $attempt/$MAX_RECONNECT_ATTEMPTS): $reason")
 
+                    // A 401/403 from the host means the session token has expired (host restarted).
+                    // Stop retrying and show a clear "Re-pair required" message rather than looping.
+                    val isSessionExpired = e is IllegalStateException &&
+                        (e.message?.contains("401") == true || e.message?.contains("403") == true)
+                    if (isSessionExpired) {
+                        _state.value = StreamConnectionState.FAILED
+                        _diagnostics.value = _diagnostics.value.copy(
+                            connectionState = StreamConnectionState.FAILED,
+                            failureReason = "Session expired (host restarted or token revoked). Re-pair to reconnect.",
+                            droppedFrames = totalDropped
+                        )
+                        decodeJob.cancel()
+                        frameChannel.close()
+                        break
+                    }
+
                     if (attempt > MAX_RECONNECT_ATTEMPTS) {
                         _state.value = StreamConnectionState.FAILED
                         _diagnostics.value = _diagnostics.value.copy(
@@ -443,6 +477,10 @@ class StreamEngine {
                         droppedFrames = totalDropped
                     )
 
+                    // Notify StreamSessionService so it can immediately bind the Wi-Fi network
+                    // and cut the backoff delay when Wi-Fi becomes available.
+                    onReconnectNeeded?.invoke()
+
                     val backoffMs = (attempt * 800L).coerceAtMost(3000L)
                     delay(backoffMs)
                 } finally {
@@ -456,6 +494,7 @@ class StreamEngine {
             }
         }
     }
+
 
     /**
      * Gracefully stops the stream and releases memory/decoders immediately.
