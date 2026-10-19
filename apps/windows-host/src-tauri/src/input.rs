@@ -44,6 +44,13 @@ impl InputController {
         }
     }
 
+    /// Clears any tracked sequence high-water mark for a device when starting a new session or pairing.
+    pub fn reset_sequence(&self, device_id_str: &str) {
+        if let Ok(mut tracker) = self.sequence_tracker.lock() {
+            tracker.remove(device_id_str);
+        }
+    }
+
     /// Injects a remote mouse input event after verifying authorization, sequence replay, and screen bounds.
     pub fn inject_mouse(
         &self,

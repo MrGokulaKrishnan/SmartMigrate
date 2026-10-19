@@ -481,19 +481,26 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                             }
 
                             let session_token = generate_crypto_token();
-                            let trusted_device = TrustedDevice::new(
+                            let token_hash = migroute::compute_sha256(session_token.as_bytes());
+                            let dev_fingerprint = format!("FP-{}", &migroute::compute_sha256(req_id.as_str().as_bytes())[..16].to_uppercase());
+
+                            let mut trusted_device = TrustedDevice::new(
                                 req_id.clone(),
                                 pair_req.requester_name.clone(),
                                 DevicePlatform::Android,
-                                format!("FP-{}", &session_token[..8].to_uppercase()),
+                                dev_fingerprint,
                                 now_ms(),
                                 perms.clone(),
                             );
+                            trusted_device.token_hash = token_hash;
 
                             let mut trust_store = state.trust_store.lock().unwrap();
                             let _ = trust_store.remove_device(&trusted_device.id);
                             let _ = trust_store.add_device(trusted_device);
                             let _ = save_trust_store(&trust_store);
+
+                            // Reset sequence tracker so client's initial input counter is accepted
+                            state.input_controller.reset_sequence(&req_id.to_string());
 
                             // Update active stream token and bind target device
                             {
@@ -635,9 +642,12 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     return;
                 }
 
-                // Verify token matches active stream token or device fingerprint anchor
+                // Verify token matches active stream token or device cryptographic token hash
                 let token_valid = if !stream_lock.auth_token.is_empty() && stream_lock.target_device_id == client_id.as_ref() {
                     constant_time_eq_str(&stream_lock.auth_token, &provided_token)
+                } else if !device.token_hash.is_empty() {
+                    let provided_hash = migroute::compute_sha256(provided_token.as_bytes());
+                    constant_time_eq_str(&device.token_hash, &provided_hash)
                 } else {
                     let expected_fp_prefix = format!("FP-{}", &provided_token[..provided_token.len().min(8)].to_uppercase());
                     device.fingerprint.starts_with(&expected_fp_prefix)
@@ -647,6 +657,9 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     send_error_response(&mut socket, 401, "Unauthorized", "SMP_INVALID_SESSION_TOKEN", "Session token is invalid or does not match device trust anchor", cors_allow_origin);
                     return;
                 }
+
+                // Reset sequence tracking for this device on new session establishment
+                state.input_controller.reset_sequence(&device.id.to_string());
 
                 let session_id = format!("sm-sess-{}", &now_ms().to_string()[7..]);
                 stream_lock.is_active = true;
@@ -706,10 +719,19 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                         stream_lock.is_active = true;
                         true
                     } else {
-                        // Check trust store fingerprint anchor
+                        // Check trust store cryptographic token hash
                         let trust_store = state.trust_store.lock().unwrap();
-                        let expected_fp_prefix = format!("FP-{}", &token_str[..token_str.len().min(8)].to_uppercase());
-                        if let Some(dev) = trust_store.list_all().into_iter().find(|d| d.fingerprint.starts_with(&expected_fp_prefix)) {
+                        let token_hash = migroute::compute_sha256(token_str.as_bytes());
+                        let matched_dev = trust_store.list_all().into_iter().find(|d| {
+                            if !d.token_hash.is_empty() {
+                                constant_time_eq_str(&d.token_hash, &token_hash)
+                            } else {
+                                let expected_fp_prefix = format!("FP-{}", &token_str[..token_str.len().min(8)].to_uppercase());
+                                d.fingerprint.starts_with(&expected_fp_prefix)
+                            }
+                        });
+
+                        if let Some(dev) = matched_dev {
                             target_device_id = dev.id.to_string();
                             stream_lock.auth_token = token_str.clone();
                             stream_lock.target_device_id = dev.id.to_string();
@@ -987,11 +1009,18 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 } else {
                     // Check if token matches a paired device in the persistent trust store
                     let trust_store = state.trust_store.lock().unwrap();
-                    let expected_fp_prefix = format!("FP-{}", &token[..token.len().min(8)].to_uppercase());
+                    let token_hash = migroute::compute_sha256(token.as_bytes());
                     let paired_dev = trust_store
                         .list_all()
                         .into_iter()
-                        .find(|d| d.fingerprint.starts_with(&expected_fp_prefix));
+                        .find(|d| {
+                            if !d.token_hash.is_empty() {
+                                constant_time_eq_str(&d.token_hash, &token_hash)
+                            } else {
+                                let expected_fp_prefix = format!("FP-{}", &token[..token.len().min(8)].to_uppercase());
+                                d.fingerprint.starts_with(&expected_fp_prefix)
+                            }
+                        });
 
                     match paired_dev {
                         Some(dev) => {
@@ -1018,6 +1047,9 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     }
                 }
             };
+
+            // Reset sequence tracker so streaming session starts with clean monotonic counter
+            state.input_controller.reset_sequence(&target_dev_id);
 
             // Verify ViewScreen capability authorization
             {

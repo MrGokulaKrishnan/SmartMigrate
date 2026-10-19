@@ -2,6 +2,7 @@ package com.smartmigrate.client
 
 import android.os.Bundle
 import android.os.Build
+import android.util.Log
 import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -97,6 +98,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.channels.Channel
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1376,6 +1378,53 @@ private fun DedicatedRemoteSessionScreen(
     val streamDiag by streamEngine.diagnostics
     fun nextSeq(): Long = streamEngine.nextSeq()
 
+    val context = LocalContext.current
+    val effectiveToken = remember(sessionToken) {
+        sessionToken.trim().ifEmpty { SessionPreferences.loadToken(context).trim() }
+    }
+
+    // Dedicated single-consumer FIFO input queue: prevents out-of-order packet delivery and race conditions
+    val inputChannel = remember { Channel<suspend () -> Unit>(Channel.UNLIMITED) }
+    LaunchedEffect(inputChannel) {
+        for (action in inputChannel) {
+            try {
+                action()
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun queueInput(
+        action: String,
+        dx: Int = 0,
+        dy: Int = 0,
+        normalizedX: Float? = null,
+        normalizedY: Float? = null,
+        button: String? = null,
+        scrollDelta: Int = 0,
+        hotkey: String? = null,
+        text: String? = null
+    ) {
+        val seq = nextSeq()
+        val h = hostAddress.ifEmpty { "10.0.2.2" }
+        val tok = effectiveToken.ifEmpty { null }
+        inputChannel.trySend {
+            SmpClient.sendInput(
+                host = h,
+                action = action,
+                dx = dx,
+                dy = dy,
+                normalizedX = normalizedX,
+                normalizedY = normalizedY,
+                button = button,
+                scrollDelta = scrollDelta,
+                hotkey = hotkey,
+                text = text,
+                sequence = seq,
+                sessionToken = tok
+            )
+        }
+    }
+
     // Remote Control Modes & Panel State
     var controlMode by rememberSaveable { mutableStateOf("Touch") } // "Touch" or "Cursor"
     var isPanelOpen by rememberSaveable { mutableStateOf(false) }
@@ -1396,11 +1445,6 @@ private fun DedicatedRemoteSessionScreen(
     var cursorNormY by rememberSaveable { mutableFloatStateOf(0.5f) }
     var viewportSize by remember { mutableStateOf(IntSize(1, 1)) }
 
-    val context = LocalContext.current
-    val effectiveToken = remember(sessionToken) {
-        sessionToken.trim().ifEmpty { SessionPreferences.loadToken(context).trim() }
-    }
-
     // Automatically initiate stream on enter
     LaunchedEffect(hostAddress, effectiveToken, isVirtualExtendedDisplay) {
         val h = hostAddress.trim().ifEmpty { "10.0.2.2" }
@@ -1409,7 +1453,12 @@ private fun DedicatedRemoteSessionScreen(
     }
 
     DisposableEffect(streamEngine) {
+        StreamSessionService.onWifiReconnected = {
+            Log.i("SmartMigrate", "Wi-Fi reconnected, triggering stream engine immediate retry")
+            streamEngine.triggerImmediateReconnect()
+        }
         onDispose {
+            StreamSessionService.onWifiReconnected = null
             streamEngine.stopStreaming()
         }
     }
@@ -1639,47 +1688,17 @@ private fun DedicatedRemoteSessionScreen(
                                         onTap = { offset ->
                                             val coords = mapTouchToDesktop(offset.x, offset.y) ?: return@detectTapGestures
                                             val (nx, ny) = coords
-                                            val seq = nextSeq()
-                                            scope.launch {
-                                                SmpClient.sendInput(
-                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                    action = "left_click",
-                                                    normalizedX = nx,
-                                                    normalizedY = ny,
-                                                    sequence = seq,
-                                                    sessionToken = effectiveToken.ifEmpty { null }
-                                                )
-                                            }
+                                            queueInput("left_click", normalizedX = nx, normalizedY = ny)
                                         },
                                         onDoubleTap = { offset ->
                                             val coords = mapTouchToDesktop(offset.x, offset.y) ?: return@detectTapGestures
                                             val (nx, ny) = coords
-                                            val seq = nextSeq()
-                                            scope.launch {
-                                                SmpClient.sendInput(
-                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                    action = "double_click",
-                                                    normalizedX = nx,
-                                                    normalizedY = ny,
-                                                    sequence = seq,
-                                                    sessionToken = effectiveToken.ifEmpty { null }
-                                                )
-                                            }
+                                            queueInput("double_click", normalizedX = nx, normalizedY = ny)
                                         },
                                         onLongPress = { offset ->
                                             val coords = mapTouchToDesktop(offset.x, offset.y) ?: return@detectTapGestures
                                             val (nx, ny) = coords
-                                            val seq = nextSeq()
-                                            scope.launch {
-                                                SmpClient.sendInput(
-                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                    action = "right_click",
-                                                    normalizedX = nx,
-                                                    normalizedY = ny,
-                                                    sequence = seq,
-                                                    sessionToken = effectiveToken.ifEmpty { null }
-                                                )
-                                            }
+                                            queueInput("right_click", normalizedX = nx, normalizedY = ny)
                                             onNotice("Right click dispatched")
                                         }
                                     )
@@ -1696,17 +1715,7 @@ private fun DedicatedRemoteSessionScreen(
                                         cursorNormX = (cursorNormX + dx / safeW).coerceIn(0f, 1f)
                                         cursorNormY = (cursorNormY + dy / safeH).coerceIn(0f, 1f)
 
-                                        val seq = nextSeq()
-                                        scope.launch {
-                                            SmpClient.sendInput(
-                                                host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                action = "relative_move",
-                                                dx = (dx * 1.6f).toInt(),
-                                                dy = (dy * 1.6f).toInt(),
-                                                sequence = seq,
-                                                sessionToken = effectiveToken.ifEmpty { null }
-                                            )
-                                        }
+                                        queueInput("relative_move", dx = (dx * 1.6f).toInt(), dy = (dy * 1.6f).toInt())
                                     }
                                 } else {
                                     // Touch Mode Drag
@@ -1714,46 +1723,16 @@ private fun DedicatedRemoteSessionScreen(
                                         onDragStart = { offset ->
                                             val coords = mapTouchToDesktop(offset.x, offset.y) ?: return@detectDragGestures
                                             val (nx, ny) = coords
-                                            val seq = nextSeq()
-                                            scope.launch {
-                                                SmpClient.sendInput(
-                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                    action = "mouse_down",
-                                                    button = "left",
-                                                    normalizedX = nx,
-                                                    normalizedY = ny,
-                                                    sequence = seq,
-                                                    sessionToken = effectiveToken.ifEmpty { null }
-                                                )
-                                            }
+                                            queueInput("mouse_down", button = "left", normalizedX = nx, normalizedY = ny)
                                         },
                                         onDrag = { change, _ ->
                                             change.consume()
                                             val coords = mapTouchToDesktop(change.position.x, change.position.y) ?: return@detectDragGestures
                                             val (nx, ny) = coords
-                                            val seq = nextSeq()
-                                            scope.launch {
-                                                SmpClient.sendInput(
-                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                    action = "move",
-                                                    normalizedX = nx,
-                                                    normalizedY = ny,
-                                                    sequence = seq,
-                                                    sessionToken = effectiveToken.ifEmpty { null }
-                                                )
-                                            }
+                                            queueInput("move", normalizedX = nx, normalizedY = ny)
                                         },
                                         onDragEnd = {
-                                            val seq = nextSeq()
-                                            scope.launch {
-                                                SmpClient.sendInput(
-                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                    action = "mouse_up",
-                                                    button = "left",
-                                                    sequence = seq,
-                                                    sessionToken = effectiveToken.ifEmpty { null }
-                                                )
-                                            }
+                                            queueInput("mouse_up", button = "left")
                                         }
                                     )
                                 }
@@ -2009,16 +1988,7 @@ private fun DedicatedRemoteSessionScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .clickable {
-                                        val seq = nextSeq()
-                                        scope.launch {
-                                            SmpClient.sendInput(
-                                                host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                action = "hotkey",
-                                                hotkey = "show_desktop",
-                                                sequence = seq,
-                                                sessionToken = effectiveToken.ifEmpty { null }
-                                            )
-                                        }
+                                        queueInput("hotkey", hotkey = "show_desktop")
                                         onNotice("Sent Show Desktop (Win+D)")
                                     }
                                     .padding(vertical = 2.dp)
@@ -2046,16 +2016,7 @@ private fun DedicatedRemoteSessionScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .clickable {
-                                        val seq = nextSeq()
-                                        scope.launch {
-                                            SmpClient.sendInput(
-                                                host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                action = "hotkey",
-                                                hotkey = "task_switch",
-                                                sequence = seq,
-                                                sessionToken = effectiveToken.ifEmpty { null }
-                                            )
-                                        }
+                                        queueInput("hotkey", hotkey = "task_switch")
                                         onNotice("Sent Task Switcher (Alt+Tab)")
                                     }
                                     .padding(vertical = 2.dp)
@@ -2183,15 +2144,7 @@ private fun DedicatedRemoteSessionScreen(
                                     .background(Color(0xD91E293B))
                                     .border(1.5.dp, Brand400, CircleShape)
                                     .clickable {
-                                        val seq = nextSeq()
-                                        scope.launch {
-                                            SmpClient.sendInput(
-                                                host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                action = "left_click",
-                                                sequence = seq,
-                                                sessionToken = effectiveToken.ifEmpty { null }
-                                            )
-                                        }
+                                        queueInput("left_click")
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -2206,15 +2159,7 @@ private fun DedicatedRemoteSessionScreen(
                                     .background(Color(0xD91E293B))
                                     .border(1.5.dp, Color(0x6694A3B8), CircleShape)
                                     .clickable {
-                                        val seq = nextSeq()
-                                        scope.launch {
-                                            SmpClient.sendInput(
-                                                host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                action = "right_click",
-                                                sequence = seq,
-                                                sessionToken = effectiveToken.ifEmpty { null }
-                                            )
-                                        }
+                                        queueInput("right_click")
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -2229,15 +2174,7 @@ private fun DedicatedRemoteSessionScreen(
                                     .background(Color(0xD91E293B))
                                     .border(1.dp, Color(0x33FFFFFF), CircleShape)
                                     .clickable {
-                                        val seq = nextSeq()
-                                        scope.launch {
-                                            SmpClient.sendInput(
-                                                host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                action = "double_click",
-                                                sequence = seq,
-                                                sessionToken = effectiveToken.ifEmpty { null }
-                                            )
-                                        }
+                                        queueInput("double_click")
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -2261,16 +2198,7 @@ private fun DedicatedRemoteSessionScreen(
                                         change.consume()
                                         val delta = (-dragAmount.y * 8f).toInt()
                                         if (delta != 0) {
-                                            val seq = nextSeq()
-                                            scope.launch {
-                                                SmpClient.sendInput(
-                                                    host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                    action = "scroll",
-                                                    scrollDelta = delta,
-                                                    sequence = seq,
-                                                    sessionToken = effectiveToken.ifEmpty { null }
-                                                )
-                                            }
+                                            queueInput("scroll", scrollDelta = delta)
                                         }
                                     }
                                 },
@@ -2354,16 +2282,7 @@ private fun DedicatedRemoteSessionScreen(
                                     if (keyboardInputText.isNotEmpty()) {
                                         val textToSend = keyboardInputText
                                         keyboardInputText = ""
-                                        val seq = nextSeq()
-                                        scope.launch {
-                                            SmpClient.sendInput(
-                                                host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                action = "text",
-                                                text = textToSend,
-                                                sequence = seq,
-                                                sessionToken = effectiveToken.ifEmpty { null }
-                                            )
-                                        }
+                                        queueInput("text", text = textToSend)
                                         onNotice("Sent: '$textToSend'")
                                     }
                                 }
@@ -2384,16 +2303,7 @@ private fun DedicatedRemoteSessionScreen(
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(Color(0x26FFFFFF))
                                     .clickable {
-                                        val seq = nextSeq()
-                                        scope.launch {
-                                            SmpClient.sendInput(
-                                                host = hostAddress.ifEmpty { "10.0.2.2" },
-                                                action = "hotkey",
-                                                hotkey = actionCode,
-                                                sequence = seq,
-                                                sessionToken = effectiveToken.ifEmpty { null }
-                                            )
-                                        }
+                                        queueInput("hotkey", hotkey = actionCode)
                                     }
                                     .padding(horizontal = 7.dp, vertical = 6.dp)
                             ) {

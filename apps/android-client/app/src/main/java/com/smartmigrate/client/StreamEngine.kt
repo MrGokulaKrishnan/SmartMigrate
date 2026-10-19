@@ -233,8 +233,9 @@ class StreamEngine {
                 failureReason = null
             )
 
-            // Reset only when a real frame is decoded (see decoder), never merely because HTTP 200 arrived.
+            // Reset only when frames decode continuously for >= 5s, never merely because HTTP 200 arrived.
             val reconnectAttempts = java.util.concurrent.atomic.AtomicInteger(0)
+            val streamStableSince = java.util.concurrent.atomic.AtomicLong(0L)
             while (isActive && activeSessionAttemptId == attemptId) {
                 // Conflated channel guarantees zero buffer bloat: newest frame always replaces un-decoded older frame
                 val frameChannel = Channel<FramePacket>(
@@ -321,8 +322,12 @@ class StreamEngine {
 
                             _latestBitmap.value = decodedBitmap
 
-                            // A real frame decoded: the link is healthy, so restore the full retry budget.
-                            reconnectAttempts.set(0)
+                            // Only restore retry budget after 5s continuous stream stability
+                            val nowMs = SystemClock.elapsedRealtime()
+                            streamStableSince.compareAndSet(0L, nowMs)
+                            if (nowMs - streamStableSince.get() >= 5000L) {
+                                reconnectAttempts.set(0)
+                            }
 
                             // When a valid bitmap successfully decodes, the stream is unequivocally alive and streaming.
                             // Promote to STREAMING if in CONNECTED, CONNECTING, AUTHENTICATING, or RECONNECTING.
@@ -384,11 +389,20 @@ class StreamEngine {
                     _state.value = StreamConnectionState.AUTHENTICATING
                     _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.AUTHENTICATING)
 
-                    // Open direct TCP socket with low-latency settings
+                    // Open direct TCP socket with low-latency settings and 4000ms responsive timeout
                     sock = Socket().apply {
                         tcpNoDelay = true
-                        soTimeout = 12000
+                        soTimeout = 4000
                         receiveBufferSize = 262144
+                        // Bind directly to active Wi-Fi network if available (avoiding process-wide binding)
+                        StreamSessionService.activeWifiNetwork?.let { net ->
+                            try {
+                                net.bindSocket(this)
+                                Log.i(TAG, "[$sessionId] Bound stream socket to Wi-Fi network: $net")
+                            } catch (e: Exception) {
+                                Log.w(TAG, "[$sessionId] Socket Wi-Fi bind error: ${e.message}")
+                            }
+                        }
                         connect(InetSocketAddress(resolvedHost, port), 3500)
                     }
                     activeSocket = sock
@@ -403,7 +417,7 @@ class StreamEngine {
                     val writer = OutputStreamWriter(sock.getOutputStream(), Charsets.US_ASCII)
                     writer.write("GET /live$tokenQuery HTTP/1.1\r\n")
                     writer.write("Host: $resolvedHost:$port\r\n")
-                    writer.write("User-Agent: SmartMigrate-Android/1.4.1\r\n")
+                    writer.write("User-Agent: SmartMigrate-Android/1.4.4\r\n")
                     writer.write("Accept: multipart/x-mixed-replace\r\n")
                     if (!authToken.isNullOrBlank()) {
                         writer.write("Authorization: Bearer $authToken\r\n")
@@ -445,6 +459,7 @@ class StreamEngine {
                 } catch (e: Exception) {
                     if (!isActive || activeSessionAttemptId != attemptId) break
 
+                    streamStableSince.set(0L)
                     val attempt = reconnectAttempts.incrementAndGet()
                     totalDropped++
                     val reason = "${e.javaClass.simpleName}${e.message?.let { ": $it" } ?: ""}"

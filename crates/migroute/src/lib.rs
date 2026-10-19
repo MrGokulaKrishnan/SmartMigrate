@@ -102,6 +102,12 @@ impl TryFrom<&str> for DeviceId {
     }
 }
 
+impl DeviceId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl AsRef<str> for DeviceId {
     fn as_ref(&self) -> &str {
         &self.0

@@ -959,9 +959,21 @@ export function App() {
           setPairingSession(active);
           if (active.state === "awaiting_host_approval" && active.requested_permissions) {
             const initial: Record<string, boolean> = {};
-            active.requested_permissions.forEach((p) => {
+            active.requested_permissions.forEach((p: string) => {
+              const normalized = p.toLowerCase().replace(/[^a-z]/g, "");
               initial[p] = true;
+              if (normalized.includes("viewscreen")) initial["view_screen"] = true;
+              if (normalized.includes("mouse")) initial["control_mouse"] = true;
+              if (normalized.includes("keyboard")) initial["control_keyboard"] = true;
+              if (normalized.includes("sendfile")) initial["send_files"] = true;
+              if (normalized.includes("receivefile")) initial["receive_files"] = true;
+              if (normalized.includes("clipboard")) initial["clipboard"] = true;
+              if (normalized.includes("audio")) initial["audio"] = true;
             });
+            if (initial["control_mouse"]) {
+              initial["control_keyboard"] = true;
+            }
+            initial["view_screen"] = true;
             setSelectedPerms((prev) => (Object.keys(prev).length === 0 ? initial : prev));
           }
         } else {

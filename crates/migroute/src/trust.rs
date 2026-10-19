@@ -22,6 +22,8 @@ pub struct TrustedDevice {
     pub last_seen_epoch_ms: u64,
     pub granted_permissions: BTreeSet<SessionPermission>,
     pub is_revoked: bool,
+    #[serde(default)]
+    pub token_hash: String,
 }
 
 impl TrustedDevice {
@@ -42,7 +44,14 @@ impl TrustedDevice {
             last_seen_epoch_ms: paired_at_epoch_ms,
             granted_permissions: granted_permissions.into_iter().collect(),
             is_revoked: false,
+            token_hash: String::new(),
         }
+    }
+
+    /// Attaches the cryptographic token hash to this trusted device.
+    pub fn with_token_hash(mut self, token_hash: impl Into<String>) -> Self {
+        self.token_hash = token_hash.into();
+        self
     }
 
     /// Check if device is active (not revoked) and holds the specified permission.
@@ -202,5 +211,37 @@ mod tests {
         // Removal
         assert!(store.remove_device(&id("tab-01")).is_ok());
         assert_eq!(store.remove_device(&id("tab-01")), Err(TrustStoreError::DeviceNotFound));
+    }
+
+    #[test]
+    fn test_token_hash_and_serde_backward_compat() {
+        let dev = TrustedDevice::new(
+            id("phone-01"),
+            "Pixel 8",
+            DevicePlatform::Android,
+            "FP-ABCDEF1234567890",
+            200_000,
+            [SessionPermission::ViewScreen],
+        ).with_token_hash("a1b2c3d4e5f6");
+
+        assert_eq!(dev.token_hash, "a1b2c3d4e5f6");
+
+        let serialized = serde_json::to_string(&dev).unwrap();
+        let deserialized: TrustedDevice = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.token_hash, "a1b2c3d4e5f6");
+
+        // Old JSON without token_hash deserializes cleanly with empty token_hash
+        let legacy_json = r#"{
+            "id": "phone-02",
+            "name": "Old Phone",
+            "platform": "android",
+            "fingerprint": "FP-1234",
+            "paired_at_epoch_ms": 100,
+            "last_seen_epoch_ms": 100,
+            "granted_permissions": ["VIEW_SCREEN"],
+            "is_revoked": false
+        }"#;
+        let legacy_dev: TrustedDevice = serde_json::from_str(legacy_json).unwrap();
+        assert_eq!(legacy_dev.token_hash, "");
     }
 }

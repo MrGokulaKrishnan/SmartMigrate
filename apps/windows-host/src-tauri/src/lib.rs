@@ -147,12 +147,12 @@ fn submit_client_pairing_code(
     let req_id = DeviceId::try_from(requester_id.as_str()).map_err(|e| e.to_string())?;
     let perms: Vec<SessionPermission> = permissions
         .into_iter()
-        .filter_map(|p| match p.as_str() {
-            "VIEW_SCREEN" => Some(SessionPermission::ViewScreen),
-            "CONTROL_MOUSE" => Some(SessionPermission::ControlMouse),
-            "CONTROL_KEYBOARD" => Some(SessionPermission::ControlKeyboard),
-            "SEND_FILES" => Some(SessionPermission::SendFiles),
-            "RECEIVE_FILES" => Some(SessionPermission::ReceiveFiles),
+        .filter_map(|p| match p.to_ascii_uppercase().replace('-', "_").as_str() {
+            "VIEW_SCREEN" | "VIEWSCREEN" => Some(SessionPermission::ViewScreen),
+            "CONTROL_MOUSE" | "CONTROLMOUSE" => Some(SessionPermission::ControlMouse),
+            "CONTROL_KEYBOARD" | "CONTROLKEYBOARD" => Some(SessionPermission::ControlKeyboard),
+            "SEND_FILES" | "SENDFILES" => Some(SessionPermission::SendFiles),
+            "RECEIVE_FILES" | "RECEIVEFILES" => Some(SessionPermission::ReceiveFiles),
             "CLIPBOARD" => Some(SessionPermission::Clipboard),
             "AUDIO" => Some(SessionPermission::Audio),
             _ => None,
@@ -182,37 +182,50 @@ fn approve_pairing(
     let mut active = state.active_pairing.lock().unwrap();
     let session = active.as_mut().ok_or_else(|| "no active pairing session to approve".to_string())?;
 
-    let perms: Vec<SessionPermission> = granted_permissions
+    let mut perms: std::collections::BTreeSet<SessionPermission> = granted_permissions
         .into_iter()
-        .filter_map(|p| match p.as_str() {
-            "VIEW_SCREEN" => Some(SessionPermission::ViewScreen),
-            "CONTROL_MOUSE" => Some(SessionPermission::ControlMouse),
-            "CONTROL_KEYBOARD" => Some(SessionPermission::ControlKeyboard),
-            "SEND_FILES" => Some(SessionPermission::SendFiles),
-            "RECEIVE_FILES" => Some(SessionPermission::ReceiveFiles),
+        .filter_map(|p| match p.to_ascii_uppercase().replace('-', "_").as_str() {
+            "VIEW_SCREEN" | "VIEWSCREEN" => Some(SessionPermission::ViewScreen),
+            "CONTROL_MOUSE" | "CONTROLMOUSE" => Some(SessionPermission::ControlMouse),
+            "CONTROL_KEYBOARD" | "CONTROLKEYBOARD" => Some(SessionPermission::ControlKeyboard),
+            "SEND_FILES" | "SENDFILES" => Some(SessionPermission::SendFiles),
+            "RECEIVE_FILES" | "RECEIVEFILES" => Some(SessionPermission::ReceiveFiles),
             "CLIPBOARD" => Some(SessionPermission::Clipboard),
             "AUDIO" => Some(SessionPermission::Audio),
             _ => None,
         })
         .collect();
 
+    // ViewScreen is inherently granted when host operator approves pairing
+    perms.insert(SessionPermission::ViewScreen);
+    if perms.contains(&SessionPermission::ControlMouse) {
+        perms.insert(SessionPermission::ControlKeyboard);
+    }
+
     let granted = session.host_approve(perms).map_err(|e| e.to_string())?;
     let req_id = session.pending_requester_id.clone().ok_or("missing requester ID")?;
     let req_name = session.pending_requester_name.clone().unwrap_or_else(|| "Paired Device".to_string());
 
-    let trusted_device = TrustedDevice::new(
-        req_id,
+    let token_hash = migroute::compute_sha256(session.secret_token.as_bytes());
+    let dev_fingerprint = format!("FP-{}", &migroute::compute_sha256(req_id.as_str().as_bytes())[..16].to_uppercase());
+
+    let mut trusted_device = TrustedDevice::new(
+        req_id.clone(),
         req_name,
         DevicePlatform::Android,
-        format!("FP-{}", &session.secret_token[..8].to_uppercase()),
+        dev_fingerprint,
         now_ms(),
         granted,
     );
+    trusted_device.token_hash = token_hash;
 
     let mut trust_store = state.trust_store.lock().unwrap();
     let _ = trust_store.remove_device(&trusted_device.id); // replace if previously existed
     trust_store.add_device(trusted_device.clone()).map_err(|e| e.to_string())?;
     storage::save_trust_store(&trust_store)?;
+
+    // Reset sequence tracking for this device
+    state.input_controller.reset_sequence(&req_id.to_string());
 
     // Clear pairing session after successful approval
     *active = None;
@@ -244,6 +257,14 @@ fn revoke_trusted_device(state: State<'_, AppState>, device_id: String) -> Resul
     let mut store = state.trust_store.lock().unwrap();
     store.revoke_device(&id).map_err(|e| e.to_string())?;
     storage::save_trust_store(&store)?;
+    state.input_controller.reset_sequence(&id.to_string());
+    {
+        let mut stream = state.active_stream.lock().unwrap();
+        if stream.target_device_id == id.to_string() {
+            stream.is_active = false;
+            stream.auth_token.clear();
+        }
+    }
     Ok(())
 }
 
@@ -254,6 +275,14 @@ fn remove_trusted_device(state: State<'_, AppState>, device_id: String) -> Resul
     let mut store = state.trust_store.lock().unwrap();
     let _ = store.remove_device(&id).map_err(|e| e.to_string())?;
     storage::save_trust_store(&store)?;
+    state.input_controller.reset_sequence(&id.to_string());
+    {
+        let mut stream = state.active_stream.lock().unwrap();
+        if stream.target_device_id == id.to_string() {
+            stream.is_active = false;
+            stream.auth_token.clear();
+        }
+    }
     Ok(())
 }
 

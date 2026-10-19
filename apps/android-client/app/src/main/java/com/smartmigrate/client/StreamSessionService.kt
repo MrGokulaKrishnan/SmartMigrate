@@ -64,6 +64,14 @@ class StreamSessionService : Service() {
         fun stop(context: Context) {
             context.stopService(Intent(context, StreamSessionService::class.java))
         }
+
+        /** Active Wi-Fi network discovered by NetworkMonitor, used for per-socket binding */
+        @Volatile
+        var activeWifiNetwork: Network? = null
+
+        /** Callback set by MainActivity/DedicatedRemoteSessionScreen to trigger an immediate reconnect. */
+        @Volatile
+        var onWifiReconnected: (() -> Unit)? = null
     }
 
     inner class LocalBinder : Binder() {
@@ -73,14 +81,10 @@ class StreamSessionService : Service() {
     private val binder = LocalBinder()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** Callback set by MainActivity/DedicatedRemoteSessionScreen to trigger an immediate reconnect. */
-    var onWifiReconnected: (() -> Unit)? = null
-
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var connectivityManager: ConnectivityManager? = null
-    private var boundNetwork: Network? = null
 
     override fun onBind(intent: Intent?): IBinder = binder
 
@@ -238,22 +242,16 @@ class StreamSessionService : Service() {
 
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                Log.i(TAG, "Wi-Fi network available — binding process and triggering reconnect")
-                try {
-                    // Keep LAN traffic on this network even when Wi-Fi has no internet.
-                    cm.bindProcessToNetwork(network)
-                    boundNetwork = network
-                } catch (e: Exception) {
-                    Log.w(TAG, "bindProcessToNetwork failed: ${e.message}")
-                }
+                Log.i(TAG, "Wi-Fi network available — setting activeWifiNetwork and triggering reconnect")
+                activeWifiNetwork = network
                 // Signal StreamEngine to reconnect immediately instead of waiting for backoff.
                 onWifiReconnected?.invoke()
             }
 
             override fun onLost(network: Network) {
                 Log.w(TAG, "Wi-Fi network lost")
-                if (boundNetwork == network) {
-                    boundNetwork = null
+                if (activeWifiNetwork == network) {
+                    activeWifiNetwork = null
                 }
             }
 
@@ -262,13 +260,7 @@ class StreamSessionService : Service() {
                 capabilities: NetworkCapabilities
             ) {
                 if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                    if (boundNetwork == null) {
-                        try {
-                            cm.bindProcessToNetwork(network)
-                            boundNetwork = network
-                            Log.i(TAG, "Re-bound to Wi-Fi on capabilities change")
-                        } catch (_: Exception) {}
-                    }
+                    activeWifiNetwork = network
                 }
             }
         }
@@ -277,13 +269,12 @@ class StreamSessionService : Service() {
             cm.registerNetworkCallback(request, callback)
             networkCallback = callback
 
-            // Bind immediately to any current Wi-Fi network
+            // Check immediately for any current Wi-Fi network
             val activeNetwork = cm.activeNetwork
             val caps = activeNetwork?.let { cm.getNetworkCapabilities(it) }
             if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                cm.bindProcessToNetwork(activeNetwork)
-                boundNetwork = activeNetwork
-                Log.i(TAG, "Initially bound to active Wi-Fi network")
+                activeWifiNetwork = activeNetwork
+                Log.i(TAG, "Initially discovered active Wi-Fi network")
             }
         } catch (e: Exception) {
             Log.w(TAG, "NetworkCallback registration failed: ${e.message}")
@@ -295,9 +286,9 @@ class StreamSessionService : Service() {
         val cb = networkCallback ?: return
         try {
             cm.unregisterNetworkCallback(cb)
-            cm.bindProcessToNetwork(null)
         } catch (_: Exception) {}
         networkCallback = null
-        boundNetwork = null
+        activeWifiNetwork = null
+        onWifiReconnected = null
     }
 }
