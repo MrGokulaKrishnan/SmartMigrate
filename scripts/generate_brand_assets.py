@@ -296,8 +296,7 @@ def generate_multi_res_ico(master: Image.Image, output_path: str):
         output_path,
         format="ICO",
         sizes=[(s, s) for s in sizes],
-        append_images=append_frames,
-        bitmap_format="bmp"
+        append_images=append_frames
     )
 
 def main():

@@ -1082,8 +1082,31 @@ fn apply_windows_update_and_restart(installer_path: String) -> Result<(), String
     std::process::exit(0);
 }
 
+#[cfg(windows)]
+fn set_explicit_app_user_model_id() {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "shell32")]
+    extern "system" {
+        fn SetCurrentProcessExplicitAppUserModelID(app_id: *const u16) -> i32;
+    }
+
+    let id: Vec<u16> = OsStr::new("com.smartmigrate.host")
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    unsafe {
+        let _ = SetCurrentProcessExplicitAppUserModelID(id.as_ptr());
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    set_explicit_app_user_model_id();
+
     std::panic::set_hook(Box::new(|info| {
         let log_path = std::env::var("APPDATA")
             .map(|d| std::path::PathBuf::from(d).join("SmartMigrate").join("crash.log"))

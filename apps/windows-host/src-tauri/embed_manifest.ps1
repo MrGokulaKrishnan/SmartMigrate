@@ -115,8 +115,10 @@ for ($i = 0; $i -lt $iconCount; $i++) {
     $img = New-Object byte[] $size
     [Array]::Copy($ico, $offset, $img, 0, $size)
     $iconId = $i + 1
-    $ok = $type::UpdateResourceW($hUpdate, [IntPtr]3, [IntPtr]$iconId, 1033, $img, [uint32]$size)
-    if (-not $ok) {
+    # Embed under both Neutral (0) and US-English (1033) for full Windows locale and shell compatibility
+    $ok1 = $type::UpdateResourceW($hUpdate, [IntPtr]3, [IntPtr]$iconId, 0, $img, [uint32]$size)
+    $ok2 = $type::UpdateResourceW($hUpdate, [IntPtr]3, [IntPtr]$iconId, 1033, $img, [uint32]$size)
+    if (-not $ok1 -and -not $ok2) {
         $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
         $type::EndUpdateResourceW($hUpdate, $true) | Out-Null
         Write-Error "UpdateResourceW(RT_ICON $iconId) failed: $err"
@@ -133,8 +135,9 @@ for ($i = 0; $i -lt $iconCount; $i++) {
 }
 $bw.Flush()
 $groupBytes = $group.ToArray()
-$ok = $type::UpdateResourceW($hUpdate, [IntPtr]14, [IntPtr]1, 1033, $groupBytes, [uint32]$groupBytes.Length)
-if (-not $ok) {
+$ok1 = $type::UpdateResourceW($hUpdate, [IntPtr]14, [IntPtr]1, 0, $groupBytes, [uint32]$groupBytes.Length)
+$ok2 = $type::UpdateResourceW($hUpdate, [IntPtr]14, [IntPtr]1, 1033, $groupBytes, [uint32]$groupBytes.Length)
+if (-not $ok1 -and -not $ok2) {
     $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
     $type::EndUpdateResourceW($hUpdate, $true) | Out-Null
     Write-Error "UpdateResourceW(RT_GROUP_ICON) failed: $err"

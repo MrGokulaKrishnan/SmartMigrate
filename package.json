@@ -7,7 +7,8 @@
   "scripts": {
     "brand:check": "node scripts/check-brand.mjs",
     "test:release-notes": "node tests/release_notes_test.mjs",
+    "test:windows-icon": "node tests/windows_icon_test.mjs",
     "test:engine": "cargo test -p migroute",
-    "verify": "pnpm brand:check && node tests/release_notes_test.mjs && cargo test -p migroute"
+    "verify": "pnpm brand:check && node tests/release_notes_test.mjs && node tests/windows_icon_test.mjs && cargo test -p migroute"
   }
 }
