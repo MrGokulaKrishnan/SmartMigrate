@@ -693,7 +693,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     let provided_hash = migroute::compute_sha256(provided_token.as_bytes());
                     constant_time_eq_str(&device.token_hash, &provided_hash)
                 } else {
-                    let expected_fp_prefix = format!("FP-{}", &provided_token[..provided_token.len().min(8)].to_uppercase());
+                    let expected_fp_prefix = format!("FP-{}", provided_token[..provided_token.len().min(8)].to_uppercase());
                     device.fingerprint.starts_with(&expected_fp_prefix)
                 };
 
@@ -703,7 +703,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 }
 
                 // Reset sequence tracking for this device on new session establishment
-                state.input_controller.reset_sequence(&device.id.to_string());
+                state.input_controller.reset_sequence(device.id.as_ref());
 
                 let session_id = format!("sm-sess-{}", &now_ms().to_string()[7..]);
                 stream_lock.is_active = true;
@@ -1137,7 +1137,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             // Optimize streaming socket: disable Nagle, remove read timeout, set write deadline
             let _ = socket.set_nodelay(true);
             let _ = socket.set_read_timeout(None);
-            let _ = socket.set_write_timeout(Some(Duration::from_millis(8000)));
+            let _ = socket.set_write_timeout(Some(Duration::from_millis(2500)));
 
             // Stream frames directly on this connection (No wildcard CORS)
             let http_header = "HTTP/1.1 200 OK\r\n\
