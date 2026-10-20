@@ -1167,7 +1167,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             let mut encoder = SoftwareJpegEncoder::new(82);
             let mut current_quality: u8 = 82;
             let requested_fps: u64 = query
-                .split(|c| c == '&' || c == '?')
+                .split(['&', '?'])
                 .find_map(|kv| kv.strip_prefix("fps="))
                 .and_then(|v| v.parse::<u64>().ok())
                 .unwrap_or(60);
@@ -1181,7 +1181,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
 
             loop {
                 // Respect stop_display_stream() and verify this connection has not been superseded
-                let is_current = state.active_stream.lock().map_or(false, |s| s.is_active && s.connection_id == connection_token);
+                let is_current = state.active_stream.lock().is_ok_and(|s| s.is_active && s.connection_id == connection_token);
                 if !is_current || stop_signal.load(Ordering::Relaxed) {
                     break;
                 }
