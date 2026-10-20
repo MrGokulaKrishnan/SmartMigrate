@@ -22,3 +22,21 @@ local.properties
 *.dll
 **/.kotlin/
 **/smart-migrate.apk
+
+# Source dumps, backup files, and temporary audits
+smartmigrate_sources.txt
+*.sources.txt
+*.dump
+*.bak
+*.tmp
+*.temp
+*.secret
+secrets/
+credentials/
+*.cer
+*.crt
+*.der
+*.idsig
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
