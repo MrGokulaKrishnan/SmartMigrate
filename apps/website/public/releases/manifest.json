@@ -2,7 +2,7 @@
   "product": "Smart Migrate",
   "version": "1.4.4",
   "versionCode": 8,
-  "releaseDate": "2026-10-19T16:52:00Z",
+  "releaseDate": "2026-10-20T16:05:00Z",
   "releaseNotes": "Smart Migrate v1.4.4 cross-platform update\n- Windows: Unify authoritative runtime versioning across About page, sidebar navigation, and in-app updater\n- Windows: Rebuilt and Authenticode-signed native 1.4.4 installers with automatic file-lock release on upgrade\n- Windows: Platform-specific update notes filtering and semantic versioning verification\n- Android: Active video frame decodes immediately promote connection state to STREAMING and clear reconnect banner\n- Android: SessionToken fallback across input handlers ensures mouse and touch coordinates are never dropped\n- Android: Dynamic desktop aspect ratio mapping prevents letterbox margin mis-clicks\n- Android: Native vector power icon replaces missing system font glyph box\n- Cross-Platform: Automatic ControlKeyboard authorization and instantaneous modal dismissal upon PIN approval",
   "releaseHighlights": [
     "Windows: Dynamic runtime versioning across About, Navigation, and In-App Updater",

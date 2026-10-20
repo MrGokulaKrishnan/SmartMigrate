@@ -1,7 +1,7 @@
 {
   "version": "1.4.4",
-  "date": "2026-10-19",
-  "updated_at": "2026-10-19T16:52:00Z",
+  "date": "2026-10-20",
+  "updated_at": "2026-10-20T16:05:00Z",
   "artifacts": {
     "windows-exe": {
       "filename": "SmartMigrate-Setup-x64.exe",
