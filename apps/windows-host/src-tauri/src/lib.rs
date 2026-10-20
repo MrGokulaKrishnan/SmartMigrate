@@ -230,7 +230,7 @@ fn approve_pairing(
     let req_name = session.pending_requester_name.clone().unwrap_or_else(|| "Paired Device".to_string());
 
     let token_hash = migroute::compute_sha256(session.secret_token.as_bytes());
-    let dev_fingerprint = format!("FP-{}", &migroute::compute_sha256(req_id.as_str().as_bytes())[..16].to_uppercase());
+    let dev_fingerprint = format!("FP-{}", migroute::compute_sha256(req_id.as_str().as_bytes())[..16].to_uppercase());
 
     let mut trusted_device = TrustedDevice::new(
         req_id.clone(),
@@ -248,7 +248,7 @@ fn approve_pairing(
     storage::save_trust_store(&trust_store)?;
 
     // Reset sequence tracking for this device
-    state.input_controller.reset_sequence(&req_id.to_string());
+    state.input_controller.reset_sequence(req_id.as_ref());
 
     // Clear pairing session after successful approval
     *active = None;
@@ -280,10 +280,10 @@ fn revoke_trusted_device(state: State<'_, AppState>, device_id: String) -> Resul
     let mut store = state.trust_store.lock().unwrap();
     store.revoke_device(&id).map_err(|e| e.to_string())?;
     storage::save_trust_store(&store)?;
-    state.input_controller.reset_sequence(&id.to_string());
+    state.input_controller.reset_sequence(id.as_ref());
     {
         let mut stream = state.active_stream.lock().unwrap();
-        if stream.target_device_id == id.to_string() {
+        if stream.target_device_id == id.as_ref() {
             stream.is_active = false;
             stream.auth_token.clear();
         }
@@ -298,10 +298,10 @@ fn remove_trusted_device(state: State<'_, AppState>, device_id: String) -> Resul
     let mut store = state.trust_store.lock().unwrap();
     let _ = store.remove_device(&id).map_err(|e| e.to_string())?;
     storage::save_trust_store(&store)?;
-    state.input_controller.reset_sequence(&id.to_string());
+    state.input_controller.reset_sequence(id.as_ref());
     {
         let mut stream = state.active_stream.lock().unwrap();
-        if stream.target_device_id == id.to_string() {
+        if stream.target_device_id == id.as_ref() {
             stream.is_active = false;
             stream.auth_token.clear();
         }
@@ -365,6 +365,7 @@ fn get_stream_telemetry(state: State<'_, AppState>) -> StreamTelemetry {
 
 /// Injects remote mouse movement and button clicks if authorized by host.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 fn inject_remote_mouse(
     state: State<'_, AppState>,
     device_id: String,

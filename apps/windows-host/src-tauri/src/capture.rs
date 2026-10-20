@@ -372,6 +372,7 @@ impl VideoEncoder for SoftwareJpegEncoder {
 mod win_gdi {
 
     #[repr(C)]
+    #[allow(clippy::upper_case_acronyms)]
     pub struct BITMAPINFOHEADER {
         pub bi_size: u32,
         pub bi_width: i32,
@@ -387,6 +388,7 @@ mod win_gdi {
     }
 
     #[repr(C)]
+    #[allow(clippy::upper_case_acronyms)]
     pub struct BITMAPINFO {
         pub bmi_header: BITMAPINFOHEADER,
         pub bmi_colors: [u32; 1],

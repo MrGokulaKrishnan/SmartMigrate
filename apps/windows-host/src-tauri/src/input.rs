@@ -52,6 +52,7 @@ impl InputController {
     }
 
     /// Injects a remote mouse input event after verifying authorization, sequence replay, and screen bounds.
+    #[allow(clippy::too_many_arguments)]
     pub fn inject_mouse(
         &self,
         trust_store: &TrustStore,
@@ -269,6 +270,7 @@ impl InputController {
 }
 
 #[cfg(target_os = "windows")]
+#[allow(clippy::upper_case_acronyms)]
 mod win32 {
     #[repr(C)]
     #[derive(Copy, Clone)]
@@ -331,6 +333,7 @@ mod win32 {
 }
 
 #[cfg(target_os = "windows")]
+#[allow(clippy::too_many_arguments)]
 fn inject_win32_mouse(
     x: i32,
     y: i32,
@@ -558,6 +561,7 @@ fn inject_win32_hotkey(hotkey: &str) {
 }
 
 #[cfg(not(target_os = "windows"))]
+#[allow(clippy::too_many_arguments)]
 fn inject_win32_mouse(
     _x: i32, _y: i32, _is_relative: bool,
     _left_down: bool, _left_up: bool,

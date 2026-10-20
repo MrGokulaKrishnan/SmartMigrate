@@ -31,7 +31,7 @@ const BASE64_ALPHABET: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 pub fn to_base64(data: &[u8]) -> String {
-    let mut result = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0];
         let b1 = if chunk.len() > 1 { chunk[1] } else { 0 };
@@ -71,11 +71,12 @@ pub fn from_base64(input: &str) -> Result<Vec<u8>, String> {
     }
 
     let clean: Vec<u8> = input.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
-    if clean.len() % 4 != 0 {
+    if !clean.len().is_multiple_of(4) {
         return Err("invalid base64 length".to_string());
     }
 
     let mut result = Vec::with_capacity(clean.len() / 4 * 3);
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     for quad in clean.chunks_exact(4) {
         let c0 = decode_char(quad[0])?;
         let c1 = decode_char(quad[1])?;
