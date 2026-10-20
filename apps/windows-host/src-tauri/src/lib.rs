@@ -541,7 +541,7 @@ fn resume_clipboard_sync(state: State<'_, AppState>) -> Result<(), String> {
 fn read_host_clipboard_text(state: State<'_, AppState>) -> Option<String> {
     let lock = state.clipboard.grant.lock().unwrap();
     // Only return clipboard content when sync is active.
-    if lock.as_ref().map_or(false, |g| g.can_host_push()) {
+    if lock.as_ref().is_some_and(|g| g.can_host_push()) {
         drop(lock);
         clipboard::read_host_clipboard()
     } else {
@@ -631,6 +631,7 @@ fn read_outgoing_chunk(
 
 /// Host operator authorizes an incoming file offer from a trusted peer.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 fn accept_incoming_transfer(
     state: State<'_, AppState>,
     device_id: String,
