@@ -770,7 +770,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                             if !d.token_hash.is_empty() {
                                 constant_time_eq_str(&d.token_hash, &token_hash)
                             } else {
-                                let expected_fp_prefix = format!("FP-{}", &token_str[..token_str.len().min(8)].to_uppercase());
+                                let expected_fp_prefix = format!("FP-{}", token_str[..token_str.len().min(8)].to_uppercase());
                                 d.fingerprint.starts_with(&expected_fp_prefix)
                             }
                         });
@@ -1061,7 +1061,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                             if !d.token_hash.is_empty() {
                                 constant_time_eq_str(&d.token_hash, &token_hash)
                             } else {
-                                let expected_fp_prefix = format!("FP-{}", &token[..token.len().min(8)].to_uppercase());
+                                let expected_fp_prefix = format!("FP-{}", token[..token.len().min(8)].to_uppercase());
                                 d.fingerprint.starts_with(&expected_fp_prefix)
                             }
                         });
