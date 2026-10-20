@@ -249,9 +249,20 @@ fn run_smp_tcp_server(stop_signal: Arc<AtomicBool>, state: AppState, control_por
     };
     let _ = listener.set_nonblocking(true);
 
+    const MAX_CONCURRENT_CLIENTS: usize = 32;
+    let active_clients = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
     while !stop_signal.load(Ordering::Relaxed) {
         match listener.accept() {
-            Ok((socket, _peer)) => {
+            Ok((mut socket, _peer)) => {
+                if active_clients.load(Ordering::Relaxed) >= MAX_CONCURRENT_CLIENTS {
+                    let _ = socket.write_all(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 1\r\nConnection: close\r\n\r\nToo Many Requests\r\n");
+                    let _ = socket.flush();
+                    continue;
+                }
+                active_clients.fetch_add(1, Ordering::Relaxed);
+                let client_counter = Arc::clone(&active_clients);
+
                 let _ = socket.set_nodelay(true);
                 let _ = socket.set_read_timeout(Some(Duration::from_millis(1500)));
 
@@ -259,6 +270,13 @@ fn run_smp_tcp_server(stop_signal: Arc<AtomicBool>, state: AppState, control_por
                 let stop_clone = Arc::clone(&stop_signal);
 
                 std::thread::spawn(move || {
+                    struct ConnGuard(Arc<std::sync::atomic::AtomicUsize>);
+                    impl Drop for ConnGuard {
+                        fn drop(&mut self) {
+                            self.0.fetch_sub(1, Ordering::Relaxed);
+                        }
+                    }
+                    let _guard = ConnGuard(client_counter);
                     handle_client_connection(socket, state_clone, stop_clone);
                 });
             }
@@ -279,7 +297,7 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 /// Reads a complete HTTP request, buffering headers until delimiter and reading full body based on Content-Length.
 fn read_http_request(socket: &mut TcpStream) -> Option<(String, String)> {
-    let _ = socket.set_read_timeout(Some(Duration::from_millis(5000)));
+    let _ = socket.set_read_timeout(Some(Duration::from_millis(1500)));
     let mut header_buf = Vec::with_capacity(4096);
     let mut chunk = [0u8; 1024];
     let mut header_end_pos = None;
@@ -508,7 +526,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
 
                             let session_token = generate_crypto_token();
                             let token_hash = migroute::compute_sha256(session_token.as_bytes());
-                            let dev_fingerprint = format!("FP-{}", &migroute::compute_sha256(req_id.as_str().as_bytes())[..16].to_uppercase());
+                            let dev_fingerprint = format!("FP-{}", migroute::compute_sha256(req_id.as_str().as_bytes())[..16].to_uppercase());
 
                             let mut trusted_device = TrustedDevice::new(
                                 req_id.clone(),
@@ -526,7 +544,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                             let _ = save_trust_store(&trust_store);
 
                             // Reset sequence tracker so client's initial input counter is accepted
-                            state.input_controller.reset_sequence(&req_id.to_string());
+                            state.input_controller.reset_sequence(req_id.as_ref());
 
                             // Update active stream token and bind target device
                             {
