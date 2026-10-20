@@ -746,8 +746,8 @@ export function App() {
 
   const [streamTelemetry, setStreamTelemetry] = useState<StreamTelemetry | null>(null);
 
-  const [lanIps, setLanIps] = useState<string[]>(["192.168.31.33"]);
-  const primaryHostIp = lanIps[0] || "192.168.31.33";
+  const [lanIps, setLanIps] = useState<string[]>([]);
+  const primaryHostIp = lanIps[0] || "";
 
   const refreshStatus = () => {
     invoke<HostStatus>("host_status")
@@ -1522,7 +1522,7 @@ export function App() {
                     </span>
                     <div style={{ padding: "5px 14px", background: "rgba(124, 77, 255, 0.12)", border: "1px solid rgba(124, 77, 255, 0.3)", borderRadius: "8px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                       <span style={{ fontSize: "0.72rem", color: "var(--sm-text-3)" }}>HOST IP:</span>
-                      <span style={{ fontSize: "0.85rem", fontFamily: "JetBrains Mono", fontWeight: 700, color: "var(--sm-brand-300)" }}>{primaryHostIp}:7890</span>
+                      <span style={{ fontSize: "0.85rem", fontFamily: "JetBrains Mono", fontWeight: 700, color: "var(--sm-brand-300)" }}>{primaryHostIp ? `${primaryHostIp}:7890` : "Port 7890"}</span>
                     </div>
                   </div>
 
@@ -2026,7 +2026,7 @@ function OrbitRadarView({
             <span className="sm-liquid-chip-migroute">MigRoute Discovery</span>
             <span className="sm-liquid-chip-stream">{resilience.directP2pActive ? "Direct LAN Active" : "LAN Proximity"}</span>
             <span className="sm-liquid-chip" style={{ fontFamily: "JetBrains Mono", fontSize: "0.72rem" }}>
-              Host: {primaryHostIp || "192.168.31.33"}:7890
+              Host: {primaryHostIp ? `${primaryHostIp}:7890` : "Detecting LAN IP..."}
             </span>
           </div>
           <p>
@@ -2065,7 +2065,7 @@ function OrbitRadarView({
         {/* Center Host Orb with Unclipped Circular Logo */}
         <div
           className="orbit-center-orb"
-          title={`Smart Migrate Windows Host (${primaryHostIp || "192.168.31.33"}:7890)`}
+          title={`Smart Migrate Windows Host (${primaryHostIp ? `${primaryHostIp}:7890` : "Port 7890"})`}
           onClick={() => onNavigate("Home")}
         >
           <img src={brandLogoUrl} alt="Windows Host" style={{ width: "36px", height: "36px", objectFit: "contain", borderRadius: "10px" }} />

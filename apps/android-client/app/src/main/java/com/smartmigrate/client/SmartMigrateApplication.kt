@@ -18,12 +18,16 @@ class SmartMigrateApplication : Application() {
         private const val PREFS_CRASH = "sm_crash_recovery"
         private const val KEY_LAST_CRASH = "last_crash_reason"
         private const val KEY_CRASH_TIMESTAMP = "last_crash_timestamp"
+
+        lateinit var instance: SmartMigrateApplication
+            private set
     }
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         installGlobalExceptionHandler()
-        Log.i(TAG, "Smart Migrate Application initialized (v1.4.2)")
+        Log.i(TAG, "Smart Migrate Application initialized (v1.4.4)")
     }
 
     private fun installGlobalExceptionHandler() {

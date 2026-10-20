@@ -1,8 +1,18 @@
 package com.smartmigrate.client
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.SystemClock
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -72,20 +82,235 @@ object SmpClient {
     )
 
     /**
-     * Discovers active Smart Migrate Windows Host on the local network via UDP beacon probe on port 7889
-     * and subnet candidate scanning.
+     * Resolves the active Wi-Fi Network handle, even if mobile data is primary or Wi-Fi lacks internet.
      */
-    suspend fun discoverHosts(timeoutMs: Long = 1200): DiscoveredHost? = withContext(Dispatchers.IO) {
-        // 1. Send UDP probe on port 7889
+    fun getWifiNetwork(context: Context? = null): Network? {
+        val ctx = context ?: try { SmartMigrateApplication.instance } catch (_: Exception) { null } ?: return null
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return null
+
+        val active = cm.activeNetwork
+        if (active != null) {
+            val caps = cm.getNetworkCapabilities(active)
+            if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                return active
+            }
+        }
+
+        for (net in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(net)
+            if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                return net
+            }
+        }
+        return null
+    }
+
+    /**
+     * Requests and binds the Wi-Fi network handle with a short timeout.
+     */
+    suspend fun requestWifiNetwork(context: Context? = null, timeoutMs: Long = 1000): Network? {
+        val existing = getWifiNetwork(context)
+        if (existing != null) return existing
+
+        val ctx = context ?: try { SmartMigrateApplication.instance } catch (_: Exception) { null } ?: return null
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return null
+
+        val req = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .build()
+        val deferred = CompletableDeferred<Network?>()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                deferred.complete(network)
+            }
+            override fun onUnavailable() {
+                deferred.complete(null)
+            }
+        }
+
+        return try {
+            cm.requestNetwork(req, callback, timeoutMs.toInt())
+            withTimeoutOrNull(timeoutMs) { deferred.await() }
+        } catch (_: Exception) {
+            null
+        } finally {
+            try { cm.unregisterNetworkCallback(callback) } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Opens an HttpURLConnection explicitly routed through the Wi-Fi network interface.
+     */
+    fun openHttpConnection(url: URL, wifiNet: Network? = null, context: Context? = null): HttpURLConnection {
+        val net = wifiNet ?: getWifiNetwork(context)
+        if (net != null) {
+            try {
+                return net.openConnection(url) as HttpURLConnection
+            } catch (_: Exception) {}
+        }
+        return url.openConnection() as HttpURLConnection
+    }
+
+    /**
+     * Determines local Wi-Fi IPv4 subnet prefix (e.g., "192.168.0.") and self host octet from LinkProperties.
+     */
+    fun getSubnetInfo(context: Context? = null, wifiNet: Network? = null): Pair<String, Int> {
+        val ctx = context ?: try { SmartMigrateApplication.instance } catch (_: Exception) { null }
+        val cm = ctx?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val net = wifiNet ?: getWifiNetwork(ctx)
+
+        if (cm != null && net != null) {
+            val lp = cm.getLinkProperties(net)
+            if (lp != null) {
+                for (la in lp.linkAddresses) {
+                    val addr = la.address
+                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+                        val host = addr.hostAddress ?: ""
+                        if (!host.startsWith("127.") && !host.startsWith("169.254.")) {
+                            val lastDot = host.lastIndexOf('.')
+                            if (lastDot > 0) {
+                                val prefix = host.substring(0, lastDot + 1)
+                                val octet = host.substring(lastDot + 1).toIntOrNull() ?: 0
+                                return Pair(prefix, octet)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: search non-cellular interfaces
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (iface.isLoopback || !iface.isUp) continue
+                val name = iface.name.lowercase()
+                if (name.contains("rmnet") || name.contains("pdp") || name.contains("ccmni") || name.contains("dummy")) {
+                    continue
+                }
+                val addrs = iface.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+                        val host = addr.hostAddress ?: ""
+                        if (!host.startsWith("127.") && !host.startsWith("169.254.")) {
+                            val lastDot = host.lastIndexOf('.')
+                            if (lastDot > 0) {
+                                val prefix = host.substring(0, lastDot + 1)
+                                val octet = host.substring(lastDot + 1).toIntOrNull() ?: 0
+                                return Pair(prefix, octet)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        return Pair("", 0)
+    }
+
+    /**
+     * Determines local Wi-Fi IPv4 subnet prefix (e.g., "192.168.0.")
+     */
+    fun getLocalSubnetPrefix(context: Context? = null): String {
+        return getSubnetInfo(context).first
+    }
+
+    /**
+     * Returns the phone's current local Wi-Fi IPv4 address.
+     */
+    fun getLocalIp(context: Context? = null): String {
+        val (prefix, octet) = getSubnetInfo(context)
+        return if (prefix.isNotEmpty() && octet > 0) "$prefix$octet" else ""
+    }
+
+    /**
+     * Concurrently probes the entire local subnet for active Smart Migrate Windows hosts.
+     */
+    suspend fun probeSubnet(
+        subnetPrefix: String,
+        localHostNum: Int,
+        wifiNet: Network?
+    ): DiscoveredHost? = coroutineScope {
+        if (subnetPrefix.isEmpty()) return@coroutineScope null
+        val result = CompletableDeferred<DiscoveredHost?>()
+
+        // Prioritize common host addresses, then probe all 1..254 except self
+        val priorityHosts = listOf(1, 2, 3, 4, 5, 10, 20, 33, 50, 100, 101, 102, 150, 200)
+        val allHosts = (1..254).toList()
+        val candidates = (priorityHosts + allHosts).distinct().filter { it != localHostNum }
+
+        val channel = Channel<String>(candidates.size)
+        candidates.forEach { channel.trySend("$subnetPrefix$it") }
+        channel.close()
+
+        val concurrency = 64
+        val workers = (1..concurrency).map {
+            launch(Dispatchers.IO) {
+                for (ip in channel) {
+                    if (result.isCompleted) break
+                    try {
+                        val url = URL("http://$ip:7890/smp/hello")
+                        val conn = openHttpConnection(url, wifiNet).apply {
+                            connectTimeout = 300
+                            readTimeout = 400
+                            requestMethod = "GET"
+                            setRequestProperty("Accept", "application/json")
+                            setRequestProperty("User-Agent", "SmartMigrate-Discovery/1.4.4")
+                        }
+                        if (conn.responseCode == 200) {
+                            val text = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
+                            if (text.contains("SMP") || text.contains("protocolVersion") || text.contains("deviceId")) {
+                                val json = JSONObject(text)
+                                val host = DiscoveredHost(
+                                    ip = ip,
+                                    port = 7890,
+                                    name = json.optString("deviceName", "Windows Host"),
+                                    id = json.optString("deviceId", "sm-win-host")
+                                )
+                                result.complete(host)
+                                break
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+
+        val found = try {
+            withTimeoutOrNull(2500) { result.await() }
+        } finally {
+            workers.forEach { it.cancel() }
+        }
+        found
+    }
+
+    /**
+     * Discovers active Smart Migrate Windows Host on the local network via UDP beacon probe on port 7889
+     * and parallel subnet candidate scanning, strictly routing over Wi-Fi.
+     */
+    suspend fun discoverHosts(context: Context? = null, timeoutMs: Long = 2000): DiscoveredHost? = withContext(Dispatchers.IO) {
+        val wifiNet = requestWifiNetwork(context, 800) ?: getWifiNetwork(context)
+        val (subnetPrefix, localHostNum) = getSubnetInfo(context, wifiNet)
+
+        // 1. Send UDP probe on port 7889 bound to Wi-Fi
         try {
             val socket = java.net.DatagramSocket()
+            wifiNet?.bindSocket(socket)
             socket.broadcast = true
-            socket.soTimeout = 800
+            socket.soTimeout = 600
 
             val probeMsg = "SM_DISCOVERY_PROBE\n".toByteArray(Charsets.UTF_8)
             val broadcastAddr = java.net.InetAddress.getByName("255.255.255.255")
-            val sendPacket = java.net.DatagramPacket(probeMsg, probeMsg.size, broadcastAddr, 7889)
-            socket.send(sendPacket)
+            socket.send(java.net.DatagramPacket(probeMsg, probeMsg.size, broadcastAddr, 7889))
+
+            if (subnetPrefix.isNotEmpty()) {
+                try {
+                    val directedAddr = java.net.InetAddress.getByName("${subnetPrefix}255")
+                    socket.send(java.net.DatagramPacket(probeMsg, probeMsg.size, directedAddr, 7889))
+                } catch (_: Exception) {}
+            }
 
             val buf = ByteArray(1024)
             val recvPacket = java.net.DatagramPacket(buf, buf.size)
@@ -115,101 +340,36 @@ object SmpClient {
                 return@withContext DiscoveredHost(ip, port, name, id)
             }
         } catch (_: Exception) {
-            // UDP broadcast blocked or timed out
+            // UDP broadcast blocked, dropped by firewall, or timed out
         }
 
-        // 2. Direct probe against local subnet candidates.
-        // Note: We no longer inject a hardcoded .33 developer machine guess. The subnet prefix is
-        // used with common router/host addresses only. Any device at .33 would need to be already
-        // running the host — if not found, we return null so the UI prompts the user.
-        val localSubnet = getLocalSubnetPrefix()
-        val candidateIps = listOf("${localSubnet}1", "${localSubnet}100", "${localSubnet}2")
-        for (candidate in candidateIps) {
-            try {
-                val url = URL("http://$candidate:7890/smp/hello")
-                val conn = (url.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 300
-                    readTimeout = 300
-                }
-                if (conn.responseCode == 200) {
-                    val text = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
-                    val json = JSONObject(text)
-                    return@withContext DiscoveredHost(
-                        ip = candidate,
-                        port = 7890,
-                        name = json.optString("deviceName", "Windows Host"),
-                        id = json.optString("deviceId", "sm-win-host")
-                    )
-                }
-            } catch (_: Exception) {}
+        // 2. Parallel Subnet Probing across all 1..254 addresses
+        if (subnetPrefix.isNotEmpty()) {
+            val found = probeSubnet(subnetPrefix, localHostNum, wifiNet)
+            if (found != null) {
+                return@withContext found
+            }
         }
 
         null
     }
 
     /**
-     * Determines local Wi-Fi IPv4 subnet prefix (e.g., "192.168.31.")
-     */
-    fun getLocalSubnetPrefix(): String {
-        try {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val iface = interfaces.nextElement()
-                if (iface.isLoopback || !iface.isUp) continue
-                val addrs = iface.inetAddresses
-                while (addrs.hasMoreElements()) {
-                    val addr = addrs.nextElement()
-                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
-                        val host = addr.hostAddress ?: ""
-                        if (!host.startsWith("127.") && !host.startsWith("169.254.")) {
-                            val lastDot = host.lastIndexOf('.')
-                            if (lastDot > 0) {
-                                return host.substring(0, lastDot + 1)
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return "192.168.31."
-    }
-
-    /**
-     * Returns the phone's current local Wi-Fi IPv4 address.
-     */
-    fun getLocalIp(): String {
-        try {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val iface = interfaces.nextElement()
-                if (iface.isLoopback || !iface.isUp) continue
-                val addrs = iface.inetAddresses
-                while (addrs.hasMoreElements()) {
-                    val addr = addrs.nextElement()
-                    if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
-                        val host = addr.hostAddress ?: ""
-                        if (!host.startsWith("127.") && !host.startsWith("169.254.")) {
-                            return host
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return "192.168.31.132"
-    }
-
-    /**
      * Handshake with Windows host to verify SMP/1 protocol and capabilities.
      */
     suspend fun getHello(host: String, port: Int = 7890): Result<DeviceHello> = withContext(Dispatchers.IO) {
+        val cleanHost = host.trim()
+        if (cleanHost.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Host IP address is required."))
+        }
         try {
-            val url = URL("http://$host:$port/smp/hello")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
+            val url = URL("http://$cleanHost:$port/smp/hello")
+            val conn = openHttpConnection(url).apply {
                 requestMethod = "GET"
                 connectTimeout = 3000
                 readTimeout = 3000
                 setRequestProperty("Accept", "application/json")
-                setRequestProperty("User-Agent", "SmartMigrate-Android/0.1.0")
+                setRequestProperty("User-Agent", "SmartMigrate-Android/1.4.4")
             }
 
             val code = conn.responseCode
@@ -233,7 +393,7 @@ object SmpClient {
                     deviceId = json.optString("deviceId", "unknown"),
                     deviceName = json.optString("deviceName", "Windows Host"),
                     platform = json.optString("platform", "Windows"),
-                    appVersion = json.optString("appVersion", "0.1.0"),
+                    appVersion = json.optString("appVersion", "1.4.4"),
                     capabilities = caps,
                     timestampMs = json.optLong("timestampMs", System.currentTimeMillis())
                 )
@@ -253,22 +413,30 @@ object SmpClient {
         requesterDeviceId: String = "sm-android-" + android.os.Build.MODEL.replace(" ", "-").lowercase(),
         requesterName: String = "Android (" + android.os.Build.MODEL + ")"
     ): Result<PairResult> = withContext(Dispatchers.IO) {
+        val cleanHost = host.trim()
+        if (cleanHost.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Host IP address is required. Please auto-detect or enter the PC's IP."))
+        }
+        val cleanPin = pin.trim()
+        if (cleanPin.length != 6 || !cleanPin.all { it.isDigit() }) {
+            return@withContext Result.failure(IllegalArgumentException("Please enter a valid 6-digit PIN."))
+        }
         try {
-            val url = URL("http://$host:$port/smp/pair")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
+            val url = URL("http://$cleanHost:$port/smp/pair")
+            val conn = openHttpConnection(url).apply {
                 requestMethod = "POST"
                 connectTimeout = 4000
                 readTimeout = 4000
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 setRequestProperty("Accept", "application/json")
-                setRequestProperty("User-Agent", "SmartMigrate-Android/0.1.0")
+                setRequestProperty("User-Agent", "SmartMigrate-Android/1.4.4")
             }
 
             val body = JSONObject().apply {
                 put("requesterDeviceId", requesterDeviceId)
                 put("requesterName", requesterName)
-                put("code", pin.trim())
+                put("code", cleanPin)
                 put("requestedPermissions", JSONArray(listOf("ViewScreen", "ControlMouse", "ControlKeyboard", "Clipboard")))
             }
 
@@ -316,9 +484,13 @@ object SmpClient {
         clientDeviceId: String,
         sessionToken: String
     ): Result<SessionResult> = withContext(Dispatchers.IO) {
+        val cleanHost = host.trim()
+        if (cleanHost.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Host IP address is required."))
+        }
         try {
-            val url = URL("http://$host:$port/smp/session")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
+            val url = URL("http://$cleanHost:$port/smp/session")
+            val conn = openHttpConnection(url).apply {
                 requestMethod = "POST"
                 connectTimeout = 4000
                 readTimeout = 4000
@@ -326,6 +498,7 @@ object SmpClient {
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty("Authorization", "Bearer $sessionToken")
+                setRequestProperty("User-Agent", "SmartMigrate-Android/1.4.4")
             }
 
             val body = JSONObject().apply {
@@ -368,10 +541,14 @@ object SmpClient {
      * Measures round-trip heartbeat latency (RTT) to the Windows host in milliseconds.
      */
     suspend fun ping(host: String, port: Int = 7890): Result<Long> = withContext(Dispatchers.IO) {
+        val cleanHost = host.trim()
+        if (cleanHost.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Host IP address is required."))
+        }
         val t0 = SystemClock.elapsedRealtime()
         try {
-            val url = URL("http://$host:$port/smp/ping")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
+            val url = URL("http://$cleanHost:$port/smp/ping")
+            val conn = openHttpConnection(url).apply {
                 requestMethod = "GET"
                 connectTimeout = 2500
                 readTimeout = 2500
@@ -411,9 +588,13 @@ object SmpClient {
         text: String? = null,
         hotkey: String? = null
     ): Result<Boolean> = withContext(Dispatchers.IO) {
+        val cleanHost = host.trim()
+        if (cleanHost.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Host IP address is required."))
+        }
         try {
-            val url = URL("http://$host:$port/smp/input")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
+            val url = URL("http://$cleanHost:$port/smp/input")
+            val conn = openHttpConnection(url).apply {
                 requestMethod = "POST"
                 connectTimeout = 1500
                 readTimeout = 1500
@@ -459,9 +640,13 @@ object SmpClient {
      * Informs the Windows host to cleanly terminate the active display streaming / control session.
      */
     suspend fun disconnectSession(host: String, port: Int = 7890): Result<Boolean> = withContext(Dispatchers.IO) {
+        val cleanHost = host.trim()
+        if (cleanHost.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Host IP address is required."))
+        }
         try {
-            val url = URL("http://$host:$port/smp/disconnect")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
+            val url = URL("http://$cleanHost:$port/smp/disconnect")
+            val conn = openHttpConnection(url).apply {
                 requestMethod = "POST"
                 connectTimeout = 1500
                 readTimeout = 1500
@@ -499,9 +684,11 @@ object SmpClient {
      * an HTTP response (any code). Used before retrying a full session after a network drop.
      */
     suspend fun pingHost(host: String, port: Int = 7890): Boolean = withContext(Dispatchers.IO) {
+        val cleanHost = host.trim()
+        if (cleanHost.isBlank()) return@withContext false
         try {
-            val url = URL("http://$host:$port/smp/ping")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
+            val url = URL("http://$cleanHost:$port/smp/ping")
+            val conn = openHttpConnection(url).apply {
                 requestMethod = "GET"
                 connectTimeout = 1500
                 readTimeout = 1500
@@ -516,13 +703,18 @@ object SmpClient {
      * Queries the Windows host for live diagnostic status across all subsystems.
      */
     suspend fun getDiagnostics(host: String, port: Int = 7890): Result<DiagnosticsReport> = withContext(Dispatchers.IO) {
+        val cleanHost = host.trim()
+        if (cleanHost.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Host IP address is required."))
+        }
         try {
-            val url = URL("http://$host:$port/smp/diagnostics")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
+            val url = URL("http://$cleanHost:$port/smp/diagnostics")
+            val conn = openHttpConnection(url).apply {
                 requestMethod = "GET"
                 connectTimeout = 3000
                 readTimeout = 3000
                 setRequestProperty("Accept", "application/json")
+                setRequestProperty("User-Agent", "SmartMigrate-Android/1.4.4")
             }
 
             val code = conn.responseCode

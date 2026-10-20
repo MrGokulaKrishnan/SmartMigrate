@@ -30,17 +30,43 @@ pub const SMP_CONTROL_PORT: u16 = 7890;
 pub const SMP_DISCOVERY_PORT: u16 = 7889;
 
 pub fn get_primary_lan_ip() -> String {
-    if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
-        if socket.connect("8.8.8.8:80").is_ok() {
-            if let Ok(addr) = socket.local_addr() {
-                let ip_str = addr.ip().to_string();
-                if !ip_str.starts_with("127.") && !ip_str.starts_with("169.254.") {
-                    return ip_str;
+    // 1. Try UDP routing socket against known public endpoints (queries OS routing table, no packets sent)
+    for target in &["8.8.8.8:80", "1.1.1.1:80", "223.5.5.5:80"] {
+        if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
+            if socket.connect(target).is_ok() {
+                if let Ok(addr) = socket.local_addr() {
+                    let ip_str = addr.ip().to_string();
+                    if !ip_str.starts_with("127.") && !ip_str.starts_with("169.254.") {
+                        return ip_str;
+                    }
                 }
             }
         }
     }
-    "192.168.31.33".to_string()
+
+    // 2. Fallback: query ipconfig for active IPv4 address
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = std::process::Command::new("ipconfig");
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        if let Ok(output) = cmd.output() {
+            if let Ok(text) = String::from_utf8(output.stdout) {
+                for line in text.lines() {
+                    if line.contains("IPv4") {
+                        if let Some(pos) = line.rfind(':') {
+                            let ip = line[pos + 1..].trim();
+                            if !ip.is_empty() && !ip.starts_with("127.") && !ip.starts_with("169.254.") {
+                                return ip.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    String::new()
 }
 
 #[derive(Debug, Serialize, Deserialize)]

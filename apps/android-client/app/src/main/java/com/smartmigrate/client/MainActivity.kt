@@ -1194,7 +1194,7 @@ private fun RemoteLandingScreen(
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
                         if (hostInput.isEmpty()) {
-                            Text("e.g. 192.168.31.33", color = TextMuted, fontSize = 13.sp)
+                            Text("e.g. 192.168.0.5", color = TextMuted, fontSize = 13.sp)
                         }
                         BasicTextField(
                             value = hostInput,
@@ -3255,8 +3255,14 @@ private suspend fun handleScannedQr(
                 host = ipMatch
             } else {
                 val disc = SmpClient.discoverHosts()
-                host = disc?.ip ?: "${SmpClient.getLocalSubnetPrefix()}33"
+                host = disc?.ip ?: ""
             }
+        }
+
+        if (host.isEmpty()) {
+            onStatus("Could not detect Windows host IP. Please enter Host IP manually.", true)
+            onFail()
+            return
         }
 
         if (pinCode.isEmpty()) {
@@ -3613,6 +3619,21 @@ private fun PairingPinModal(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
+    LaunchedEffect(Unit) {
+        if (hostAddress.isBlank()) {
+            isDetecting = true
+            statusMessage = "Auto-detecting Windows host on Wi-Fi..."
+            val d = SmpClient.discoverHosts()
+            isDetecting = false
+            if (d != null) {
+                hostAddress = d.ip
+                statusMessage = "Found '${d.name}' at ${d.ip}"
+            } else {
+                statusMessage = "Host not auto-detected. Enter PC IP manually or tap Auto-Detect."
+            }
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -3653,14 +3674,14 @@ private fun PairingPinModal(
                                 if (!isDetecting) {
                                     scope.launch {
                                         isDetecting = true
-                                        statusMessage = "Probing LAN for Windows host..."
+                                        statusMessage = "Probing Wi-Fi for Windows host..."
                                         val d = SmpClient.discoverHosts()
                                         isDetecting = false
                                         if (d != null) {
                                             hostAddress = d.ip
                                             statusMessage = "Found '${d.name}' at ${d.ip}"
                                         } else {
-                                            statusMessage = "Host not found. Check PC is on same Wi-Fi."
+                                            statusMessage = "Host not found. Check PC is on same Wi-Fi & Firewall allows port 7890."
                                         }
                                     }
                                 }
@@ -3725,25 +3746,41 @@ private fun PairingPinModal(
                 }
 
                 Spacer(Modifier.height(12.dp))
+                val canSubmit = hostAddress.isNotBlank() && enteredPin.length == 6 && !isPairing
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Box(Modifier.weight(1f)) {
                         SecondaryButton("Cancel") { onDismiss() }
                     }
                     Box(Modifier.weight(1.2f)) {
                         PrimaryButton(
-                            if (isPairing) "Pairing..." else "Submit PIN"
+                            label = if (isPairing) "Pairing..." else "Submit PIN",
+                            enabled = canSubmit
                         ) {
-                            if (enteredPin.length == 6 && !isPairing) {
+                            if (canSubmit) {
                                 scope.launch {
                                     isPairing = true
-                                    statusMessage = "Pairing with ${hostAddress.trim()}:7890..."
-                                    val res = SmpClient.pair(hostAddress.trim(), 7890, enteredPin)
+                                    val cleanHost = hostAddress.trim()
+                                    statusMessage = "Pairing with $cleanHost:7890..."
+                                    val res = SmpClient.pair(cleanHost, 7890, enteredPin)
                                     isPairing = false
                                     if (res.isSuccess) {
                                         val p = res.getOrNull()!!
-                                        onVerified(hostAddress.trim(), p.sessionToken, p.hostDeviceId)
+                                        onVerified(cleanHost, p.sessionToken, p.hostDeviceId)
                                     } else {
-                                        statusMessage = "Error: " + (res.exceptionOrNull()?.message ?: "Pairing failed")
+                                        val ex = res.exceptionOrNull()
+                                        val msg = when {
+                                            ex is java.net.SocketTimeoutException ->
+                                                "Connection timed out. Check PC firewall & port 7890."
+                                            ex is java.net.ConnectException ->
+                                                "Connection refused. Is Smart Migrate Host running on PC?"
+                                            ex != null && ex.message?.contains("403") == true ->
+                                                "PIN rejected. Please check the code on your PC."
+                                            ex != null && ex.message?.contains("410") == true ->
+                                                "PIN expired. Please generate a fresh PIN on PC."
+                                            else ->
+                                                ex?.message ?: "Pairing failed"
+                                        }
+                                        statusMessage = "Error: $msg"
                                     }
                                 }
                             }
@@ -3996,19 +4033,27 @@ private fun UpdateAvailableModal(
 
 // ─── Reusable UI Atoms ───────────────────────────────────────────────────────
 @Composable
-private fun PrimaryButton(label: String, onClick: () -> Unit) {
+private fun PrimaryButton(label: String, enabled: Boolean = true, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 48.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(Brush.horizontalGradient(listOf(Brand500, Brand600)))
-            .border(1.dp, LineStrong, RoundedCornerShape(10.dp))
-            .clickable { onClick() }
+            .background(
+                if (enabled) Brush.horizontalGradient(listOf(Brand500, Brand600))
+                else Brush.horizontalGradient(listOf(Surface2, Surface2))
+            )
+            .border(1.dp, if (enabled) LineStrong else Line, RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled) { onClick() }
             .padding(vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text(
+            label,
+            color = if (enabled) Color.White else TextMuted,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 

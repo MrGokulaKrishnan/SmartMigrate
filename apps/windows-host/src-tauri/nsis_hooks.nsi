@@ -28,11 +28,19 @@
   CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe" "" "$INSTDIR\${MAINBINARYNAME}.exe" 0
   !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
 
+  ; Add Windows Firewall rules for Smart Migrate Host (TCP 7890 for SMP/1 and UDP 7889 for discovery)
+  nsExec::Exec 'netsh advfirewall firewall add rule name="Smart Migrate TCP 7890" dir=in action=allow protocol=TCP localport=7890 profile=any'
+  nsExec::Exec 'netsh advfirewall firewall add rule name="Smart Migrate UDP 7889" dir=in action=allow protocol=UDP localport=7889 profile=any'
+
   ; Notify Windows Shell of association and icon changes (SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST = 0)
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
+  ; Clean up Windows Firewall rules
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="Smart Migrate TCP 7890"'
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="Smart Migrate UDP 7889"'
+
   ; Clean up AppUserModelId and App Paths
   DeleteRegKey SHCTX "Software\Classes\AppUserModelId\com.smartmigrate.host"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\App Paths\${MAINBINARYNAME}.exe"

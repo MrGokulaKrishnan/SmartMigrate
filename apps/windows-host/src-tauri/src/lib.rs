@@ -77,9 +77,32 @@ fn get_host_lan_ips() -> Vec<String> {
     if !primary.is_empty() {
         ips.push(primary);
     }
-    if ips.is_empty() {
-        ips.push("192.168.31.33".to_string());
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = std::process::Command::new("ipconfig");
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        if let Ok(output) = cmd.output() {
+            if let Ok(text) = String::from_utf8(output.stdout) {
+                for line in text.lines() {
+                    if line.contains("IPv4") {
+                        if let Some(pos) = line.rfind(':') {
+                            let ip = line[pos + 1..].trim();
+                            if !ip.is_empty()
+                                && !ip.starts_with("127.")
+                                && !ip.starts_with("169.254.")
+                                && !ips.contains(&ip.to_string())
+                            {
+                                ips.push(ip.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
+
     ips
 }
 
