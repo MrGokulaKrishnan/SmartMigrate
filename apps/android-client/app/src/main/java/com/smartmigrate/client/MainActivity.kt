@@ -1908,7 +1908,7 @@ private fun DedicatedRemoteSessionScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(horizontal = 14.dp, top = 14.dp)
+                .padding(start = 14.dp, end = 14.dp, top = 14.dp)
                 .fillMaxWidth()
                 .height(46.dp)
                 .shadow(elevation = 12.dp, shape = RoundedCornerShape(999.dp), spotColor = Color(0x667C4DFF))
@@ -1981,7 +1981,7 @@ private fun DedicatedRemoteSessionScreen(
 
                 // Meta text / Latency
                 val metaText = when (connState) {
-                    StreamConnectionState.STREAMING -> if (streamDiag.pingMs != null) "${streamDiag.pingMs} ms" else "18 ms"
+                    StreamConnectionState.STREAMING -> if (streamDiag.latencyMs > 0f) "${streamDiag.latencyMs.toInt()} ms" else "18 ms"
                     StreamConnectionState.RECONNECTING -> "retry 2 of 5"
                     else -> ""
                 }
@@ -2053,7 +2053,7 @@ private fun DedicatedRemoteSessionScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(horizontal = 14.dp, bottom = 112.dp)
+                .padding(start = 14.dp, end = 14.dp, bottom = 112.dp)
                 .fillMaxWidth()
         ) {
             Box(
@@ -2269,157 +2269,156 @@ private fun DedicatedRemoteSessionScreen(
             }
         }
 
-                    // 2. Fixed Responsive Clipboard Notification Pill
-                    if (showClipboardBanner && !clipboardSyncEnabled) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = 14.dp, start = 16.dp, end = 68.dp)
-                                .fillMaxWidth(0.92f)
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(Color(0xF00F172A))
-                                .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(20.dp))
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    "Enable clipboard sync to transfer text with host device.",
-                                    color = Color(0xFFE2E8F0),
-                                    fontSize = 11.sp,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0x2638BDF8))
-                                        .clickable {
-                                            clipboardSyncEnabled = true
-                                            showClipboardBanner = false
-                                            onNotice("Clipboard sync activated with Windows host")
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text("Enable Now", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Text(
-                                    "✕",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .clickable { showClipboardBanner = false }
-                                        .padding(4.dp)
-                                )
+        // ── 6. Fixed Responsive Clipboard Notification Pill ────────────────
+        if (showClipboardBanner && !clipboardSyncEnabled) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 68.dp, start = 16.dp, end = 16.dp)
+                    .fillMaxWidth(0.92f)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xF00F172A))
+                    .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Enable clipboard sync to transfer text with host device.",
+                        color = Color(0xFFE2E8F0),
+                        fontSize = 11.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0x2638BDF8))
+                            .clickable {
+                                clipboardSyncEnabled = true
+                                showClipboardBanner = false
+                                onNotice("Clipboard sync activated with Windows host")
                             }
-                        }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("Enable Now", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
-
-                    // 3. Virtual Mouse Tactile Buttons in Cursor Mode
-                    if (controlMode == "Cursor" && virtualMouseEnabled) {
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .navigationBarsPadding()
-                                .padding(start = 16.dp, bottom = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            // Left Click [ L ]
-                            Box(
-                                modifier = Modifier
-                                    .size(54.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xD91E293B))
-                                    .border(1.5.dp, Brand400, CircleShape)
-                                    .clickable {
-                                        queueInput("left_click")
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("L", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            // Right Click [ R ]
-                            Box(
-                                modifier = Modifier
-                                    .size(54.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xD91E293B))
-                                    .border(1.5.dp, Color(0x6694A3B8), CircleShape)
-                                    .clickable {
-                                        queueInput("right_click")
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("R", color = Color(0xFF94A3B8), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            // Double Click [ 2x ]
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xD91E293B))
-                                    .border(1.dp, Color(0x33FFFFFF), CircleShape)
-                                    .clickable {
-                                        queueInput("double_click")
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("2x", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        // Vertical Scroll Strip
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .navigationBarsPadding()
-                                .padding(end = 72.dp, bottom = 16.dp)
-                                .height(110.dp)
-                                .width(36.dp)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(Color(0xD91E293B))
-                                .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(18.dp))
-                                .pointerInput(Unit) {
-                                    detectDragGestures { change, dragAmount ->
-                                        change.consume()
-                                        val delta = (-dragAmount.y * 8f).toInt()
-                                        if (delta != 0) {
-                                            queueInput("scroll", scrollDelta = delta)
-                                        }
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("▲", color = Brand300, fontSize = 9.sp)
-                                Spacer(Modifier.height(2.dp))
-                                Text("⇕", color = Color.White, fontSize = 14.sp)
-                                Spacer(Modifier.height(2.dp))
-                                Text("▼", color = Brand300, fontSize = 9.sp)
-                            }
-                        }
-                    }
+                    Text(
+                        "✕",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { showClipboardBanner = false }
+                            .padding(4.dp)
+                    )
                 }
             }
         }
 
-        // ── 4. Virtual Keyboard Overlay Drawer ──────────────────────────────
+        // ── 7. Virtual Mouse Tactile Buttons in Cursor Mode ────────────────
+        if (controlMode == "Cursor" && virtualMouseEnabled) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 16.dp, bottom = 100.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Left Click [ L ]
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xD91E293B))
+                        .border(1.5.dp, Brand400, CircleShape)
+                        .clickable {
+                            queueInput("left_click")
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("L", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // Right Click [ R ]
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xD91E293B))
+                        .border(1.5.dp, Color(0x6694A3B8), CircleShape)
+                        .clickable {
+                            queueInput("right_click")
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("R", color = Color(0xFF94A3B8), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // Double Click [ 2x ]
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xD91E293B))
+                        .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                        .clickable {
+                            queueInput("double_click")
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("2x", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Vertical Scroll Strip
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 16.dp, bottom = 100.dp)
+                    .height(110.dp)
+                    .width(36.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xD91E293B))
+                    .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(18.dp))
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            val delta = (-dragAmount.y * 8f).toInt()
+                            if (delta != 0) {
+                                queueInput("scroll", scrollDelta = delta)
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("▲", color = Brand300, fontSize = 9.sp)
+                    Spacer(Modifier.height(2.dp))
+                    Text("⇕", color = Color.White, fontSize = 14.sp)
+                    Spacer(Modifier.height(2.dp))
+                    Text("▼", color = Brand300, fontSize = 9.sp)
+                }
+            }
+        }
+
+        // ── 8. Virtual Keyboard Overlay Drawer ──────────────────────────────
         if (isKeyboardOpen) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 100.dp)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(Color(0xF50F172A))
-                    .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(16.dp))
                     .padding(12.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2502,370 +2501,6 @@ private fun DedicatedRemoteSessionScreen(
                                     .padding(horizontal = 7.dp, vertical = 6.dp)
                             ) {
                                 Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── 5. Slide-Out Control Panel Drawer ───────────────────────────────
-        if (isPanelOpen) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0x80000000))
-                    .clickable { isPanelOpen = false }
-            ) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                        .background(Color(0xFA0F172A))
-                        .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                        .clickable(enabled = false) {}
-                        .padding(16.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        // Header with Tabs & Close
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("Panel", "Security").forEach { tab ->
-                                    val isSel = panelTab == tab
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isSel) Brand600 else Color(0x1AFFFFFF))
-                                            .border(1.dp, if (isSel) Brand400 else Color.Transparent, RoundedCornerShape(8.dp))
-                                            .clickable { panelTab = tab }
-                                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                                    ) {
-                                        Text(tab, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-
-                            Text(
-                                "✕",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable { isPanelOpen = false }
-                                    .padding(4.dp)
-                            )
-                        }
-
-                        // Top Quick Action Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // Disconnect (Red)
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        streamEngine.stopStreaming()
-                                        scope.launch {
-                                            SmpClient.disconnectSession(hostAddress.ifEmpty { "10.0.2.2" }, 7890)
-                                        }
-                                        isPanelOpen = false
-                                        onDisconnect()
-                                    }
-                                    .padding(6.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0x33EF4444))
-                                        .border(1.dp, Color(0xFFEF4444), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    PowerVector(color = Color(0xFFEF4444), size = 15.dp)
-                                }
-                                Spacer(Modifier.height(4.dp))
-                                Text("Disconnect", color = Color(0xFFEF4444), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            // Rotate / Orientation
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { onNotice("Orientation lock toggled") }
-                                    .padding(6.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0x26FFFFFF)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("↻", color = Color.White, fontSize = 16.sp)
-                                }
-                                Spacer(Modifier.height(4.dp))
-                                Text("Rotate", color = Color.White, fontSize = 9.sp)
-                            }
-
-                            // Audio Mute
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        muteHostAudio = !muteHostAudio
-                                        onNotice(if (muteHostAudio) "Host audio muted" else "Host audio unmuted")
-                                    }
-                                    .padding(6.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(if (muteHostAudio) Color(0x33EF4444) else Color(0x26FFFFFF)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(if (muteHostAudio) "🔇" else "🔊", fontSize = 13.sp)
-                                }
-                                Spacer(Modifier.height(4.dp))
-                                Text("Audio", color = Color.White, fontSize = 9.sp)
-                            }
-
-                            // Host Screen Curtain / Privacy
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        hostPrivacyMode = !hostPrivacyMode
-                                        onNotice(if (hostPrivacyMode) "Host Privacy Mode enabled (Curtain on)" else "Host Privacy Mode disabled")
-                                    }
-                                    .padding(6.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(if (hostPrivacyMode) Brand600 else Color(0x26FFFFFF)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("👁", fontSize = 13.sp)
-                                }
-                                Spacer(Modifier.height(4.dp))
-                                Text("Curtain", color = Color.White, fontSize = 9.sp)
-                            }
-                        }
-
-                        // TAB: PANEL
-                        if (panelTab == "Panel") {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("CONTROL MODE", color = Color(0xFF94A3B8), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(if (controlMode == "Touch") Color(0x3338BDF8) else Color(0x1AFFFFFF))
-                                            .border(1.5.dp, if (controlMode == "Touch") Color(0xFF38BDF8) else Color(0x26FFFFFF), RoundedCornerShape(10.dp))
-                                            .clickable { controlMode = "Touch"; onNotice("Switched to Touch Mode") }
-                                            .padding(12.dp)
-                                    ) {
-                                        Column {
-                                            Text("Touch Mode", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                            Spacer(Modifier.height(2.dp))
-                                            Text("Direct touch to click, drag & gesture", color = Color(0xFF94A3B8), fontSize = 10.sp)
-                                        }
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(if (controlMode == "Cursor") Color(0x3338BDF8) else Color(0x1AFFFFFF))
-                                            .border(1.5.dp, if (controlMode == "Cursor") Color(0xFF38BDF8) else Color(0x26FFFFFF), RoundedCornerShape(10.dp))
-                                            .clickable { controlMode = "Cursor"; onNotice("Switched to Cursor Mode") }
-                                            .padding(12.dp)
-                                    ) {
-                                        Column {
-                                            Text("Cursor Mode", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                            Spacer(Modifier.height(2.dp))
-                                            Text("Virtual trackpad & mouse buttons", color = Color(0xFF94A3B8), fontSize = 10.sp)
-                                        }
-                                    }
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text("Virtual Mouse Buttons", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("Show on-screen Left/Right click triggers", color = TextMuted, fontSize = 10.sp)
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (virtualMouseEnabled) Brand600 else Color(0x26FFFFFF))
-                                        .clickable { virtualMouseEnabled = !virtualMouseEnabled }
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Text(if (virtualMouseEnabled) "ON" else "OFF", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text("Virtual Extended Display", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(if (isVirtualExtendedDisplay) "Dual Monitor Mode (Second screen)" else "Mirroring primary Windows display", color = TextMuted, fontSize = 10.sp)
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isVirtualExtendedDisplay) Brand600 else Color(0x26FFFFFF))
-                                        .clickable {
-                                            isVirtualExtendedDisplay = !isVirtualExtendedDisplay
-                                            onNotice(if (isVirtualExtendedDisplay) "Virtual Extended Display activated" else "Primary Monitor activated")
-                                        }
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Text(if (isVirtualExtendedDisplay) "EXTENDED" else "MIRROR", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text("Display Aspect Mode", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(if (displayScalingMode == "Fill") "Fill Screen (Zero black space)" else "Fit (Preserve 16:9 aspect)", color = TextMuted, fontSize = 10.sp)
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (displayScalingMode == "Fill") Brand600 else Color(0x26FFFFFF))
-                                        .clickable {
-                                            displayScalingMode = if (displayScalingMode == "Fit") "Fill" else "Fit"
-                                        }
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Text(if (displayScalingMode == "Fill") "FILL" else "FIT", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0x1AFFFFFF))
-                                        .padding(10.dp)
-                                ) {
-                                    Column {
-                                        Text("TARGET FPS", color = TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                        Text("${fpsMode} FPS Ultra", color = Color(0xFF38BDF8), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0x1AFFFFFF))
-                                        .padding(10.dp)
-                                ) {
-                                    Column {
-                                        Text("STREAM LATENCY", color = TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                        Text("${String.format(java.util.Locale.US, "%.0f", streamDiag.latencyMs)} ms RTT", color = Color(0xFF34D399), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-
-                        // TAB: SECURITY
-                        if (panelTab == "Security") {
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text("Mute Host Device", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                        Text("Silence Windows PC audio during remote session", color = TextMuted, fontSize = 10.sp)
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(if (muteHostAudio) Brand600 else Color(0x26FFFFFF))
-                                            .clickable { muteHostAudio = !muteHostAudio }
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(if (muteHostAudio) "ON" else "OFF", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text("Host Privacy Mode", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                        Text("Black out physical PC monitor while you control", color = TextMuted, fontSize = 10.sp)
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(if (hostPrivacyMode) Brand600 else Color(0x26FFFFFF))
-                                            .clickable { hostPrivacyMode = !hostPrivacyMode }
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(if (hostPrivacyMode) "ON" else "OFF", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text("Clipboard Sync", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                        Text("Seamless bidirectional clipboard sharing", color = TextMuted, fontSize = 10.sp)
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(if (clipboardSyncEnabled) Brand600 else Color(0x26FFFFFF))
-                                            .clickable { clipboardSyncEnabled = !clipboardSyncEnabled }
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(if (clipboardSyncEnabled) "ON" else "OFF", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
                             }
                         }
                     }

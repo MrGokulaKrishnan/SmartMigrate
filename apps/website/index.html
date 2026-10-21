@@ -292,6 +292,22 @@
               </div>
             </div>
           </div>
+
+          <!-- Interactive Liquid Glass Mobile Prototype -->
+          <div class="prototype-container" style="margin-top: 3rem;">
+            <div style="padding: 18px 24px; background: rgba(17, 17, 20, 0.95); border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #7C4DFF; box-shadow: 0 0 10px #7C4DFF;"></span>
+                <span style="font-weight: 600; font-size: 14px; color: #fff;">Interactive Prototype — Liquid Glass UI</span>
+                <span style="padding: 3px 8px; border-radius: 999px; background: rgba(124, 77, 255, 0.2); border: 1px solid rgba(167, 139, 250, 0.4); font-size: 11px; color: #C4B5FD;">Live Demo</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <span style="font-size: 12px; color: var(--sm-text-2);">Tap tabs, hold to end, toggle panel</span>
+                <a href="prototype.html" target="_blank" rel="noopener" style="font-size: 12px; color: #A78BFA; text-decoration: underline; font-weight: 500;">Open full screen ↗</a>
+              </div>
+            </div>
+            <iframe class="prototype-iframe" src="prototype.html" title="Smart Migrate Liquid Glass UI Interactive Prototype" loading="lazy"></iframe>
+          </div>
         </section>
 
         <!-- ─── 03 Architecture & System Readiness (KnowToMigrate Pattern) ─── -->
@@ -592,6 +608,17 @@
           </div>
 
           <div class="security-model-container">
+            <article class="security-item-card" style="border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.05);">
+              <div class="security-number-box" style="border-color: #F59E0B; color: #F59E0B;">!</div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                  <h3 style="margin: 0;">Network Transport Status</h3>
+                  <span style="font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(245, 158, 11, 0.2); color: #FBBF24; font-weight: 600;">Not encrypted yet</span>
+                </div>
+                <p>Traffic on your Wi-Fi network is readable by other devices on it until transport encryption ships. Smart Migrate relies on Direct LAN isolation and explicit host-side approval. Use this only on Wi-Fi networks you trust.</p>
+              </div>
+            </article>
+
             <article class="security-item-card">
               <div class="security-number-box">01</div>
               <div>

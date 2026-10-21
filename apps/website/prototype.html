@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart Migrate — Liquid Glass UI Prototype</title>
+<style>
+:root{
+  --bg:#050505;
+  --brand-300:#a78bfa; --brand-400:#8b5cf6; --brand-500:#7c4dff; --brand-600:#6d3df5;
+  --text:#f3f3f7; --text-2:#b5b5c3; --text-3:#757588;
+  --success:#10b981; --warning:#f59e0b; --danger:#ef4444; --info:#60a5fa;
+  --glass-fill:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.05));
+  --glass-border:rgba(255,255,255,.16);
+  --glass-shadow:inset 0 1px 0 rgba(255,255,255,.35),inset 0 -1px 0 rgba(0,0,0,.35),0 12px 40px rgba(0,0,0,.55);
+  --spring:cubic-bezier(.2,.9,.25,1.15);
+  --brand-gradient:linear-gradient(135deg,#a78bfa 0%,#7c4dff 55%,#6d3df5 100%);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI Variable","Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+button{font:inherit;color:inherit}
+
+/* Glass material: fill + specular edge + backdrop blur */
+.glass{
+  position:relative;
+  background:var(--glass-fill);
+  border:1px solid var(--glass-border);
+  box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  backdrop-filter:blur(24px) saturate(180%);
+}
+.glass::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,0) 45%);
+  opacity:.6;
+}
+/* Fallback when backdrop-filter is unsupported: keep text readable */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .glass{background:rgba(22,22,30,.92)}
+}
+/* Reduced transparency: opaque surfaces */
+@media (prefers-reduced-transparency:reduce){
+  :root{--glass-fill:rgba(24,24,32,.97)}
+  .glass{-webkit-backdrop-filter:none;backdrop-filter:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+
+/* Stage: colored light behind the glass so it reads as glass, on AMOLED black */
+.stage{
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;
+  background:
+    radial-gradient(900px 600px at 12% 8%,rgba(124,77,255,.34),transparent 60%),
+    radial-gradient(700px 520px at 92% 85%,rgba(167,139,250,.20),transparent 60%),
+    radial-gradient(560px 460px at 55% 45%,rgba(96,165,250,.10),transparent 70%),
+    var(--bg);
+}
+.layout{display:flex;gap:32px;align-items:center;flex-wrap:wrap;justify-content:center}
+
+/* Device frame */
+.device{
+  width:min(390px,100vw);height:min(844px,calc(100vh - 140px));min-height:640px;
+  border-radius:44px;overflow:hidden;position:relative;background:#050505;
+  border:1px solid rgba(255,255,255,.08);box-shadow:0 30px 80px rgba(0,0,0,.6);
+}
+@media (max-width:480px){
+  .device{width:100vw;height:100vh;min-height:0;border-radius:0;border:0}
+  .stage{padding:0}
+  .state-picker{display:none}
+}
+.screen{position:absolute;inset:0;padding:58px 18px 130px;overflow:auto;display:none}
+.screen.active{display:block}
+
+/* Home / Devices / Security / About */
+h1{font-size:28px;margin:6px 0 4px;letter-spacing:-.02em}
+.sub{color:var(--text-2);font-size:14px;margin:0 0 18px}
+.card{border-radius:24px;padding:18px;margin-bottom:14px}
+.card h2{font-size:15px;margin:0 0 6px;font-weight:600}
+.card p{margin:0;color:var(--text-2);font-size:13px;line-height:1.5}
+.btn-primary{
+  width:100%;margin-top:14px;height:50px;border:0;border-radius:999px;font-weight:600;font-size:15px;color:#fff;cursor:pointer;
+  background:var(--brand-gradient);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 10px 30px rgba(124,77,255,.45);
+}
+.btn-primary:active{transform:scale(.98)}
+.row{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:20px;margin-bottom:10px}
+.row .os{width:40px;height:40px;border-radius:14px;display:grid;place-items:center;background:rgba(255,255,255,.08)}
+.row .os svg{width:20px;height:20px;stroke:var(--brand-300);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.row .meta{flex:1;min-width:0}
+.row .name{font-weight:600;font-size:15px}
+.row .sub2{font-size:12px;color:var(--text-3);margin-top:2px}
+.pill{font-size:12px;padding:5px 10px;border-radius:999px;white-space:nowrap}
+.pill.ok{background:rgba(16,185,129,.16);color:#34d399}
+.pill.warn{background:rgba(245,158,11,.16);color:#fbbf24}
+.pill.idle{background:rgba(255,255,255,.08);color:var(--text-2)}
+
+/* Stream screen: full-bleed desktop, controls float over it */
+#s-stream{padding:0;overflow:hidden}
+.desk{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(500px 360px at 70% 30%,rgba(124,77,255,.35),transparent 65%),
+    linear-gradient(160deg,#1a1240 0%,#0c0a1c 60%,#07070f 100%);
+}
+.win{position:absolute;border-radius:14px;background:rgba(28,28,40,.92);border:1px solid rgba(255,255,255,.08);box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.win.a{left:14%;top:22%;width:62%;height:34%}
+.win.b{left:30%;top:46%;width:52%;height:26%;background:rgba(36,30,62,.92)}
+.win::before{content:"";display:block;height:22px;border-radius:14px 14px 0 0;background:rgba(255,255,255,.05)}
+.taskbar{position:absolute;left:0;right:0;bottom:0;height:52px;background:rgba(10,10,18,.85);border-top:1px solid rgba(255,255,255,.06)}
+
+.status{
+  position:absolute;left:14px;right:14px;top:50px;height:46px;border-radius:999px;
+  display:flex;align-items:center;gap:10px;padding:0 10px 0 14px;font-size:13px;z-index:5;
+}
+.status .dot{width:9px;height:9px;border-radius:50%;background:var(--text-3);flex:none}
+.status .txt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status .meta{color:var(--text-2);font-size:12px;white-space:nowrap}
+.retry{height:30px;padding:0 12px;border-radius:999px;border:0;background:rgba(255,255,255,.14);font-size:12px;font-weight:600;cursor:pointer}
+.status .progress{position:absolute;left:14px;right:14px;bottom:4px;height:3px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+.status .progress i{display:block;height:100%;width:40%;background:var(--warning);border-radius:3px;animation:slide 1.2s ease-in-out infinite}
+@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}
+
+.overlay{
+  position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  background:rgba(5,5,5,.72);z-index:4;
+}
+.overlay.show{display:flex}
+.orbit{
+  width:76px;height:76px;border-radius:50%;
+  background:conic-gradient(from 0deg,rgba(167,139,250,0),#a78bfa 25%,#7c4dff 60%,rgba(124,77,255,0));
+  -webkit-mask:radial-gradient(circle,transparent 27px,#000 28px);mask:radial-gradient(circle,transparent 27px,#000 28px);
+  animation:spin 1.1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.overlay p{margin:0;color:var(--text-2);font-size:14px}
+
+/* Dock: floating glass, bottom-centre, collapses to the right when Panel is open */
+.dock{
+  position:absolute;left:50%;transform:translateX(-50%);bottom:26px;height:72px;padding:10px;border-radius:999px;
+  display:flex;align-items:center;gap:8px;z-index:5;
+}
+.dock-btn{
+  width:52px;height:52px;border-radius:50%;border:0;cursor:pointer;display:grid;place-items:center;
+  background:rgba(255,255,255,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.22);
+}
+.dock-btn svg{width:22px;height:22px;stroke:var(--text);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.dock-btn:active{transform:scale(.94)}
+.dock-btn.on{background:var(--brand-gradient)}
+.dock-btn.on svg{stroke:#fff}
+.end{
+  width:auto;min-width:112px;padding:0 18px;border-radius:999px;font-size:13px;font-weight:600;
+  background:linear-gradient(90deg,#ef4444 0 0) no-repeat,rgba(239,68,68,.18);
+  background-size:0% 100%,100% 100%;transition:background-size .9s linear;color:#fecaca;
+}
+.end.holding{background-size:100% 100%,100% 100%}
+
+/* Bottom sheet (Panel) */
+.sheet{
+  position:absolute;left:12px;right:12px;bottom:112px;border-radius:28px;padding:18px;z-index:6;
+  transform:translateY(130%);transition:transform .42s var(--spring);
+}
+.sheet.open{transform:translateY(0)}
+.toggle{display:flex;align-items:center;justify-content:space-between;padding:12px 0;font-size:14px;border-bottom:1px solid rgba(255,255,255,.06)}
+.toggle:last-child{border-bottom:0}
+.switch{width:46px;height:28px;border-radius:999px;background:rgba(255,255,255,.14);position:relative;flex:none;cursor:pointer;border:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .3s var(--spring)}
+.switch[aria-checked="true"]{background:var(--brand-gradient)}
+.switch[aria-checked="true"]::after{transform:translateX(18px)}
+
+/* Bottom navbar: Apple-style floating glass capsule with sliding glass indicator */
+.tabbar{
+  position:absolute;left:14px;right:14px;bottom:14px;height:70px;border-radius:999px;padding:6px;z-index:8;
+  display:flex;
+}
+.indicator{
+  position:absolute;top:6px;bottom:6px;left:6px;width:calc((100% - 12px)/5);border-radius:999px;
+  background:linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,.08));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 6px 18px rgba(124,77,255,.35);
+  transform:translateX(calc(var(--i,0) * 100%));
+  transition:transform .5s var(--spring);
+}
+.tab{
+  flex:1;position:relative;z-index:1;border:0;background:transparent;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  color:var(--text-3);font-size:11px;font-weight:600;border-radius:999px;min-height:48px;
+}
+.tab svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tab.active{color:#fff}
+.tab.active svg{stroke:#c4b5fd}
+.tab:focus-visible{outline:2px solid var(--brand-300);outline-offset:2px}
+
+/* State preview picker (outside the device) */
+.state-picker{
+  display:flex;gap:6px;padding:6px;border-radius:999px;
+}
+.state-picker button{
+  border:0;background:transparent;padding:10px 14px;border-radius:999px;cursor:pointer;font-size:13px;color:var(--text-2);
+}
+.state-picker button[aria-pressed="true"]{background:rgba(255,255,255,.14);color:#fff}
+
+/* Side notes (desktop only) */
+.notes{max-width:300px;font-size:13px;color:var(--text-2);line-height:1.6}
+.notes h3{color:var(--text);font-size:15px;margin:0 0 8px}
+.notes code{background:rgba(255,255,255,.06);padding:1px 6px;border-radius:6px;color:#c4b5fd;font-size:12px}
+.notes ul{padding-left:18px;margin:8px 0 14px}
+@media (max-width:480px){.notes{display:none}}
+
+/* Connection states are copy-bound, never color-only */
+.device[data-state="connecting"] .dot{background:var(--brand-300);box-shadow:0 0 12px var(--brand-300)}
+.device[data-state="connected"] .dot{background:var(--success);box-shadow:0 0 12px var(--success)}
+.device[data-state="reconnecting"] .dot{background:var(--warning);box-shadow:0 0 12px var(--warning)}
+.device[data-state="failed"] .dot{background:var(--danger);box-shadow:0 0 12px var(--danger)}
+.device[data-state="ended"] .dot{background:var(--text-3)}
+.device:not([data-state="reconnecting"]) .progress{display:none}
+.device:not([data-state="failed"]) .retry{display:none}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="layout">
+    <div class="device glass-host" id="device" data-state="connected">
+
+      <!-- HOME -->
+      <section class="screen active" id="s-home" aria-label="Home">
+        <h1>Good evening</h1>
+        <p class="sub">Your Windows PC is on this Wi-Fi network.</p>
+        <div class="card glass">
+          <h2>Connect to your PC</h2>
+          <p>Mirror the desktop and control it from your phone. Starts a new session after you confirm the pairing code on the PC.</p>
+          <button class="btn-primary" data-goto="stream">Connect</button>
+        </div>
+        <div class="row glass">
+          <div class="os"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+          <div class="meta"><div class="name">DESKTOP-PC</div><div class="sub2">Last session 2 hours ago</div></div>
+          <span class="pill ok">Online</span>
+        </div>
+        <div class="row glass">
+          <div class="os"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="13" height="16" rx="2"/><path d="M17 9h4v10h-4"/></svg></div>
+          <div class="meta"><div class="name">Office laptop</div><div class="sub2">Not paired</div></div>
+          <span class="pill idle">Pair</span>
+        </div>
+      </section>
+
+      <!-- STREAM -->
+      <section class="screen" id="s-stream" aria-label="Stream">
+        <div class="desk" aria-hidden="true">
+          <div class="win a"></div>
+          <div class="win b"></div>
+          <div class="taskbar"></div>
+        </div>
+
+        <div class="overlay" id="overlay">
+          <div class="orbit" aria-hidden="true"></div>
+          <p>Preparing desktop view…</p>
+        </div>
+
+        <div class="status glass" id="status" role="status" aria-live="polite">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="txt" id="status-text">Connected to DESKTOP-PC</span>
+          <span class="meta" id="latency">18 ms</span>
+          <button class="retry" id="retry" hidden>Retry</button>
+          <span class="progress"><i></i></span>
+        </div>
+
+        <div class="sheet glass" id="sheet" role="dialog" aria-label="Session panel">
+          <div class="toggle">Fit to screen <button class="switch" role="switch" aria-checked="true" aria-label="Fit to screen"></button></div>
+          <div class="toggle">Dual extended display <button class="switch" role="switch" aria-checked="false" aria-label="Dual extended display"></button></div>
+          <div class="toggle">Lightweight mode (less blur) <button class="switch" role="switch" aria-checked="false" aria-label="Lightweight mode"></button></div>
+        </div>
+
+        <div class="dock glass" role="toolbar" aria-label="Session controls">
+          <button class="dock-btn" aria-label="Keyboard" title="Keyboard">
+            <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
+          </button>
+          <button class="dock-btn" id="panel-btn" aria-label="Session panel" aria-expanded="false" title="Panel">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="8" cy="18" r="2"/></svg>
+          </button>
+          <button class="dock-btn" aria-label="Display" title="Display">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+          </button>
+          <button class="dock-btn end" id="end-btn" aria-label="Hold to end session">Hold to end</button>
+        </div>
+      </section>
+
+      <!-- DEVICES -->
+      <section class="screen" id="s-devices" aria-label="Devices">
+        <h1>Devices</h1>
+        <p class="sub">Trusted computers and phones.</p>
+        <div class="row glass">
+          <div class="os"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+          <div class="meta"><div class="name">DESKTOP-PC</div><div class="sub2">Trusted · paired 3 days ago</div></div>
+          <span class="pill ok">Online</span>
+        </div>
+        <div class="row glass">
+          <div class="os"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg></div>
+          <div class="meta"><div class="name">Pixel (this phone)</div><div class="sub2">This device</div></div>
+          <span class="pill idle">Local</span>
+        </div>
+      </section>
+
+      <!-- SECURITY: honest about current transport -->
+      <section class="screen" id="s-security" aria-label="Security">
+        <h1>Security</h1>
+        <p class="sub">What protects your session right now.</p>
+        <div class="card glass">
+          <h2>Network transport</h2>
+          <p><span class="pill warn">Not encrypted yet</span></p>
+          <p style="margin-top:10px">Traffic on your Wi-Fi network is readable by other devices on it until encryption ships. Use this only on networks you trust.</p>
+        </div>
+        <div class="card glass">
+          <h2>Pairing</h2>
+          <p>Each device needs a one-time code shown on the PC. You can revoke a device at any time.</p>
+          <button class="btn-primary" style="background:rgba(255,255,255,.1);box-shadow:none">Manage trusted devices</button>
+        </div>
+      </section>
+
+      <!-- ABOUT -->
+      <section class="screen" id="s-about" aria-label="About">
+        <h1>About</h1>
+        <p class="sub">Smart Migrate 1.4.4</p>
+        <div class="card glass">
+          <h2>Direct LAN remote desktop</h2>
+          <p>Stream your Windows desktop to your phone over your local network and control it with touch.</p>
+        </div>
+        <div class="card glass">
+          <h2>Diagnostics</h2>
+          <p>Firewall state, listening ports, and the advertised IP are available from the PC's Diagnostics screen.</p>
+        </div>
+      </section>
+
+      <!-- NAVBAR -->
+      <nav class="tabbar glass" role="tablist" aria-label="Main navigation">
+        <span class="indicator" id="ind" aria-hidden="true"></span>
+        <button class="tab active" role="tab" aria-selected="true" data-screen="s-home" data-i="0">
+          <svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>Home</button>
+        <button class="tab" role="tab" aria-selected="false" data-screen="s-stream" data-i="1">
+          <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10 9l4 2-4 2z"/></svg>Stream</button>
+        <button class="tab" role="tab" aria-selected="false" data-screen="s-devices" data-i="2">
+          <svg viewBox="0 0 24 24"><rect x="2" y="5" width="13" height="10" rx="2"/><rect x="17" y="9" width="5" height="11" rx="1"/></svg>Devices</button>
+        <button class="tab" role="tab" aria-selected="false" data-screen="s-security" data-i="3">
+          <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>Security</button>
+        <button class="tab" role="tab" aria-selected="false" data-screen="s-about" data-i="4">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>About</button>
+      </nav>
+    </div>
+
+    <aside class="notes">
+      <h3>What this prototype shows</h3>
+      <ul>
+        <li><strong>Glass is for chrome.</strong> The navbar, dock, and panel are glass. The desktop stream stays solid so blur never sits on a 60 fps video.</li>
+        <li><strong>Colour behind glass.</strong> Glass reads as glass only over colour. The violet light in the stage background is doing that job.</li>
+        <li><strong>Copy follows real states.</strong> Use the buttons on the right to step through connecting, connected, reconnecting, and failed.</li>
+        <li><strong>Honest security.</strong> Until TLS ships, the UI says "Not encrypted yet" rather than showing a shield.</li>
+      </ul>
+      <h3>Glass recipe</h3>
+      <p>Fill <code>rgba(255,255,255,.16 → .05)</code>, border <code>rgba(255,255,255,.16)</code>, blur <code>24px</code>, saturate <code>180%</code>, top specular edge, and a soft drop shadow. Pill radius <code>999px</code>.</p>
+      <p>Brand gradient <code>#A78BFA → #7C4DFF → #6D3DF5</code> on the primary action and the active tab only.</p>
+    </aside>
+  </div>
+
+  <div class="state-picker glass" role="group" aria-label="Preview connection state">
+    <button data-state="connecting">Connecting</button>
+    <button data-state="connected" aria-pressed="true">Connected</button>
+    <button data-state="reconnecting">Reconnecting</button>
+    <button data-state="failed">Failed</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var device = document.getElementById('device');
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+  var ind = document.getElementById('ind');
+  var statusText = document.getElementById('status-text');
+  var latency = document.getElementById('latency');
+  var overlay = document.getElementById('overlay');
+  var retry = document.getElementById('retry');
+  var sheet = document.getElementById('sheet');
+  var panelBtn = document.getElementById('panel-btn');
+  var endBtn = document.getElementById('end-btn');
+  var pickerBtns = Array.prototype.slice.call(document.querySelectorAll('.state-picker button'));
+
+  // Copy is bound to real connection stages (blueprint section 11.3)
+  var COPY = {
+    connecting:   { text: 'Establishing connection…', meta: '' },
+    connected:    { text: 'Connected to DESKTOP-PC', meta: '18 ms' },
+    reconnecting: { text: 'Connection interrupted; reconnecting…', meta: 'retry 2 of 5' },
+    failed:       { text: "Couldn't connect: PC not reachable", meta: '' },
+    ended:        { text: 'Session ended. Pick a device to reconnect.', meta: '' }
+  };
+
+  function setState(s){
+    device.setAttribute('data-state', s);
+    var c = COPY[s] || COPY.connected;
+    statusText.textContent = c.text;
+    latency.textContent = c.meta;
+    overlay.classList.toggle('show', s === 'connecting');
+    retry.hidden = s !== 'failed';
+    pickerBtns.forEach(function(b){ b.setAttribute('aria-pressed', String(b.getAttribute('data-state') === s)); });
+  }
+
+  function goto(screenId){
+    var idx = 0;
+    tabs.forEach(function(t, i){
+      var on = t.getAttribute('data-screen') === screenId;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-selected', String(on));
+      if (on) idx = i;
+    });
+    ind.style.setProperty('--i', idx);
+    document.querySelectorAll('.screen').forEach(function(sc){
+      sc.classList.toggle('active', sc.id === screenId);
+    });
+    if (navigator.vibrate) navigator.vibrate(8);
+  }
+
+  tabs.forEach(function(t){
+    t.addEventListener('click', function(){ goto(t.getAttribute('data-screen')); });
+  });
+  document.querySelectorAll('[data-goto]').forEach(function(b){
+    b.addEventListener('click', function(){ goto('s-' + b.getAttribute('data-goto')); });
+  });
+
+  pickerBtns.forEach(function(b){
+    b.addEventListener('click', function(){ setState(b.getAttribute('data-state')); });
+  });
+  retry.addEventListener('click', function(){ setState('connecting'); setTimeout(function(){ setState('connected'); }, 1400); });
+
+  panelBtn.addEventListener('click', function(){
+    var open = !sheet.classList.contains('open');
+    sheet.classList.toggle('open', open);
+    panelBtn.setAttribute('aria-expanded', String(open));
+    panelBtn.classList.toggle('on', open);
+  });
+
+  document.querySelectorAll('.switch').forEach(function(sw){
+    sw.addEventListener('click', function(){
+      sw.setAttribute('aria-checked', String(sw.getAttribute('aria-checked') !== 'true'));
+      if (sw.getAttribute('aria-label') === 'Lightweight mode') {
+        // Lightweight mode drops blur everywhere, for low-end devices
+        document.body.classList.toggle('lite', sw.getAttribute('aria-checked') === 'true');
+      }
+    });
+  });
+
+  // Hold-to-end: a deliberate gesture, never a single tap
+  var holdTimer = null;
+  function startHold(e){
+    e.preventDefault();
+    endBtn.classList.add('holding');
+    holdTimer = setTimeout(function(){
+      endBtn.classList.remove('holding');
+      setState('ended');
+    }, 900);
+  }
+  function cancelHold(){
+    endBtn.classList.remove('holding');
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+  }
+  endBtn.addEventListener('pointerdown', startHold);
+  endBtn.addEventListener('pointerup', cancelHold);
+  endBtn.addEventListener('pointerleave', cancelHold);
+  endBtn.addEventListener('pointercancel', cancelHold);
+
+  setState('connected');
+})();
+</script>
+<style>
+/* Lightweight mode: no blur, opaque glass */
+body.lite .glass{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgba(24,24,32,.96)!important}
+</style>
+</body>
+</html>
