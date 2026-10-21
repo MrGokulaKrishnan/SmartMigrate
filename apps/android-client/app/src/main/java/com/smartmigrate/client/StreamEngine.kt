@@ -123,7 +123,7 @@ class ByteArrayPool(private val maxCapacity: Int = 4) {
 class StreamEngine {
     companion object {
         private const val TAG = "SmartMigrate-Stream"
-        private const val MAX_RECONNECT_ATTEMPTS = 5
+        private const val MAX_RECONNECT_ATTEMPTS = 15
     }
 
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
@@ -233,9 +233,53 @@ class StreamEngine {
                 failureReason = null
             )
 
-            // Reset only when frames decode continuously for >= 5s, never merely because HTTP 200 arrived.
             val reconnectAttempts = java.util.concurrent.atomic.AtomicInteger(0)
             val streamStableSince = java.util.concurrent.atomic.AtomicLong(0L)
+            val framesRenderedInWindow = java.util.concurrent.atomic.AtomicInteger(0)
+            val bytesInWindow = java.util.concurrent.atomic.AtomicLong(0L)
+            val latestDecodeLatency = java.util.concurrent.atomic.AtomicReference(0f)
+
+            // Rolling 1-second statistics ticker independent of frame arrival:
+            // Samples atomic counters every 1000ms. If the network stalls, FPS smoothly drops to 0.0
+            // instead of freezing the UI on a stale framerate.
+            val statsJob = launch(Dispatchers.Default) {
+                var lastFpsTime = SystemClock.elapsedRealtime()
+                while (isActive && activeSessionAttemptId == attemptId) {
+                    delay(1000L)
+                    val now = SystemClock.elapsedRealtime()
+                    val elapsedSec = (now - lastFpsTime) / 1000f
+                    val renderedThisSec = framesRenderedInWindow.getAndSet(0)
+                    val bytesThisSec = bytesInWindow.getAndSet(0L)
+                    val currentFps = if (elapsedSec > 0f) renderedThisSec / elapsedSec else 0f
+                    val bitrate = if (elapsedSec > 0f) (bytesThisSec * 8f) / (elapsedSec * 1000f) else 0f
+
+                    val lossPct = if (totalFramesReceived + totalDropped > 0L) {
+                        ((totalDropped.toFloat() / (totalFramesReceived + totalDropped).toFloat()) * 100f).coerceIn(0f, 100f)
+                    } else {
+                        0f
+                    }
+
+                    _diagnostics.value = StreamDiagnostics(
+                        sessionId = sessionId,
+                        connectionState = _state.value,
+                        currentFps = currentFps,
+                        targetFps = 60,
+                        latencyMs = latestDecodeLatency.get() + 3.5f,
+                        bitrateKbps = bitrate,
+                        resolution = _latestBitmap.value?.let { "${it.width} × ${it.height}" } ?: "1920 × 1080",
+                        transport = "Direct LAN (P2P Zero-Latency)",
+                        codec = "Turbo Software JPEG (GDI)",
+                        displayMode = if (isVirtualExtendedDisplay) "Virtual Extended Display (Second Screen)" else "Primary Monitor (Mirror)",
+                        framesReceived = totalFramesReceived,
+                        framesDecoded = totalFramesDecoded,
+                        framesRendered = totalFramesRendered,
+                        droppedFrames = totalDropped,
+                        packetLossPercent = lossPct
+                    )
+                    lastFpsTime = now
+                }
+            }
+
             while (isActive && activeSessionAttemptId == attemptId) {
                 // Conflated channel guarantees zero buffer bloat: newest frame always replaces un-decoded older frame
                 val frameChannel = Channel<FramePacket>(
@@ -253,10 +297,6 @@ class StreamEngine {
                         inPreferredConfig = Bitmap.Config.ARGB_8888
                         inMutable = true
                     }
-
-                    var lastFpsTime = SystemClock.elapsedRealtime()
-                    var fpsCount = 0
-                    var bytesInWindow = 0L
 
                     for (packet in frameChannel) {
                         if (!isActive || activeSessionAttemptId != attemptId) {
@@ -312,22 +352,18 @@ class StreamEngine {
                             bytePool.release(packet.data)
                         }
 
-                        val decodeLatency = (SystemClock.elapsedRealtime() - t0).toFloat()
-                        bytesInWindow += packet.length
+                        latestDecodeLatency.set((SystemClock.elapsedRealtime() - t0).toFloat())
 
                         if (decodedBitmap != null) {
                             totalFramesDecoded++
                             totalFramesRendered++
-                            fpsCount++
+                            framesRenderedInWindow.incrementAndGet()
 
                             _latestBitmap.value = decodedBitmap
 
-                            // Only restore retry budget after 5s continuous stream stability
-                            val nowMs = SystemClock.elapsedRealtime()
-                            streamStableSince.compareAndSet(0L, nowMs)
-                            if (nowMs - streamStableSince.get() >= 5000L) {
-                                reconnectAttempts.set(0)
-                            }
+                            // Immediately restore retry budget on valid frame decode
+                            reconnectAttempts.set(0)
+                            streamStableSince.set(SystemClock.elapsedRealtime())
 
                             // When a valid bitmap successfully decodes, the stream is unequivocally alive and streaming.
                             // Promote to STREAMING if in CONNECTED, CONNECTING, AUTHENTICATING, or RECONNECTING.
@@ -345,41 +381,6 @@ class StreamEngine {
                             }
                         } else {
                             totalDropped++
-                        }
-
-                        val now = SystemClock.elapsedRealtime()
-                        if (now - lastFpsTime >= 1000L) {
-                            val elapsedSec = (now - lastFpsTime) / 1000f
-                            val currentFps = fpsCount / elapsedSec
-                            val bitrate = (bytesInWindow * 8f) / (elapsedSec * 1000f)
-
-                            val lossPct = if (totalFramesReceived + totalDropped > 0L) {
-                                ((totalDropped.toFloat() / (totalFramesReceived + totalDropped).toFloat()) * 100f).coerceIn(0f, 100f)
-                            } else {
-                                0f
-                            }
-
-                            _diagnostics.value = StreamDiagnostics(
-                                sessionId = sessionId,
-                                connectionState = _state.value,
-                                currentFps = currentFps,
-                                targetFps = 60,
-                                latencyMs = decodeLatency + 3.5f,
-                                bitrateKbps = bitrate,
-                                resolution = if (decodedBitmap != null) "${decodedBitmap.width} × ${decodedBitmap.height}" else "1920 × 1080",
-                                transport = "Direct LAN (P2P Zero-Latency)",
-                                codec = "Turbo Software JPEG (GDI)",
-                                displayMode = if (isVirtualExtendedDisplay) "Virtual Extended Display (Second Screen)" else "Primary Monitor (Mirror)",
-                                framesReceived = totalFramesReceived,
-                                framesDecoded = totalFramesDecoded,
-                                framesRendered = totalFramesRendered,
-                                droppedFrames = totalDropped,
-                                packetLossPercent = lossPct
-                            )
-
-                            fpsCount = 0
-                            bytesInWindow = 0L
-                            lastFpsTime = now
                         }
                     }
                 }
@@ -407,15 +408,11 @@ class StreamEngine {
                     }
                     activeSocket = sock
 
-                    // Send HTTP/1.1 GET /live request
-                    val sourceParam = if (isVirtualExtendedDisplay) "&source=display-virtual-extended" else "&source=display-primary"
-                    val tokenQuery = if (!authToken.isNullOrBlank()) {
-                        "?token=${java.net.URLEncoder.encode(authToken, "UTF-8")}&fps=60$sourceParam"
-                    } else {
-                        "?fps=60$sourceParam"
-                    }
+                    // Send HTTP/1.1 GET /live request with token strictly in Authorization header
+                    val sourceParam = if (isVirtualExtendedDisplay) "source=display-virtual-extended" else "source=display-primary"
+                    val query = "?fps=60&$sourceParam"
                     val writer = OutputStreamWriter(sock.getOutputStream(), Charsets.US_ASCII)
-                    writer.write("GET /live$tokenQuery HTTP/1.1\r\n")
+                    writer.write("GET /live$query HTTP/1.1\r\n")
                     writer.write("Host: $resolvedHost:$port\r\n")
                     writer.write("User-Agent: SmartMigrate-Android/1.4.4\r\n")
                     writer.write("Accept: multipart/x-mixed-replace\r\n")
@@ -454,7 +451,7 @@ class StreamEngine {
                     _state.value = StreamConnectionState.CONNECTED
                     _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.CONNECTED)
 
-                    readMultipartFrames(bis, frameChannel, attemptId)
+                    readMultipartFrames(bis, frameChannel, attemptId, reconnectAttempts, bytesInWindow)
 
                 } catch (e: Exception) {
                     if (!isActive || activeSessionAttemptId != attemptId) break
@@ -562,11 +559,14 @@ class StreamEngine {
     /**
      * Reads MJPEG multipart frames from the active stream socket and publishes to the conflated frame channel.
      * High-speed native block reads with DataInputStream.readFully() guarantee no byte drift.
+     * Handles keepalive heartbeat packets to maintain connection health and prevent socket timeouts on static screens.
      */
     private suspend fun readMultipartFrames(
         bis: BufferedInputStream,
         frameChannel: Channel<FramePacket>,
-        attemptId: Long
+        attemptId: Long,
+        reconnectAttempts: java.util.concurrent.atomic.AtomicInteger,
+        bytesInWindow: java.util.concurrent.atomic.AtomicLong
     ) = withContext(Dispatchers.IO) {
         val dis = DataInputStream(bis)
 
@@ -578,18 +578,28 @@ class StreamEngine {
             }
 
             var contentLength = -1
+            var isHeartbeat = false
             // Parse headers until empty line
             while (line.isNotEmpty()) {
                 if (line.startsWith("Content-Length:", ignoreCase = true)) {
                     contentLength = line.substringAfter(":").trim().toIntOrNull() ?: -1
+                } else if (line.startsWith("X-Heartbeat:", ignoreCase = true)) {
+                    isHeartbeat = true
                 }
                 line = readAsciiLine(bis).trim()
+            }
+
+            if (isHeartbeat || contentLength == 0) {
+                // Heartbeat packet received: active link confirmed, restore retry budget
+                reconnectAttempts.set(0)
+                continue
             }
 
             if (contentLength in 1..15_000_000) {
                 val buf = bytePool.acquire(contentLength)
                 dis.readFully(buf, 0, contentLength)
                 totalFramesReceived++
+                bytesInWindow.addAndGet(contentLength.toLong())
 
                 // Validate JPEG SOI marker (0xFF, 0xD8)
                 if (contentLength >= 2 && (buf[0].toInt() and 0xFF) == 0xFF && (buf[1].toInt() and 0xFF) == 0xD8) {
@@ -597,9 +607,11 @@ class StreamEngine {
                     val sent = frameChannel.trySend(packet).isSuccess
                     if (!sent) {
                         bytePool.release(buf)
+                        totalDropped++
                     }
                 } else {
                     bytePool.release(buf)
+                    totalDropped++
                 }
             }
         }

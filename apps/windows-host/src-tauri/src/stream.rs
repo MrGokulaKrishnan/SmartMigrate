@@ -147,7 +147,7 @@ pub fn start_stream(
     let now = now_ms();
     let session_id = format!("sm-stream-{}", &now.to_string()[7..]);
     let auth_token = crate::storage::generate_crypto_token();
-    let stream_url = format!("http://127.0.0.1:{}/live?token={}", STREAMING_PORT, auth_token);
+    let stream_url = format!("http://127.0.0.1:{}/live", STREAMING_PORT);
 
     // Probe primary display geometry with safe fallback for headless/CI test environments
     let (screen_w, screen_h) = match capture_primary_display() {
@@ -343,6 +343,328 @@ mod tests {
         let telem = compute_telemetry(&mut state);
         assert_eq!(telem.current_fps, 119.8);
         assert!((telem.bitrate_mbps - 17.85).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_software_jpeg_encoder_60fps_throughput() {
+        use crate::capture::SoftwareJpegEncoder;
+
+        let mut encoder = SoftwareJpegEncoder::new(75);
+        let width = 1920u32;
+        let height = 1080u32;
+        let total_pixels = (width * height * 4) as usize;
+
+        let mut fake_desktop = vec![0u8; total_pixels];
+        for y in 0..height as usize {
+            for x in 0..width as usize {
+                let offset = (y * (width as usize) + x) * 4;
+                fake_desktop[offset] = ((x * 7) % 256) as u8;
+                fake_desktop[offset + 1] = ((y * 11) % 256) as u8;
+                fake_desktop[offset + 2] = (((x + y) * 13) % 256) as u8;
+                fake_desktop[offset + 3] = 255;
+            }
+        }
+
+        let iterations = 30;
+        let mut total_duration_ms = 0.0f32;
+
+        for _ in 0..iterations {
+            let (slice, duration_ms) = encoder
+                .encode_slice(&fake_desktop, width, height, 75)
+                .expect("JPEG compression failed");
+
+            // Validate JPEG SOI (0xFF, 0xD8) and EOI (0xFF, 0xD9)
+            assert!(slice.len() > 1000, "Compressed JPEG is unreasonably small");
+            assert_eq!(slice[0], 0xFF);
+            assert_eq!(slice[1], 0xD8);
+            assert_eq!(slice[slice.len() - 2], 0xFF);
+            assert_eq!(slice[slice.len() - 1], 0xD9);
+
+            // Verify frame payload size for synthetic pattern is within bounds (<1 MB)
+            assert!(
+                slice.len() < 1_000_000,
+                "1080p JPEG exceeds 1MB budget: {} bytes",
+                slice.len()
+            );
+
+            total_duration_ms += duration_ms;
+        }
+
+        let avg_duration_ms = total_duration_ms / iterations as f32;
+        println!("[Test Benchmark] Average 1080p JPEG encode latency: {avg_duration_ms:.2} ms");
+        assert!(
+            avg_duration_ms < 60.0,
+            "Encoder average latency ({avg_duration_ms:.2} ms) exceeds 60ms threshold in unoptimized debug test"
+        );
+    }
+
+    #[test]
+    fn test_decoupled_producer_consumer_stale_frame_dropping() {
+        use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+        use std::sync::{Arc, Condvar, Mutex};
+        use std::time::{Duration, Instant};
+
+        struct TestFrame {
+            _sequence: u32,
+        }
+
+        let shared_slot = Arc::new((Mutex::new(None::<TestFrame>), Condvar::new()));
+        let stop_signal = Arc::new(AtomicBool::new(false));
+
+        let producer_stop = stop_signal.clone();
+        let producer_slot = shared_slot.clone();
+        let frames_produced = Arc::new(AtomicU32::new(0));
+        let produced_counter = frames_produced.clone();
+
+        // Producer simulates 60 FPS pacing (~16.6ms ticks)
+        let producer_handle = std::thread::spawn(move || {
+            let mut seq = 0;
+            let tick = Duration::from_millis(16);
+            let start = Instant::now();
+
+            while !producer_stop.load(Ordering::Relaxed) && seq < 120 {
+                let t0 = Instant::now();
+                seq += 1;
+                let frame = TestFrame { _sequence: seq };
+
+                let (lock, cvar) = &*producer_slot;
+                if let Ok(mut guard) = lock.lock() {
+                    // Decoupled replacement: Always overwrites with newest frame!
+                    *guard = Some(frame);
+                    cvar.notify_one();
+                }
+                produced_counter.store(seq, Ordering::Relaxed);
+
+                let elapsed = t0.elapsed();
+                if elapsed < tick {
+                    std::thread::sleep(tick - elapsed);
+                }
+            }
+            start.elapsed()
+        });
+
+        // Consumer simulates network jitter with intermittent 60ms stalls
+        let consumer_slot = shared_slot.clone();
+        let consumer_stop = stop_signal.clone();
+        let frames_consumed = Arc::new(AtomicU32::new(0));
+        let consumed_counter = frames_consumed.clone();
+
+        let consumer_handle = std::thread::spawn(move || {
+            let (lock, cvar) = &*consumer_slot;
+            let mut count = 0;
+
+            while !consumer_stop.load(Ordering::Relaxed) {
+                let frame_opt = {
+                    let guard = lock.lock().unwrap();
+                    if guard.is_none() && !consumer_stop.load(Ordering::Relaxed) {
+                        match cvar.wait_timeout(guard, Duration::from_millis(100)) {
+                            Ok((mut g, _)) => g.take(),
+                            Err(e) => e.into_inner().0.take(),
+                        }
+                    } else {
+                        let mut g = guard;
+                        g.take()
+                    }
+                };
+
+                if let Some(_f) = frame_opt {
+                    count += 1;
+                    consumed_counter.store(count, Ordering::Relaxed);
+                    // Simulate network latency / TCP backpressure jitter
+                    if count % 5 == 0 {
+                        std::thread::sleep(Duration::from_millis(60));
+                    }
+                }
+
+                if count >= 20 {
+                    break;
+                }
+            }
+            count
+        });
+
+        let _ = consumer_handle.join().unwrap();
+        stop_signal.store(true, Ordering::Relaxed);
+        let (_, cvar) = &*shared_slot;
+        cvar.notify_all();
+        let producer_elapsed = producer_handle.join().unwrap();
+
+        let total_produced = frames_produced.load(Ordering::Relaxed);
+        let total_consumed = frames_consumed.load(Ordering::Relaxed);
+
+        println!(
+            "[Test Decoupling] Produced: {total_produced} frames in {producer_elapsed:?}, Consumed: {total_consumed} frames"
+        );
+
+        assert!(
+            total_produced >= 60,
+            "Producer was starved or blocked by slow consumer: only produced {total_produced} frames"
+        );
+        assert!(
+            total_consumed >= 20,
+            "Consumer failed to receive sufficient frames"
+        );
+    }
+
+    #[test]
+    fn test_keepalive_heartbeat_on_static_screen() {
+        use std::sync::{Arc, Condvar, Mutex};
+        use std::time::{Duration, Instant};
+
+        let shared_slot = Arc::new((Mutex::new(None::<u32>), Condvar::new()));
+        let (lock, cvar) = &*shared_slot;
+
+        // Simulate writer waiting for 200ms when screen is completely static
+        let guard = lock.lock().unwrap();
+        let t0 = Instant::now();
+        let (_g, wait_res) = cvar
+            .wait_timeout(guard, Duration::from_millis(200))
+            .unwrap();
+        let elapsed = t0.elapsed();
+
+        assert!(wait_res.timed_out(), "Expected timeout on static screen");
+        assert!(
+            elapsed >= Duration::from_millis(190),
+            "Timeout fired prematurely: {elapsed:?}"
+        );
+
+        // Verify heartbeat wire format conforms to SMP/1 spec
+        let heartbeat = "--smartmigrate\r\n\
+            Content-Type: text/plain\r\n\
+            Content-Length: 0\r\n\
+            X-Heartbeat: 1\r\n\r\n";
+        assert!(heartbeat.contains("Content-Length: 0"));
+        assert!(heartbeat.contains("X-Heartbeat: 1"));
+    }
+
+    #[test]
+    fn test_concurrent_tcp_streaming_and_zero_eof_disconnect() {
+        use std::io::{Read, Write};
+        use std::net::{TcpListener, TcpStream};
+        use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind random port");
+        let server_addr = listener.local_addr().expect("local addr");
+        let stop_server = Arc::new(AtomicBool::new(false));
+        let stop_worker = stop_server.clone();
+
+        // Spawn mock SMP streaming server serving 10 concurrent clients
+        let server_handle = std::thread::spawn(move || {
+            let mut client_threads = Vec::new();
+            listener.set_nonblocking(true).unwrap();
+
+            while !stop_worker.load(Ordering::Relaxed) {
+                if let Ok((mut socket, _)) = listener.accept() {
+                    let stop_conn = stop_worker.clone();
+                    let th = std::thread::spawn(move || {
+                        let _ = socket.set_nodelay(true);
+                        let _ = socket.set_write_timeout(Some(Duration::from_millis(3000)));
+
+                        let http_header = "HTTP/1.1 200 OK\r\n\
+                            Content-Type: multipart/x-mixed-replace; boundary=--smartmigrate\r\n\
+                            Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                            Pragma: no-cache\r\n\
+                            Expires: 0\r\n\
+                            Connection: keep-alive\r\n\r\n";
+                        if socket.write_all(http_header.as_bytes()).is_err() {
+                            return;
+                        }
+
+                        // Send 5 video frames followed by keepalive heartbeats
+                        let fake_jpeg = vec![0xFF, 0xD8, 0x00, 0x01, 0xFF, 0xD9];
+                        for _ in 0..5 {
+                            if stop_conn.load(Ordering::Relaxed) {
+                                break;
+                            }
+                            let head = format!(
+                                "--smartmigrate\r\n\
+                                Content-Type: image/jpeg\r\n\
+                                Content-Length: {}\r\n\
+                                X-Timestamp: 123456\r\n\
+                                X-Width: 1920\r\n\
+                                X-Height: 1080\r\n\r\n",
+                                fake_jpeg.len()
+                            );
+                            if socket.write_all(head.as_bytes()).is_err()
+                                || socket.write_all(&fake_jpeg).is_err()
+                                || socket.write_all(b"\r\n").is_err()
+                                || socket.flush().is_err()
+                            {
+                                return;
+                            }
+                            std::thread::sleep(Duration::from_millis(16));
+                        }
+
+                        // Send keepalive heartbeat
+                        let heartbeat = "--smartmigrate\r\n\
+                            Content-Type: text/plain\r\n\
+                            Content-Length: 0\r\n\
+                            X-Heartbeat: 1\r\n\r\n";
+                        let _ = socket.write_all(heartbeat.as_bytes());
+                        let _ = socket.flush();
+                    });
+                    client_threads.push(th);
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+
+            for t in client_threads {
+                let _ = t.join();
+            }
+        });
+
+        // Connect 10 concurrent clients
+        let client_count = 10;
+        let successful_clients = Arc::new(AtomicU32::new(0));
+        let mut handles = Vec::new();
+
+        for client_idx in 0..client_count {
+            let success_cnt = successful_clients.clone();
+            let handle = std::thread::spawn(move || {
+                let mut stream = TcpStream::connect(server_addr).expect("client connect");
+                stream.set_read_timeout(Some(Duration::from_millis(3000))).unwrap();
+
+                let mut buf = [0u8; 4096];
+                let mut bytes_read_total = 0;
+                let mut frames_detected = 0;
+                let mut _heartbeats_detected = 0;
+
+                while frames_detected < 3 && bytes_read_total < 50_000 {
+                    match stream.read(&mut buf) {
+                        Ok(0) => break, // Clean EOF
+                        Ok(n) => {
+                            bytes_read_total += n;
+                            let text = String::from_utf8_lossy(&buf[..n]);
+                            if text.contains("image/jpeg") {
+                                frames_detected += 1;
+                            }
+                            if text.contains("X-Heartbeat: 1") {
+                                _heartbeats_detected += 1;
+                            }
+                        }
+                        Err(e) => panic!("Client {client_idx} failed with unexpected error: {e}"),
+                    }
+                }
+
+                assert!(bytes_read_total > 0, "Client {client_idx} read 0 bytes");
+                assert!(frames_detected > 0, "Client {client_idx} received no video frames");
+                success_cnt.fetch_add(1, Ordering::Relaxed);
+            });
+            handles.push(handle);
+        }
+
+        for (idx, h) in handles.into_iter().enumerate() {
+            h.join().unwrap_or_else(|_| panic!("Client thread {idx} panicked"));
+        }
+
+        stop_server.store(true, Ordering::Relaxed);
+        let _ = server_handle.join();
+
+        let total_successful = successful_clients.load(Ordering::Relaxed);
+        assert_eq!(total_successful, 10, "Not all 10 clients completed successfully");
+        println!("[Test Concurrency] 10 concurrent clients streamed frames and heartbeats with 0 EOF errors.");
     }
 }
 

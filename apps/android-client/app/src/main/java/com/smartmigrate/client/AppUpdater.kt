@@ -108,7 +108,7 @@ object AppUpdater {
     }
 
     fun getInstalledVersionName(context: Context): String {
-        return getInstalledPackageInfo(context)?.versionName ?: "1.4.2"
+        return getInstalledPackageInfo(context)?.versionName ?: BuildConfig.VERSION_NAME
     }
 
     fun getInstalledVersionCode(context: Context): Long {
@@ -387,7 +387,7 @@ object AppUpdater {
                 connectTimeout = 8000
                 readTimeout = 25000
                 requestMethod = "GET"
-                setRequestProperty("User-Agent", "SmartMigrate-Android-Updater/1.4.2")
+                setRequestProperty("User-Agent", "SmartMigrate-Android-Updater/${BuildConfig.VERSION_NAME}")
                 setRequestProperty("Accept", "application/vnd.android.package-archive, application/octet-stream")
             }
 

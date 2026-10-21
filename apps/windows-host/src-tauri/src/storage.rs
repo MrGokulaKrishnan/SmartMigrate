@@ -10,7 +10,6 @@ use migroute::trust::TrustStore;
 use migroute::DeviceId;
 use std::fs;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 fn get_app_dir() -> PathBuf {
     if let Ok(appdata) = std::env::var("APPDATA") {
@@ -30,20 +29,15 @@ pub fn secure_random_bytes(buf: &mut [u8]) {
             fn RtlGenRandom(buffer: *mut u8, length: u32) -> u8;
         }
         let success = unsafe { RtlGenRandom(buf.as_mut_ptr(), buf.len() as u32) != 0 };
-        if success {
-            return;
-        }
+        // Fail closed: a time-seeded fallback would make pairing codes and session tokens guessable.
+        assert!(success, "OS random source unavailable; refusing to generate predictable secrets");
     }
 
-    // Fallback if not on windows or if RtlGenRandom fails
-    let seed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let mut state = seed as u64;
-    for b in buf.iter_mut() {
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        *b = (state >> 33) as u8;
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::io::Read;
+        let mut source = std::fs::File::open("/dev/urandom").expect("no OS random source available");
+        source.read_exact(buf).expect("failed to read OS random source");
     }
 }
 

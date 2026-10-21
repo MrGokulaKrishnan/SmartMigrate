@@ -237,7 +237,7 @@ object SmpClient {
         val result = CompletableDeferred<DiscoveredHost?>()
 
         // Prioritize common host addresses, then probe all 1..254 except self
-        val priorityHosts = listOf(1, 2, 3, 4, 5, 10, 20, 33, 50, 100, 101, 102, 150, 200)
+        val priorityHosts = listOf(1, 2, 3, 4, 5, 10, 20, 50, 100, 101, 102, 150, 200)
         val allHosts = (1..254).toList()
         val candidates = (priorityHosts + allHosts).distinct().filter { it != localHostNum }
 
@@ -527,7 +527,7 @@ object SmpClient {
                     sessionId = json.optString("sessionId", ""),
                     status = json.optString("status", "SESSION_ESTABLISHED"),
                     transport = json.optString("transport", "LAN_DIRECT"),
-                    streamUrl = json.optString("streamUrl", "/live?token=$sessionToken"),
+                    streamUrl = json.optString("streamUrl", "/live"),
                     protocolVersion = json.optInt("protocolVersion", 1),
                     heartbeatIntervalMs = json.optLong("heartbeatIntervalMs", 2000L)
                 )

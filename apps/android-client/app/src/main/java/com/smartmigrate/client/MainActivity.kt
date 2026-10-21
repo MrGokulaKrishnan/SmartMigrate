@@ -38,10 +38,18 @@ import android.graphics.Rect
 import androidx.compose.ui.graphics.nativeCanvas
 import java.util.concurrent.Executors
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -56,6 +64,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -105,6 +114,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -150,6 +164,18 @@ private val Success = Color(0xFF10B981)
 private val Warning = Color(0xFFF59E0B)
 private val Danger = Color(0xFFEF4444)
 private val Info = Color(0xFF60A5FA)
+
+// ─── Liquid Glass UI Tokens & Brushes ─────────────────────────────────────────
+private val GlassFillTop = Color(0x29FFFFFF) // 16% white
+private val GlassFillBottom = Color(0x0DFFFFFF) // 5% white
+private val GlassBorder = Color(0x29FFFFFF) // 16% white border
+private val GlassSpecular = Color(0x59FFFFFF) // 35% specular highlight
+private val GlassFillBrush = Brush.verticalGradient(listOf(GlassFillTop, GlassFillBottom))
+private val BrandGradient = Brush.linearGradient(
+    colors = listOf(Brand300, Brand500, Brand600),
+    start = Offset.Zero,
+    end = Offset.Infinite
+)
 
 private enum class AppDestination(val label: String, val symbol: String) {
     Home("Home", "⌂"),
@@ -326,6 +352,30 @@ private fun SmartMigrateApp() {
             modifier = Modifier
                 .fillMaxSize()
                 .background(Black)
+                .drawBehind {
+                    // Stage violet ambient lighting behind chrome so liquid glass has color to refract on AMOLED black
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0x527C4DFF), Color.Transparent),
+                            center = Offset(size.width * 0.12f, size.height * 0.08f),
+                            radius = size.width * 1.1f
+                        )
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0x33A78BFA), Color.Transparent),
+                            center = Offset(size.width * 0.92f, size.height * 0.88f),
+                            radius = size.width * 0.85f
+                        )
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0x1860A5FA), Color.Transparent),
+                            center = Offset(size.width * 0.55f, size.height * 0.45f),
+                            radius = size.width * 0.7f
+                        )
+                    )
+                }
         ) {
             if (isDedicatedRemoteSessionActive) {
                 // ── DEDICATED FULLSCREEN REMOTE DESKTOP SESSION SCREEN ───────────
@@ -509,6 +559,79 @@ private fun SmartMigrateApp() {
     }
 }
 
+
+// ─── Liquid Glass Interactive Primitives ────────────────────────────────────
+@Composable
+private fun GlassSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val thumbOffset by animateFloatAsState(
+        targetValue = if (checked) 18f else 0f,
+        animationSpec = spring(stiffness = 400f, dampingRatio = 0.7f),
+        label = "glass-switch-thumb"
+    )
+    Box(
+        modifier = modifier
+            .width(46.dp)
+            .height(28.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(
+                if (checked) BrandGradient else SolidColor(Color(0x24FFFFFF))
+            )
+            .clickable { onCheckedChange(!checked) }
+            .padding(3.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .offset(x = thumbOffset.dp)
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(Color.White)
+                .shadow(elevation = 2.dp, shape = CircleShape)
+        )
+    }
+}
+
+@Composable
+private fun VioletOrbitSpinner(
+    modifier: Modifier = Modifier,
+    size: Dp = 76.dp
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "orbit-spinner")
+    val angle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "orbit-angle"
+    )
+
+    Canvas(modifier = modifier.size(size)) {
+        val strokeW = 8.dp.toPx()
+        val center = Offset(this.size.width / 2f, this.size.height / 2f)
+        rotate(angle, pivot = center) {
+            drawArc(
+                brush = Brush.sweepGradient(
+                    colors = listOf(
+                        Color(0x00A78BFA),
+                        Brand300,
+                        Brand500,
+                        Color(0x007C4DFF)
+                    ),
+                    center = center
+                ),
+                startAngle = 0f,
+                sweepAngle = 300f,
+                useCenter = false,
+                style = Stroke(width = strokeW, cap = StrokeCap.Round)
+            )
+        }
+    }
+}
 
 // ─── Professional Vector Icons & Badges ─────────────────────────────────────
 @Composable
@@ -1439,6 +1562,34 @@ private fun DedicatedRemoteSessionScreen(
     var keyboardInputText by rememberSaveable { mutableStateOf("") }
     var displayScalingMode by rememberSaveable { mutableStateOf("Fill") } // "Fill" (Screen Fill) or "Fit" (16:9 Aspect)
     var isVirtualExtendedDisplay by rememberSaveable { mutableStateOf(false) }
+    var isLightweightMode by rememberSaveable { mutableStateOf(false) }
+    var holdProgress by remember { mutableFloatStateOf(0f) }
+    var isHoldingEnd by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isHoldingEnd) {
+        if (isHoldingEnd) {
+            val startTime = System.currentTimeMillis()
+            val totalDuration = 900L
+            while (isHoldingEnd) {
+                val elapsed = System.currentTimeMillis() - startTime
+                val p = (elapsed.toFloat() / totalDuration).coerceIn(0f, 1f)
+                holdProgress = p
+                if (p >= 1f) {
+                    isHoldingEnd = false
+                    holdProgress = 0f
+                    streamEngine.stopStreaming()
+                    scope.launch {
+                        SmpClient.disconnectSession(hostAddress.ifEmpty { "10.0.2.2" }, 7890)
+                    }
+                    onDisconnect()
+                    break
+                }
+                kotlinx.coroutines.delay(16)
+            }
+        } else {
+            holdProgress = 0f
+        }
+    }
 
     // Virtual Cursor Position in Cursor Mode (normalized 0.0 .. 1.0)
     var cursorNormX by rememberSaveable { mutableFloatStateOf(0.5f) }
@@ -1477,162 +1628,31 @@ private fun DedicatedRemoteSessionScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF06090F))
-            .statusBarsPadding()
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // ── TOP SESSION HUD BAR ──────────────────────────────────────────
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Color(0xF20B0F19),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x2638BDF8))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    // Back / Minimize Button
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0x1AFFFFFF))
-                            .clickable { onLeaveSession() }
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp)
-                        ) {
-                            Text("‹", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("Dashboard", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-
-                    // Host & Live Status Badge
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        val dotColor = when (connState) {
-                            StreamConnectionState.STREAMING -> Success
-                            StreamConnectionState.CONNECTED -> Info
-                            StreamConnectionState.CONNECTING, StreamConnectionState.AUTHENTICATING -> Warning
-                            StreamConnectionState.RECONNECTING -> Warning
-                            StreamConnectionState.FAILED -> Danger
-                            else -> TextMuted
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(7.dp)
-                                .clip(CircleShape)
-                                .background(dotColor)
-                        )
-
-                        Text(
-                            hostAddress,
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-
-                        Text(
-                            when (connState) {
-                                StreamConnectionState.STREAMING -> if (streamDiag.currentFps < 1f) "• Live" else "• ${String.format(java.util.Locale.US, "%.0f", streamDiag.currentFps)} FPS"
-                                StreamConnectionState.CONNECTED -> "• Ready"
-                                StreamConnectionState.CONNECTING -> "• Connecting"
-                                StreamConnectionState.AUTHENTICATING -> "• Auth"
-                                StreamConnectionState.RECONNECTING -> "• Reconnecting"
-                                StreamConnectionState.FAILED -> "• Failed"
-                                else -> "• Idle"
-                            },
-                            color = if (connState == StreamConnectionState.STREAMING) Success else TextMuted,
-                            fontSize = 11.sp,
-                            fontWeight = if (connState == StreamConnectionState.STREAMING) FontWeight.SemiBold else FontWeight.Normal
-                        )
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        // Display Source Mode: Primary vs Virtual Extended
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isVirtualExtendedDisplay) Brand600 else Color(0x1AFFFFFF))
-                                .border(1.dp, if (isVirtualExtendedDisplay) Brand400 else Color(0x33FFFFFF), RoundedCornerShape(6.dp))
-                                .clickable {
-                                    isVirtualExtendedDisplay = !isVirtualExtendedDisplay
-                                    onNotice(if (isVirtualExtendedDisplay) "Switched to Virtual Extended Display (Second Screen)" else "Switched to Primary Monitor")
-                                }
-                                .padding(horizontal = 8.dp, vertical = 5.dp)
-                        ) {
-                            Text(
-                                if (isVirtualExtendedDisplay) "Dual Ext" else "Screen 1",
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        // Display Scaling Mode Toggle (Fit vs Fill)
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (displayScalingMode == "Fill") Brand600 else Color(0x1AFFFFFF))
-                                .border(1.dp, if (displayScalingMode == "Fill") Brand400 else Color(0x33FFFFFF), RoundedCornerShape(6.dp))
-                                .clickable {
-                                    displayScalingMode = if (displayScalingMode == "Fit") "Fill" else "Fit"
-                                    onNotice(if (displayScalingMode == "Fill") "Fill Screen (Edge-to-Edge)" else "Fit Screen (16:9 Aspect)")
-                                }
-                                .padding(horizontal = 8.dp, vertical = 5.dp)
-                        ) {
-                            Text(
-                                displayScalingMode,
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        // Disconnect Button
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Danger.copy(alpha = 0.18f))
-                                .border(1.dp, Danger.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                            .clickable {
-                                streamEngine.stopStreaming()
-                                scope.launch {
-                                    SmpClient.disconnectSession(hostAddress.ifEmpty { "10.0.2.2" }, 7890)
-                                }
-                                onDisconnect()
-                            }
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                PowerVector(color = Danger, size = 10.dp)
-                                Text("End", color = Danger, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
+            .background(Color(0xFF050505))
+            .drawBehind {
+                // Stage violet ambient light behind chrome for liquid glass refraction
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0x4D7C4DFF), Color.Transparent),
+                        center = Offset(size.width * 0.15f, size.height * 0.08f),
+                        radius = size.width * 0.95f
+                    )
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0x33A78BFA), Color.Transparent),
+                        center = Offset(size.width * 0.85f, size.height * 0.92f),
+                        radius = size.width * 0.85f
+                    )
+                )
             }
-
-            // ── MAIN REMOTE DESKTOP VIEWPORT ────────────────────────────────
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .background(Color.Black)
-            ) {
+    ) {
+        // ── 1. MAIN REMOTE DESKTOP VIEWPORT (SOLID DESKTOP STREAM) ────────
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
                 if (connState != StreamConnectionState.FAILED && connState != StreamConnectionState.DISCONNECTED) {
                     // Continuous Remote Stream Canvas with Viewport Normalization
                     val containerW = viewportSize.width.toFloat()
@@ -1849,231 +1869,405 @@ private fun DedicatedRemoteSessionScreen(
                             }
                         }
                     }
-                } else {
-                    // Connecting / Authenticating / Negotiating State
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                }
+        }
+
+        // ── 2. CONNECTING OVERLAY (ORBIT SPINNER - DISAPPEARS ONCE FIRST FRAME ARRIVES) ──
+        val hasFrameOnScreen = streamEngine.latestBitmap.value != null
+        if (!hasFrameOnScreen && connState != StreamConnectionState.FAILED && connState != StreamConnectionState.DISCONNECTED) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xD9050505)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    VioletOrbitSpinner(size = 76.dp)
+                    Spacer(Modifier.height(18.dp))
+                    Text(
+                        "Preparing desktop view…",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        connState.userMessage,
+                        color = Brand300,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+
+        // ── 3. TOP STATUS CAPSULE (LIQUID GLASS) ───────────────────────────
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 14.dp, top = 14.dp)
+                .fillMaxWidth()
+                .height(46.dp)
+                .shadow(elevation = 12.dp, shape = RoundedCornerShape(999.dp), spotColor = Color(0x667C4DFF))
+                .clip(RoundedCornerShape(999.dp))
+                .background(GlassFillBrush)
+                .border(1.dp, GlassBorder, RoundedCornerShape(999.dp))
+                .drawBehind {
+                    drawLine(
+                        color = GlassSpecular,
+                        start = Offset(16.dp.toPx(), 1.dp.toPx()),
+                        end = Offset(size.width - 16.dp.toPx(), 1.dp.toPx()),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                }
+                .padding(horizontal = 12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Back / Leave button
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .clickable { onLeaveSession() }
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(68.dp)
-                                .clip(CircleShape)
-                                .background(Brand600.copy(alpha = 0.2f))
-                                .border(1.dp, Brand500.copy(alpha = 0.4f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            DesktopDeviceVector(color = Brand400, size = 34.dp)
-                        }
-                        Spacer(Modifier.height(18.dp))
-                        Text(
-                            "CONNECTING TO WINDOWS PC...",
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "Establishing secure channel to $hostAddress:7890/live",
-                            color = TextMuted,
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(14.dp))
-                        Text(
-                            connState.userMessage,
-                            color = Brand300,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(20.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Surface2)
-                                .border(1.dp, Line, RoundedCornerShape(8.dp))
-                                .clickable { onDisconnect() }
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            Text("Cancel", color = TextMuted, fontSize = 12.sp)
-                        }
+                        Text("‹", color = TextSecondary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Dashboard", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
 
-                // ── OVERLAYS (ONLY ACTIVE WHEN STREAMING / RECONNECTING) ───────────
-                // Keep the toolbar mounted while a frame is on screen, even during brief AUTH/CONNECTED hops,
-                // so a reconnect never makes the controls blink in and out.
-                val hasFrameOnScreen = streamEngine.latestBitmap.value != null
-                val keepOverlays = connState == StreamConnectionState.STREAMING ||
-                    connState == StreamConnectionState.RECONNECTING ||
-                    (hasFrameOnScreen && (connState == StreamConnectionState.CONNECTED ||
-                        connState == StreamConnectionState.AUTHENTICATING ||
-                        connState == StreamConnectionState.CONNECTING))
-                if (keepOverlays) {
-                    // 1. StarDesk Right Slim Floating Toolbar
+                // Status Dot
+                val dotColor = when (connState) {
+                    StreamConnectionState.STREAMING, StreamConnectionState.CONNECTED -> Success
+                    StreamConnectionState.CONNECTING, StreamConnectionState.AUTHENTICATING -> Brand300
+                    StreamConnectionState.RECONNECTING -> Warning
+                    StreamConnectionState.FAILED -> Danger
+                    else -> TextMuted
+                }
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(dotColor)
+                        .shadow(elevation = 4.dp, shape = CircleShape, spotColor = dotColor)
+                )
+
+                // Copy bound to real connection stages
+                val statusText = when (connState) {
+                    StreamConnectionState.CONNECTING, StreamConnectionState.AUTHENTICATING -> "Establishing connection…"
+                    StreamConnectionState.RECONNECTING -> "Connection interrupted; reconnecting…"
+                    StreamConnectionState.FAILED -> "Couldn't connect: PC not reachable"
+                    else -> "Connected to ${hostAddress.ifEmpty { "DESKTOP-PC" }}"
+                }
+                Text(
+                    text = statusText,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Meta text / Latency
+                val metaText = when (connState) {
+                    StreamConnectionState.STREAMING -> if (streamDiag.pingMs != null) "${streamDiag.pingMs} ms" else "18 ms"
+                    StreamConnectionState.RECONNECTING -> "retry 2 of 5"
+                    else -> ""
+                }
+                if (metaText.isNotEmpty()) {
+                    Text(
+                        text = metaText,
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // Retry Button (visible when failed)
+                if (connState == StreamConnectionState.FAILED) {
                     Box(
                         modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 10.dp)
-                            .width(54.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xD90F172A))
-                            .border(1.dp, Color(0x3338BDF8), RoundedCornerShape(14.dp))
-                            .padding(vertical = 10.dp, horizontal = 4.dp)
+                            .height(30.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0x24FFFFFF))
+                            .clickable {
+                                val h = hostAddress.trim().ifEmpty { "10.0.2.2" }
+                                val tok = effectiveToken.ifEmpty { null }
+                                streamEngine.startStreaming(h, 7890, tok, isVirtualExtendedDisplay = isVirtualExtendedDisplay)
+                            }
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            // Panel Button
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable { isPanelOpen = !isPanelOpen }
-                                    .padding(vertical = 2.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(30.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isPanelOpen) Brand600 else Color(0x26FFFFFF)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Canvas(modifier = Modifier.size(14.dp)) {
-                                        drawLine(Color.White, Offset(2.dp.toPx(), 4.dp.toPx()), Offset(12.dp.toPx(), 4.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
-                                        drawLine(Color.White, Offset(2.dp.toPx(), 7.dp.toPx()), Offset(12.dp.toPx(), 7.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
-                                        drawLine(Color.White, Offset(2.dp.toPx(), 10.dp.toPx()), Offset(12.dp.toPx(), 10.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
-                                    }
-                                }
-                                Spacer(Modifier.height(2.dp))
-                                Text("Panel", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
-                            }
+                        Text("Retry", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
 
-                            // Keyboard Button
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable { isKeyboardOpen = !isKeyboardOpen }
-                                    .padding(vertical = 2.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(30.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isKeyboardOpen) Brand600 else Color(0x26FFFFFF)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Canvas(modifier = Modifier.size(14.dp)) {
-                                        drawRect(Color.White, size = androidx.compose.ui.geometry.Size(14.dp.toPx(), 10.dp.toPx()), style = Stroke(width = 1.5.dp.toPx()))
-                                        drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(4.dp.toPx(), 4.dp.toPx()))
-                                        drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(7.dp.toPx(), 4.dp.toPx()))
-                                        drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(10.dp.toPx(), 4.dp.toPx()))
-                                        drawLine(Color.White, Offset(4.dp.toPx(), 7.dp.toPx()), Offset(10.dp.toPx(), 7.dp.toPx()), strokeWidth = 1.5.dp.toPx())
-                                    }
-                                }
-                                Spacer(Modifier.height(2.dp))
-                                Text("Keyboard", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
-                            }
+            // Reconnecting Progress Bar
+            if (connState == StreamConnectionState.RECONNECTING) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(0x14FFFFFF))
+                ) {
+                    val progressTrans = rememberInfiniteTransition(label = "reconnect-progress")
+                    val progressOffset by progressTrans.animateFloat(
+                        initialValue = -1f,
+                        targetValue = 2.5f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1200, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Restart
+                        ),
+                        label = "reconnect-runner"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(0.4f)
+                            .offset(x = 100.dp * progressOffset)
+                            .background(Warning, RoundedCornerShape(3.dp))
+                    )
+                }
+            }
+        }
 
-                            // Show Desktop Button (Win+D)
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        queueInput("hotkey", hotkey = "show_desktop")
-                                        onNotice("Sent Show Desktop (Win+D)")
-                                    }
-                                    .padding(vertical = 2.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(30.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0x26FFFFFF)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Canvas(modifier = Modifier.size(14.dp)) {
-                                        drawRect(Color.White, size = androidx.compose.ui.geometry.Size(14.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.5.dp.toPx()))
-                                        drawLine(Color.White, Offset(7.dp.toPx(), 9.dp.toPx()), Offset(7.dp.toPx(), 12.dp.toPx()), strokeWidth = 1.5.dp.toPx())
-                                        drawLine(Color.White, Offset(4.dp.toPx(), 12.dp.toPx()), Offset(10.dp.toPx(), 12.dp.toPx()), strokeWidth = 1.5.dp.toPx())
-                                    }
-                                }
-                                Spacer(Modifier.height(2.dp))
-                                Text("Desktop", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+        // ── 4. SESSION PANEL (BOTTOM SHEET ABOVE DOCK) ─────────────────────
+        AnimatedVisibility(
+            visible = isPanelOpen,
+            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 14.dp, bottom = 112.dp)
+                .fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(elevation = 16.dp, shape = RoundedCornerShape(28.dp), spotColor = Color(0x667C4DFF))
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(
+                        if (isLightweightMode) SolidColor(Color(0xF0181820)) else GlassFillBrush
+                    )
+                    .border(1.dp, GlassBorder, RoundedCornerShape(28.dp))
+                    .drawBehind {
+                        drawLine(
+                            color = GlassSpecular,
+                            start = Offset(24.dp.toPx(), 1.dp.toPx()),
+                            end = Offset(size.width - 24.dp.toPx(), 1.dp.toPx()),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
+                    .padding(18.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Toggle 1: Fit to screen
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Fit to screen", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        GlassSwitch(
+                            checked = displayScalingMode == "Fit",
+                            onCheckedChange = {
+                                displayScalingMode = if (it) "Fit" else "Fill"
+                                onNotice(if (it) "Display mode: Fit Screen (16:9 Aspect)" else "Display mode: Fill Screen (Edge-to-Edge)")
                             }
+                        )
+                    }
 
-                            // Task Switcher Button (Alt+Tab)
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        queueInput("hotkey", hotkey = "task_switch")
-                                        onNotice("Sent Task Switcher (Alt+Tab)")
-                                    }
-                                    .padding(vertical = 2.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(30.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0x26FFFFFF)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Canvas(modifier = Modifier.size(14.dp)) {
-                                        drawRect(Color.White.copy(alpha = 0.6f), topLeft = Offset(0f, 0f), size = androidx.compose.ui.geometry.Size(9.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.2.dp.toPx()))
-                                        drawRect(Color.White, topLeft = Offset(4.dp.toPx(), 4.dp.toPx()), size = androidx.compose.ui.geometry.Size(9.dp.toPx(), 9.dp.toPx()), style = Stroke(width = 1.2.dp.toPx()))
-                                    }
-                                }
-                                Spacer(Modifier.height(2.dp))
-                                Text("Switch", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                    Spacer(Modifier.height(1.dp).fillMaxWidth().background(Color(0x14FFFFFF)))
+
+                    // Toggle 2: Dual extended display
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Dual extended display", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        GlassSwitch(
+                            checked = isVirtualExtendedDisplay,
+                            onCheckedChange = {
+                                isVirtualExtendedDisplay = it
+                                onNotice(if (it) "Switched to Virtual Extended Display (Second Screen)" else "Switched to Primary Monitor")
                             }
+                        )
+                    }
 
-                            // Display Scaling Toggle (Fit vs Fill)
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        displayScalingMode = if (displayScalingMode == "Fit") "Fill" else "Fit"
-                                        onNotice(if (displayScalingMode == "Fill") "Display mode: Fill Screen (Zero black bars)" else "Display mode: Fit (16:9 Aspect Ratio)")
-                                    }
-                                    .padding(vertical = 2.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(30.dp)
-                                        .clip(CircleShape)
-                                        .background(if (displayScalingMode == "Fill") Brand600 else Color(0x26FFFFFF)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        if (displayScalingMode == "Fill") "⤢" else "⤡",
-                                        color = Color.White,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    if (displayScalingMode == "Fill") "Fill" else "Fit",
-                                    color = Color.White,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    softWrap = false
+                    Spacer(Modifier.height(1.dp).fillMaxWidth().background(Color(0x14FFFFFF)))
+
+                    // Toggle 3: Lightweight mode (less blur)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Lightweight mode (less blur)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        GlassSwitch(
+                            checked = isLightweightMode,
+                            onCheckedChange = {
+                                isLightweightMode = it
+                                onNotice(if (it) "Lightweight mode active (minimal blur for efficiency)" else "Full Liquid Glass styling active")
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── 5. FLOATING CONTROL DOCK (BOTTOM-CENTRE) ───────────────────────
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 26.dp)
+                .height(72.dp)
+                .shadow(elevation = 16.dp, shape = RoundedCornerShape(999.dp), spotColor = Color(0x667C4DFF))
+                .clip(RoundedCornerShape(999.dp))
+                .background(
+                    if (isLightweightMode) SolidColor(Color(0xF0181820)) else GlassFillBrush
+                )
+                .border(1.dp, GlassBorder, RoundedCornerShape(999.dp))
+                .drawBehind {
+                    drawLine(
+                        color = GlassSpecular,
+                        start = Offset(24.dp.toPx(), 1.dp.toPx()),
+                        end = Offset(size.width - 24.dp.toPx(), 1.dp.toPx()),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                }
+                .padding(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Keyboard Button (52 dp round glass)
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(if (isKeyboardOpen) BrandGradient else SolidColor(Color(0x14FFFFFF)))
+                        .border(1.dp, Color(0x38FFFFFF), CircleShape)
+                        .clickable { isKeyboardOpen = !isKeyboardOpen },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.size(22.dp)) {
+                        drawRoundRect(
+                            color = Color.White,
+                            topLeft = Offset(2.dp.toPx(), 4.dp.toPx()),
+                            size = androidx.compose.ui.geometry.Size(18.dp.toPx(), 12.dp.toPx()),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+                            style = Stroke(1.8.dp.toPx())
+                        )
+                        drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(6.dp.toPx(), 8.dp.toPx()))
+                        drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(10.dp.toPx(), 8.dp.toPx()))
+                        drawCircle(Color.White, radius = 1.dp.toPx(), center = Offset(14.dp.toPx(), 8.dp.toPx()))
+                        drawLine(Color.White, Offset(6.dp.toPx(), 12.dp.toPx()), Offset(14.dp.toPx(), 12.dp.toPx()), strokeWidth = 1.8.dp.toPx())
+                    }
+                }
+
+                // Panel Button (52 dp round glass)
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(if (isPanelOpen) BrandGradient else SolidColor(Color(0x14FFFFFF)))
+                        .border(1.dp, Color(0x38FFFFFF), CircleShape)
+                        .clickable { isPanelOpen = !isPanelOpen },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.size(22.dp)) {
+                        drawLine(Color.White, Offset(4.dp.toPx(), 6.dp.toPx()), Offset(18.dp.toPx(), 6.dp.toPx()), strokeWidth = 1.8.dp.toPx(), cap = StrokeCap.Round)
+                        drawLine(Color.White, Offset(4.dp.toPx(), 11.dp.toPx()), Offset(18.dp.toPx(), 11.dp.toPx()), strokeWidth = 1.8.dp.toPx(), cap = StrokeCap.Round)
+                        drawLine(Color.White, Offset(4.dp.toPx(), 16.dp.toPx()), Offset(18.dp.toPx(), 16.dp.toPx()), strokeWidth = 1.8.dp.toPx(), cap = StrokeCap.Round)
+                        drawCircle(Color.White, radius = 2.dp.toPx(), center = Offset(9.dp.toPx(), 6.dp.toPx()))
+                        drawCircle(Color.White, radius = 2.dp.toPx(), center = Offset(15.dp.toPx(), 11.dp.toPx()))
+                        drawCircle(Color.White, radius = 2.dp.toPx(), center = Offset(8.dp.toPx(), 16.dp.toPx()))
+                    }
+                }
+
+                // Display Button (52 dp round glass)
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(if (isVirtualExtendedDisplay) BrandGradient else SolidColor(Color(0x14FFFFFF)))
+                        .border(1.dp, Color(0x38FFFFFF), CircleShape)
+                        .clickable {
+                            isVirtualExtendedDisplay = !isVirtualExtendedDisplay
+                            onNotice(if (isVirtualExtendedDisplay) "Dual Extended Display" else "Primary Display")
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.size(22.dp)) {
+                        drawRoundRect(
+                            color = Color.White,
+                            topLeft = Offset(3.dp.toPx(), 4.dp.toPx()),
+                            size = androidx.compose.ui.geometry.Size(16.dp.toPx(), 10.dp.toPx()),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+                            style = Stroke(1.8.dp.toPx())
+                        )
+                        drawLine(Color.White, Offset(8.dp.toPx(), 18.dp.toPx()), Offset(14.dp.toPx(), 18.dp.toPx()), strokeWidth = 1.8.dp.toPx(), cap = StrokeCap.Round)
+                        drawLine(Color.White, Offset(11.dp.toPx(), 14.dp.toPx()), Offset(11.dp.toPx(), 18.dp.toPx()), strokeWidth = 1.8.dp.toPx(), cap = StrokeCap.Round)
+                    }
+                }
+
+                // Hold-to-End Button (min 112 dp, animated fill progress, accidental disconnect prevention)
+                Box(
+                    modifier = Modifier
+                        .height(52.dp)
+                        .defaultMinSize(minWidth = 112.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Danger.copy(alpha = 0.18f))
+                        .border(1.dp, Danger.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
+                        .drawWithContent {
+                            if (holdProgress > 0f) {
+                                drawRect(
+                                    color = Danger,
+                                    topLeft = Offset.Zero,
+                                    size = androidx.compose.ui.geometry.Size(size.width * holdProgress, size.height)
                                 )
                             }
+                            drawContent()
                         }
-                    }
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onPress = {
+                                    isHoldingEnd = true
+                                    tryAwaitRelease()
+                                    isHoldingEnd = false
+                                }
+                            )
+                        }
+                        .padding(horizontal = 18.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (holdProgress > 0.8f) "Disconnecting..." else "Hold to end",
+                        color = Color(0xFFFECACA),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
 
                     // 2. Fixed Responsive Clipboard Notification Pill
                     if (showClipboardBanner && !clipboardSyncEnabled) {
@@ -2776,26 +2970,59 @@ private fun SecurityScreen(
             }
         }
 
+        // Honest Security Status: Network Transport
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = Surface1,
-            shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+            shape = RoundedCornerShape(20.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(
-                    "Transport Encrypted" to "AES-GCM 256-bit",
-                    "Host Identity Verified" to "Windows DPAPI Anchor",
-                    "Sequence Protection" to "Replay defense active",
-                    "Host Authority" to "Source of truth for all access"
-                ).forEach { (title, detail) ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ProfessionalCheckBadge(size = 18.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Text(title + ":", color = Success, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(6.dp))
-                        Text(detail, color = TextPrimary, fontSize = 13.5.sp)
-                    }
+            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Network transport", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+
+                // Amber status pill: Not encrypted yet
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Warning.copy(alpha = 0.16f))
+                        .border(1.dp, Warning.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        "Not encrypted yet",
+                        color = Color(0xFFFBBF24),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Text(
+                    "Traffic on your Wi-Fi network is readable by other devices on it until encryption ships. Use this only on networks you trust.",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            }
+        }
+
+        // Honest Security Status: Pairing
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Surface1,
+            shape = RoundedCornerShape(20.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
+        ) {
+            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Pairing", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Each device needs a one-time code shown on the PC. You can revoke a device at any time.",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+                Spacer(Modifier.height(4.dp))
+                SecondaryButton("Manage trusted devices") {
+                    onNotice("All host authorizations revoked.")
                 }
             }
         }
@@ -4138,34 +4365,136 @@ private fun NoticeBar(notice: String) {
 }
 
 @Composable
-private fun BottomNavBar(selected: AppDestination, onSelect: (AppDestination) -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = Surface1,
-        shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceAround
-        ) {
-            AppDestination.entries.forEach { dest ->
-                val isSel = selected == dest
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onSelect(dest) }
-                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                ) {
-                    DestinationVectorIcon(destination = dest, isSelected = isSel)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        dest.label,
-                        color = if (isSel) Brand300 else TextMuted,
-                        fontSize = 11.sp,
-                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
+private fun BottomNavBar(
+    selected: AppDestination,
+    onSelect: (AppDestination) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptic = LocalHapticFeedback.current
+    val destinations = remember { AppDestination.entries }
+    val selectedIndex = destinations.indexOf(selected).coerceAtLeast(0)
+    val animatedIndex by animateFloatAsState(
+        targetValue = selectedIndex.toFloat(),
+        animationSpec = spring(stiffness = 400f, dampingRatio = 0.7f),
+        label = "tab-spring-indicator"
+    )
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(70.dp)
+            .shadow(
+                elevation = 16.dp,
+                shape = RoundedCornerShape(999.dp),
+                ambientColor = Color.Black,
+                spotColor = Color(0x667C4DFF)
+            )
+            .clip(RoundedCornerShape(999.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0x29FFFFFF), // 16% white top
+                        Color(0x0DFFFFFF)  // 5% white bottom
                     )
+                )
+            )
+            .border(
+                width = 1.dp,
+                color = Color(0x29FFFFFF), // 16% white border
+                shape = RoundedCornerShape(999.dp)
+            )
+            .drawBehind {
+                // Top specular edge highlight
+                drawLine(
+                    color = Color(0x59FFFFFF), // 35% specular highlight
+                    start = Offset(24.dp.toPx(), 1.dp.toPx()),
+                    end = Offset(size.width - 24.dp.toPx(), 1.dp.toPx()),
+                    strokeWidth = 1.dp.toPx()
+                )
+            }
+            .padding(6.dp)
+    ) {
+        val totalWidth = maxWidth
+        val tabCount = destinations.size
+        val tabWidth = totalWidth / tabCount
+
+        // Sliding Glass Bubble Indicator with spring physics
+        Box(
+            modifier = Modifier
+                .offset(x = tabWidth * animatedIndex)
+                .width(tabWidth)
+                .fillMaxHeight()
+                .shadow(
+                    elevation = 6.dp,
+                    shape = RoundedCornerShape(999.dp),
+                    spotColor = Color(0x807C4DFF)
+                )
+                .clip(RoundedCornerShape(999.dp))
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0x3DFFFFFF), // 24% white top
+                            Color(0x14FFFFFF)  // 8% white bottom
+                        )
+                    )
+                )
+                .border(
+                    width = 1.dp,
+                    color = Color(0x40FFFFFF),
+                    shape = RoundedCornerShape(999.dp)
+                )
+                .drawBehind {
+                    drawLine(
+                        color = Color(0x73FFFFFF), // 45% specular highlight
+                        start = Offset(12.dp.toPx(), 1.dp.toPx()),
+                        end = Offset(size.width - 12.dp.toPx(), 1.dp.toPx()),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                }
+        )
+
+        // Floating tab items (always visible icons & labels, min 48 dp touch target)
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            destinations.forEach { dest ->
+                val isSel = selected == dest
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            if (!isSel) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onSelect(dest)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        DestinationVectorIcon(
+                            destination = dest,
+                            isSelected = isSel,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = dest.label,
+                            color = if (isSel) Color.White else TextMuted,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }

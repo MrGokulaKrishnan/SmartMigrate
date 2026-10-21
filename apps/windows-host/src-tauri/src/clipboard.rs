@@ -87,6 +87,7 @@ mod win32 {
     /// Win32 CF_UNICODETEXT clipboard format identifier.
     const CF_UNICODETEXT: u32 = 13;
 
+    #[link(name = "user32")]
     extern "system" {
         fn OpenClipboard(hwnd: *mut std::ffi::c_void) -> i32;
         fn CloseClipboard() -> i32;
@@ -94,6 +95,10 @@ mod win32 {
         fn GetClipboardData(u_format: u32) -> *mut std::ffi::c_void;
         fn SetClipboardData(u_format: u32, h_mem: *mut std::ffi::c_void)
             -> *mut std::ffi::c_void;
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
         fn GlobalAlloc(u_flags: u32, dw_bytes: usize) -> *mut std::ffi::c_void;
         fn GlobalLock(h_mem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
         fn GlobalUnlock(h_mem: *mut std::ffi::c_void) -> i32;

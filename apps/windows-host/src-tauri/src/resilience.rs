@@ -100,7 +100,7 @@ impl ConnectionWatchdog {
 
         ResilienceStatus {
             health,
-            transport_type: "Direct LAN (WebRTC / DTLS-SRTP)".to_string(),
+            transport_type: "Direct LAN (HTTP over TCP, not encrypted)".to_string(),
             rtt_ms: avg_rtt,
             packet_loss_percent: loss,
             last_heartbeat_epoch_ms: *self.last_pong_received.lock().unwrap(),

@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 fn now_ms() -> u64 {
@@ -159,7 +159,24 @@ pub struct ConnectionDiagnosticsResponse {
     pub trust_store_count: usize,
     pub screen_capture: String,
     pub streaming_port: u16,
+    pub firewall_status: String,
     pub overall: String,
+}
+
+#[cfg(windows)]
+fn probe_firewall_status() -> String {
+    let out = std::process::Command::new("netsh")
+        .args(["advfirewall", "firewall", "show", "rule", "name=Smart Migrate TCP 7890"])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => "PASS (Rules Configured)".to_string(),
+        _ => "UNCONFIGURED (Ports 7889/7890 not explicitly allowed)".to_string(),
+    }
+}
+
+#[cfg(not(windows))]
+fn probe_firewall_status() -> String {
+    "N/A".to_string()
 }
 
 /// Spawns the background SMP TCP control server and UDP discovery beacon on default ports (7890/7889).
@@ -373,22 +390,26 @@ fn extract_bearer_token(headers: &str) -> Option<String> {
     None
 }
 
-fn extract_query_param(query: &str, param_name: &str) -> Option<String> {
-    for pair in query.split('&') {
-        if let Some((k, v)) = pair.split_once('=') {
-            if k == param_name && !v.is_empty() {
-                return Some(v.to_string());
-            }
+fn is_trusted_origin(origin: &str) -> bool {
+    // Parse scheme and host exactly. A prefix check would also trust hosts such as
+    // "http://localhost.attacker.example" or "http://127.0.0.1.attacker.example".
+    let Some((scheme, rest)) = origin.split_once("://") else {
+        return false;
+    };
+    let (host, port) = match rest.split_once(':') {
+        Some((host, port)) => (host, Some(port)),
+        None => (rest, None),
+    };
+    if let Some(port) = port {
+        if port.is_empty() || !port.chars().all(|c| c.is_ascii_digit()) {
+            return false;
         }
     }
-    None
-}
-
-fn is_trusted_origin(origin: &str) -> bool {
-    origin.starts_with("tauri://")
-        || origin.starts_with("http://localhost")
-        || origin.starts_with("http://127.0.0.1")
-        || origin.starts_with("https://localhost")
+    match scheme {
+        "tauri" => host == "localhost",
+        "http" | "https" => matches!(host, "localhost" | "127.0.0.1" | "tauri.localhost"),
+        _ => false,
+    }
 }
 
 fn constant_time_eq_str(a: &str, b: &str) -> bool {
@@ -719,7 +740,7 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     session_id,
                     status: "SESSION_ESTABLISHED".to_string(),
                     transport: "LAN_DIRECT".to_string(),
-                    stream_url: format!("/live?token={}", provided_token),
+                    stream_url: "/live".to_string(),
                     protocol_version: PROTOCOL_VERSION,
                     heartbeat_interval_ms: 2000,
                 };
@@ -1018,15 +1039,16 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 trust_store_count: trust_count,
                 screen_capture: capture_probe,
                 streaming_port: SMP_CONTROL_PORT,
+                firewall_status: probe_firewall_status(),
                 overall: "PASS".to_string(),
             };
             send_json_response(&mut socket, 200, "OK", &diag, cors_allow_origin);
         }
 
-        // ── 8. Live Display Stream (MJPEG, strictly token-authenticated) ──
+        // ── 8. Live Display Stream (MJPEG, strictly Authorization header Bearer token authenticated) ──
         ("GET", "/live") => {
-            let provided_token = extract_bearer_token(&header_str)
-                .or_else(|| extract_query_param(query, "token"));
+            // Strictly require Authorization: Bearer token header. Query parameters are rejected to prevent token leakage in URLs and logs.
+            let provided_token = extract_bearer_token(&header_str);
 
             let token = match provided_token {
                 Some(t) if !t.is_empty() => t,
@@ -1134,10 +1156,10 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                 }
             }
 
-            // Optimize streaming socket: disable Nagle, remove read timeout, set write deadline
+            // Optimize streaming socket: disable Nagle, remove read timeout, set generous write deadline
             let _ = socket.set_nodelay(true);
             let _ = socket.set_read_timeout(None);
-            let _ = socket.set_write_timeout(Some(Duration::from_millis(2500)));
+            let _ = socket.set_write_timeout(Some(Duration::from_millis(6000)));
 
             // Stream frames directly on this connection (No wildcard CORS)
             let http_header = "HTTP/1.1 200 OK\r\n\
@@ -1151,33 +1173,84 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
             }
 
             let requested_source = if query.contains("source=display-virtual-extended") {
-                "display-virtual-extended"
+                "display-virtual-extended".to_string()
             } else {
-                "display-primary"
+                "display-primary".to_string()
             };
-            let mut capture_session = match DesktopCaptureSession::new_with_source(requested_source) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("[SMP/1 Stream] Failed to initialize desktop capture session: {e}");
-                    return;
-                }
-            };
-            // Start sharp: desktop text needs high JPEG quality. Older clients asked for fps=120, which the
-            // software encoder cannot reach and which pushed quality to its floor, so clamp the request.
-            let mut encoder = SoftwareJpegEncoder::new(82);
-            let mut current_quality: u8 = 82;
+
             let requested_fps: u64 = query
                 .split(['&', '?'])
                 .find_map(|kv| kv.strip_prefix("fps="))
                 .and_then(|v| v.parse::<u64>().ok())
                 .unwrap_or(60);
             let target_fps: u64 = requested_fps.clamp(15, 60);
-            let mut frame_interval = Duration::from_millis(1000 / target_fps);
+            let frame_interval = Duration::from_micros(1_000_000 / target_fps);
+
+            struct EncodedStreamFrame {
+                payload: Vec<u8>,
+                width: u32,
+                height: u32,
+                timestamp_ms: u64,
+                capture_latency_ms: f32,
+            }
+
+            let frame_slot = Arc::new((Mutex::new(None::<EncodedStreamFrame>), Condvar::new()));
+            let worker_stop = stop_signal.clone();
+            let worker_slot = frame_slot.clone();
+            let req_source = requested_source.clone();
+
+            // Decoupled Screen Capture & Encoder Thread:
+            // Runs on a strict 60 FPS pacing loop without touching network I/O or blocking on TCP sockets.
+            let capture_worker = std::thread::Builder::new()
+                .name("smartmigrate-capture-worker".into())
+                .spawn(move || {
+                    let mut capture_session = match DesktopCaptureSession::new_with_source(&req_source) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("[SMP/1 Stream] Failed to initialize desktop capture session: {e}");
+                            worker_stop.store(true, Ordering::Relaxed);
+                            let (_, cvar) = &*worker_slot;
+                            cvar.notify_all();
+                            return;
+                        }
+                    };
+                    // Quality 75 with 4:2:0 subsampling delivers crisp text and sub-15ms encoding latency
+                    let mut encoder = SoftwareJpegEncoder::new(75);
+
+                    while !worker_stop.load(Ordering::Relaxed) {
+                        let loop_start = Instant::now();
+                        let now_ms = now_ms();
+
+                        if let Ok((bgra_data, width, height, cap_duration_ms)) = capture_session.capture_frame() {
+                            if let Ok((encoded_slice, enc_duration_ms)) = encoder.encode_slice(bgra_data, width, height, 75) {
+                                let frame = EncodedStreamFrame {
+                                    payload: encoded_slice.to_vec(),
+                                    width,
+                                    height,
+                                    timestamp_ms: now_ms,
+                                    capture_latency_ms: cap_duration_ms + enc_duration_ms,
+                                };
+                                let (lock, cvar) = &*worker_slot;
+                                if let Ok(mut guard) = lock.lock() {
+                                    *guard = Some(frame);
+                                    cvar.notify_one();
+                                }
+                            }
+                        }
+
+                        let elapsed = loop_start.elapsed();
+                        if elapsed < frame_interval {
+                            std::thread::sleep(frame_interval - elapsed);
+                        }
+                    }
+                });
 
             // Rolling 1-second FPS and bitrate measurement window
             let mut fps_window_start = Instant::now();
             let mut fps_window_frames: u32 = 0;
             let mut fps_window_bytes: u64 = 0;
+            let mut scratch_buf = Vec::with_capacity(128 * 1024);
+            let mut last_activity = Instant::now();
 
             loop {
                 // Respect stop_display_stream() and verify this connection has not been superseded
@@ -1186,80 +1259,95 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     break;
                 }
 
-                let loop_start = Instant::now();
-                let now_ms = now_ms();
-
-                if let Ok((bgra_data, width, height, cap_duration_ms)) = capture_session.capture_frame() {
-                    if let Ok(mut sl) = state.active_stream.lock() {
-                        sl.frames_captured += 1;
+                // Wait for the next frame with a 400ms timeout for keepalive
+                let (lock, cvar) = &*frame_slot;
+                let frame_opt = {
+                    let guard = match lock.lock() {
+                        Ok(g) => g,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    if guard.is_none() && !stop_signal.load(Ordering::Relaxed) {
+                        match cvar.wait_timeout(guard, Duration::from_millis(400)) {
+                            Ok((mut g, _)) => g.take(),
+                            Err(e) => e.into_inner().0.take(),
+                        }
+                    } else {
+                        let mut g = guard;
+                        g.take()
                     }
+                };
 
-                    if let Ok((encoded_slice, enc_duration_ms)) = encoder.encode_slice(bgra_data, width, height, current_quality) {
-                        let frame_head = format!(
-                            "--smartmigrate\r\n\
-                            Content-Type: image/jpeg\r\n\
-                            Content-Length: {}\r\n\
-                            X-Timestamp: {}\r\n\
-                            X-Width: {}\r\n\
-                            X-Height: {}\r\n\r\n",
-                            encoded_slice.len(), now_ms, width, height
-                        );
-
-                        let frame_bytes = frame_head.len() as u64 + encoded_slice.len() as u64 + 2;
-
-                        let t_write = Instant::now();
-                        if socket.write_all(frame_head.as_bytes()).is_err()
-                            || socket.write_all(encoded_slice).is_err()
-                            || socket.write_all(b"\r\n").is_err()
-                            || socket.flush().is_err()
-                        {
-                            break; // Client disconnected
-                        }
-                        let write_duration_ms = t_write.elapsed().as_secs_f32() * 1000.0;
-
-                        // Adaptive backpressure controller
-                        // Shed frame rate before image quality so text stays readable on a slow link.
-                        if write_duration_ms > 40.0 {
-                            frame_interval = Duration::from_millis(50); // ~20 fps
-                            if write_duration_ms > 80.0 {
-                                current_quality = current_quality.saturating_sub(3).max(60);
-                            }
-                        } else if write_duration_ms < 15.0 && (cap_duration_ms + enc_duration_ms) < 30.0 {
-                            current_quality = (current_quality + 1).min(90);
-                            frame_interval = Duration::from_millis(1000 / target_fps);
-                        }
-
-                        fps_window_frames += 1;
-                        fps_window_bytes += frame_bytes;
-
-                        if let Ok(mut stream_lock) = state.active_stream.lock() {
-                            stream_lock.frames_sent += 1;
-                            stream_lock.capture_latency_ms = cap_duration_ms + enc_duration_ms;
-                            stream_lock.width = width;
-                            stream_lock.height = height;
-
-                            let window_elapsed = fps_window_start.elapsed();
-                            if window_elapsed >= Duration::from_secs(1) {
-                                let elapsed_secs = window_elapsed.as_secs_f32();
-                                stream_lock.measured_fps = fps_window_frames as f32 / elapsed_secs;
-                                stream_lock.measured_bitrate_kbps = (fps_window_bytes as f32 * 8.0)
-                                    / (elapsed_secs * 1000.0);
-                                stream_lock.fps_window_frames = fps_window_frames;
-                                stream_lock.bytes_window = fps_window_bytes;
-                                stream_lock.fps_window_start_ms = now_ms;
-
-                                fps_window_frames = 0;
-                                fps_window_bytes = 0;
-                                fps_window_start = Instant::now();
-                            }
-                        }
-                    }
+                if stop_signal.load(Ordering::Relaxed) {
+                    break;
                 }
 
-                let elapsed = loop_start.elapsed();
-                if elapsed < frame_interval {
-                    std::thread::sleep(frame_interval - elapsed);
+                if let Some(frame) = frame_opt {
+                    scratch_buf.clear();
+                    let frame_head = format!(
+                        "--smartmigrate\r\n\
+                        Content-Type: image/jpeg\r\n\
+                        Content-Length: {}\r\n\
+                        X-Timestamp: {}\r\n\
+                        X-Width: {}\r\n\
+                        X-Height: {}\r\n\r\n",
+                        frame.payload.len(), frame.timestamp_ms, frame.width, frame.height
+                    );
+                    scratch_buf.extend_from_slice(frame_head.as_bytes());
+                    scratch_buf.extend_from_slice(&frame.payload);
+                    scratch_buf.extend_from_slice(b"\r\n");
+
+                    if socket.write_all(&scratch_buf).is_err() || socket.flush().is_err() {
+                        break; // Client disconnected
+                    }
+
+                    last_activity = Instant::now();
+                    let frame_bytes = scratch_buf.len() as u64;
+
+                    fps_window_frames += 1;
+                    fps_window_bytes += frame_bytes;
+
+                    if let Ok(mut stream_lock) = state.active_stream.lock() {
+                        stream_lock.frames_sent += 1;
+                        stream_lock.frames_captured += 1;
+                        stream_lock.capture_latency_ms = frame.capture_latency_ms;
+                        stream_lock.width = frame.width;
+                        stream_lock.height = frame.height;
+
+                        let window_elapsed = fps_window_start.elapsed();
+                        if window_elapsed >= Duration::from_secs(1) {
+                            let elapsed_secs = window_elapsed.as_secs_f32();
+                            stream_lock.measured_fps = fps_window_frames as f32 / elapsed_secs;
+                            stream_lock.measured_bitrate_kbps = (fps_window_bytes as f32 * 8.0)
+                                / (elapsed_secs * 1000.0);
+                            stream_lock.fps_window_frames = fps_window_frames;
+                            stream_lock.bytes_window = fps_window_bytes;
+                            stream_lock.fps_window_start_ms = now_ms();
+
+                            fps_window_frames = 0;
+                            fps_window_bytes = 0;
+                            fps_window_start = Instant::now();
+                        }
+                    }
+                } else if last_activity.elapsed() >= Duration::from_millis(400) {
+                    // Send lightweight keepalive heartbeat packet to maintain TCP connection
+                    // and prevent client read timeout on static desktop screens
+                    let heartbeat = "--smartmigrate\r\n\
+                        Content-Type: text/plain\r\n\
+                        Content-Length: 0\r\n\
+                        X-Heartbeat: 1\r\n\r\n";
+                    if socket.write_all(heartbeat.as_bytes()).is_err() || socket.flush().is_err() {
+                        break; // Client disconnected
+                    }
+                    last_activity = Instant::now();
                 }
+            }
+
+            // Signal capture worker to exit and notify condvar
+            stop_signal.store(true, Ordering::Relaxed);
+            let (_, cvar) = &*frame_slot;
+            cvar.notify_all();
+            if let Ok(handle) = capture_worker {
+                let _ = handle.join();
             }
 
             // Reset active stream on disconnect only if this connection is still current

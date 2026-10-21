@@ -28,7 +28,7 @@
       <!-- ─── 00 Sticky Beta Announcement Banner (KnowToMigrate Pattern) ─────── -->
       <aside class="announcement-banner" aria-label="Release Announcement">
         <span class="live-pulse-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10B981; margin-right:6px; box-shadow:0 0 8px #10B981;"></span>
-        <strong>Smart Migrate 1.4.4</strong> — 60 FPS low-latency display streaming, mobile remote control, and encrypted local file transfer.
+        <strong>Smart Migrate 1.4.4</strong> — display streaming and mobile remote control over your local Wi-Fi. Transport encryption is not yet enabled.
         <span class="banner-update-badge" id="banner-update-tag" style="display:inline-block; margin-left: 8px; margin-right: 8px; padding: 2px 9px; border-radius: 12px; background: rgba(124, 77, 255, 0.28); border: 1px solid rgba(167, 139, 250, 0.4); color: #C4B5FD; font-size: 11px; font-weight: 600;">Updated recently: just now</span>
         <a href="#downloads">Download official release →</a>
       </aside>
@@ -87,7 +87,7 @@
 
             <!-- Description -->
             <p class="hero-desc">
-              Hardware-accelerated 60 FPS Windows display streaming directly to your phone over LAN. Control your PC with encrypted touchpad, keyboard, and presentation remote. Powered by MigRoute and SMP/1.
+              Windows display streaming to your phone over your local network, with touchpad, keyboard, and presentation-remote control. Traffic is not encrypted yet. Powered by MigRoute and SMP/1.
             </p>
 
             <!-- Actions & Platform Detection -->
@@ -229,16 +229,16 @@
                 <div class="preview-hud-bar">
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <span class="status-indicator-dot"></span>
-                    <span>Display Mirror: 1920×1080 @ 60 FPS • Bitrate: 18.4 Mbps • Codec: H.264 Hardware</span>
+                    <span>Display Mirror: illustrative mockup, not live telemetry</span>
                   </div>
-                  <span class="preview-badge-pill" style="background: rgba(16, 185, 129, 0.18); color: #34d399;">59.9 FPS STABLE</span>
+                  <span class="preview-badge-pill" style="background: rgba(16, 185, 129, 0.18); color: #34d399;">MOCKUP</span>
                 </div>
 
                 <div class="preview-split-stage">
                   <!-- Stream Viewport Canvas -->
                   <div class="preview-remote-viewport">
                     <div class="preview-screen-header">
-                      <span>Primary Display (DP-1) — Hardware Accelerated Low Latency</span>
+                      <span>Primary Display (DP-1) — mockup</span>
                       <span>Input: Touchpad & Keys</span>
                     </div>
                     <div class="preview-screen-canvas">
@@ -247,7 +247,7 @@
                         <rect x="110" y="20" width="110" height="90" rx="4" fill="#38BDF8" opacity="0.6" />
                         <rect x="20" y="80" width="80" height="30" rx="4" fill="#A78BFA" opacity="0.4" />
                       </svg>
-                      <div class="preview-cursor-indicator" title="Sub-millisecond Remote Pointer"></div>
+                      <div class="preview-cursor-indicator" title="Remote Pointer"></div>
                     </div>
                   </div>
 
@@ -282,7 +282,7 @@
 
                     <div class="preview-queue-card" style="opacity: 0.6;">
                       <div style="display: flex; justify-content: space-between; font-weight: 500;">
-                        <span>System_Image_Encrypted.tar</span>
+                        <span>System_Image.tar</span>
                         <span style="font-size: 0.72rem; color: var(--sm-text-3);">Waiting • Normal</span>
                       </div>
                       <div style="font-size: 0.72rem; color: var(--sm-text-3); margin-top: 4px;">8.1 GB — In Queue</div>
@@ -319,7 +319,7 @@
                 <ul class="readiness-list">
                   <li>— Dynamic adaptive bitrate throttling on packet loss</li>
                   <li>— Zero-touch pairing handshake and trusted keystore</li>
-                  <li>— STUN/TURN encrypted relay for cross-network WAN</li>
+                  <li>— Planned: encrypted relay for cross-network access (not yet implemented)</li>
                   <li>— Multi-monitor virtual viewport dynamic switching</li>
                   <li>— Per-transfer speed limiter & bandwidth priority profiles</li>
                 </ul>
@@ -403,7 +403,7 @@
                 <h3>Internet Relay</h3>
                 <span class="status-pill planned">Planned</span>
               </div>
-              <p>Encrypted STUN/TURN fallback relay for cross-network scenarios. Fully optional — all local network streaming and file transfers function offline.</p>
+              <p>Planned relay for cross-network scenarios. Not yet implemented. Local network streaming works without it.</p>
             </div>
           </div>
         </section>
@@ -434,7 +434,7 @@
             <div class="workflow-card">
               <div class="workflow-step-number">03</div>
               <h3>Direct 60 FPS Stream</h3>
-              <p>Experience silky smooth 60 FPS Windows display mirroring on your Android phone with sub-millisecond multi-touch trackpad control.</p>
+              <p>Mirror your Windows desktop to your Android phone over Wi-Fi with multi-touch trackpad control. Frame rate depends on your network and PC.</p>
             </div>
 
             <div class="workflow-card">
@@ -469,7 +469,7 @@
                 <span class="feature-tag-badge">Direct LAN • 60 FPS</span>
               </div>
               <h3>60 FPS Display Stream</h3>
-              <p>Hardware-accelerated 1080p 60 FPS display mirroring from Windows to Android. Dynamic adaptive bitrate and hardware GPU decoding for ultra-low latency.</p>
+              <p>1080p display mirroring from Windows to Android with a 60 FPS target. Frame rate and latency depend on your Wi-Fi and PC. Current builds capture and encode frames in software.</p>
             </article>
 
             <!-- 02 -->
@@ -484,7 +484,7 @@
                 <span class="feature-tag-badge">Sub-ms Latency</span>
               </div>
               <h3>Precision Phone Remote</h3>
-              <p>Turn your phone into a multi-touch trackpad, physical keyboard dispatcher, presentation clicker, or game pad with sub-millisecond response.</p>
+              <p>Turn your phone into a multi-touch trackpad, physical keyboard dispatcher, presentation clicker, or game pad with low-latency response on your local network.</p>
             </article>
 
             <!-- 03 -->
@@ -874,12 +874,12 @@
 
             <article class="faq-card">
               <h3>How does the 60 FPS display stream achieve low latency?</h3>
-              <p>The MigRoute core utilizes native DXGI Desktop Duplication on Windows with direct GPU hardware encoding, bypassing user-space buffer copying. The stream delivers sub-frame latency over 5 GHz Wi-Fi.</p>
+              <p>Current builds capture the screen with GDI and encode each frame as JPEG on the CPU. Latency depends on your Wi-Fi and PC. Hardware capture and encoding are planned.</p>
             </article>
 
             <article class="faq-card">
               <h3>Is battery consumption high during remote control?</h3>
-              <p>Smart Migrate features automatic Battery Awareness. When battery drops below 20%, it reduces background polling and switches video decode to low-power hardware modes on your phone.</p>
+              <p>Smart Migrate has a manual Battery Saver toggle in the Android app. It does not switch on automatically.</p>
             </article>
           </div>
         </section>

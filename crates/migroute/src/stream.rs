@@ -244,6 +244,7 @@ pub struct ReassembledFrame {
 pub struct DatagramFrameReassembler {
     current_stream_id: u64,
     latest_frame_seq: u64,
+    last_delivered_seq: Option<u64>,
     pending_chunks: BTreeMap<u16, Vec<u8>>,
     pending_total_chunks: u16,
     pending_header: Option<DatagramHeader>,
@@ -256,6 +257,7 @@ impl DatagramFrameReassembler {
         Self {
             current_stream_id: stream_id,
             latest_frame_seq: 0,
+            last_delivered_seq: None,
             pending_chunks: BTreeMap::new(),
             pending_total_chunks: 0,
             pending_header: None,
@@ -274,8 +276,13 @@ impl DatagramFrameReassembler {
             return Ok(None);
         }
 
-        // 1. Obsolete frame: older than what we've already rendered
-        if header.frame_seq < self.latest_frame_seq {
+        // 1. Obsolete or already delivered frame: at or below what has already completed
+        if let Some(delivered) = self.last_delivered_seq {
+            if header.frame_seq <= delivered {
+                self.frames_dropped += 1;
+                return Ok(None);
+            }
+        } else if header.frame_seq < self.latest_frame_seq {
             self.frames_dropped += 1;
             return Ok(None);
         }
@@ -293,6 +300,7 @@ impl DatagramFrameReassembler {
 
         // Single-chunk frame fast path
         if header.total_chunks == 1 {
+            self.last_delivered_seq = Some(header.frame_seq);
             self.frames_completed += 1;
             self.pending_chunks.clear();
             self.pending_header = None;
@@ -326,6 +334,7 @@ impl DatagramFrameReassembler {
             }
 
             let hdr = self.pending_header.take().unwrap_or(header);
+            self.last_delivered_seq = Some(hdr.frame_seq);
             self.pending_chunks.clear();
             self.frames_completed += 1;
 
@@ -466,6 +475,41 @@ mod tests {
         assert_eq!(&frame.payload, payload);
         assert_eq!(reassembler.frames_completed, 1);
         assert_eq!(reassembler.frames_dropped, 0);
+    }
+
+    #[test]
+    fn test_single_chunk_repeated_frame_seq_is_dropped() {
+        let mut reassembler = DatagramFrameReassembler::new(1001);
+        let payload = b"single-chunk-frame";
+        let packets = packetize_frame(1001, 5, payload, VideoCodec::H264, true, false, 100);
+        assert_eq!(packets.len(), 1);
+
+        // First delivery succeeds
+        let res1 = reassembler.ingest(&packets[0]).expect("Ingest should succeed");
+        assert!(res1.is_some());
+        assert_eq!(res1.unwrap().frame_seq, 5);
+        assert_eq!(reassembler.frames_completed, 1);
+        assert_eq!(reassembler.frames_dropped, 0);
+
+        // Repeated delivery with same frame_seq is dropped (M6 fix)
+        let res2 = reassembler.ingest(&packets[0]).expect("Duplicate ingest should succeed");
+        assert!(res2.is_none());
+        assert_eq!(reassembler.frames_completed, 1);
+        assert_eq!(reassembler.frames_dropped, 1);
+
+        // Older frame_seq is also dropped
+        let older_packets = packetize_frame(1001, 4, payload, VideoCodec::H264, true, false, 90);
+        let res3 = reassembler.ingest(&older_packets[0]).expect("Older ingest should succeed");
+        assert!(res3.is_none());
+        assert_eq!(reassembler.frames_completed, 1);
+        assert_eq!(reassembler.frames_dropped, 2);
+
+        // Newer frame_seq is delivered
+        let newer_packets = packetize_frame(1001, 6, payload, VideoCodec::H264, true, false, 110);
+        let res4 = reassembler.ingest(&newer_packets[0]).expect("Newer ingest should succeed");
+        assert!(res4.is_some());
+        assert_eq!(res4.unwrap().frame_seq, 6);
+        assert_eq!(reassembler.frames_completed, 2);
     }
 
     #[test]

@@ -965,6 +965,8 @@ fn check_windows_update() -> Result<UpdateCheckDto, String> {
     })
 }
 
+static VERIFIED_INSTALLER_HASH: std::sync::Mutex<Option<(std::path::PathBuf, String)>> = std::sync::Mutex::new(None);
+
 /// Downloads and cryptographically verifies the Windows installer update package.
 #[tauri::command]
 fn download_windows_update(download_url: String, expected_sha256: String) -> Result<String, String> {
@@ -1012,6 +1014,11 @@ fn download_windows_update(download_url: String, expected_sha256: String) -> Res
     if actual_hash != expected {
         let _ = std::fs::remove_file(&target_file);
         return Err(format!("Integrity failure: expected SHA-256 {} but got {}", expected, actual_hash));
+    }
+
+    let canonical = target_file.canonicalize().map_err(|e| format!("Cannot resolve target installer: {e}"))?;
+    if let Ok(mut lock) = VERIFIED_INSTALLER_HASH.lock() {
+        *lock = Some((canonical, actual_hash));
     }
 
     Ok(target_file.to_string_lossy().to_string())
@@ -1079,6 +1086,21 @@ fn apply_windows_update_and_restart(installer_path: String) -> Result<(), String
         return Err("Installer file does not exist on disk.".to_string());
     }
 
+    // Only installers that download_windows_update wrote into the updates folder may be launched,
+    // so a compromised webview cannot pass an arbitrary executable to the elevated launcher.
+    let updates_dir = std::env::var("APPDATA")
+        .map(|d| std::path::PathBuf::from(d).join("SmartMigrate").join("updates"))
+        .unwrap_or_else(|_| std::path::PathBuf::from("updates"));
+    let canonical_installer = path
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve installer path: {e}"))?;
+    let canonical_updates = updates_dir
+        .canonicalize()
+        .map_err(|_| "Update folder does not exist; download the update first.".to_string())?;
+    if !canonical_installer.starts_with(&canonical_updates) {
+        return Err("Installer must be inside the Smart Migrate updates folder.".to_string());
+    }
+
     // Security validation: verify extension is .exe or .msi
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     if ext != "exe" && ext != "msi" {
@@ -1089,6 +1111,41 @@ fn apply_windows_update_and_restart(installer_path: String) -> Result<(), String
     let metadata = std::fs::metadata(&path).map_err(|e| format!("Cannot read installer metadata: {e}"))?;
     if metadata.len() == 0 {
         return Err("Installer package is empty or truncated.".to_string());
+    }
+
+    // Security validation (M5): compare actual file digest against the verified download hash
+    let file_bytes = std::fs::read(&canonical_installer)
+        .map_err(|e| format!("Cannot read installer package: {e}"))?;
+    let current_sha256 = migroute::compute_sha256(&file_bytes).to_uppercase();
+
+    {
+        let lock = VERIFIED_INSTALLER_HASH.lock().unwrap();
+        let Some((ref verified_path, ref verified_sha256)) = *lock else {
+            return Err("Refusing to launch installer: no verified download recorded in this session.".to_string());
+        };
+        if &canonical_installer != verified_path || &current_sha256 != verified_sha256 {
+            return Err("Integrity validation failed: installer contents on disk do not match the verified download digest.".to_string());
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        // Security validation (C2): Authenticode signature verification
+        let sig_check = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "& { param($p) $sig = Get-AuthenticodeSignature -FilePath $p; if ($sig.SignerCertificate -and $sig.SignerCertificate.Subject -match 'Smart Migrate') { exit 0 } else { exit 1 } }",
+                &canonical_installer.to_string_lossy(),
+            ])
+            .output();
+
+        if let Ok(output) = sig_check {
+            if !output.status.success() {
+                return Err("Authenticode verification failed: installer is not signed with a valid Smart Migrate certificate.".to_string());
+            }
+        }
     }
 
     #[cfg(windows)]
