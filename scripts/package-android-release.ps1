@@ -16,6 +16,7 @@ $debugKeystore = Join-Path $env:USERPROFILE ".android\debug.keystore"
 $apksigner = "C:\Users\gokul\android-sdk\build-tools\35.0.0\apksigner.bat"
 
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 Write-Host "=== 1. Building Android Release APK ===" -ForegroundColor Cyan
 Set-Location $androidDir
