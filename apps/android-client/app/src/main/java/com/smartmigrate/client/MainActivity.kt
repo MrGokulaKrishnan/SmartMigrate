@@ -111,7 +111,6 @@ import kotlinx.coroutines.channels.Channel
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -1604,11 +1603,19 @@ private fun DedicatedRemoteSessionScreen(
     }
 
     DisposableEffect(streamEngine) {
+        streamEngine.onReconnectNeeded = {
+            Log.i("SmartMigrate", "StreamEngine requested reconnect: refreshing Wi-Fi network binding")
+            val refreshedNet = StreamSessionService.refreshWifiNetwork(context)
+            if (refreshedNet != null) {
+                streamEngine.triggerImmediateReconnect()
+            }
+        }
         StreamSessionService.onWifiReconnected = {
             Log.i("SmartMigrate", "Wi-Fi reconnected, triggering stream engine immediate retry")
             streamEngine.triggerImmediateReconnect()
         }
         onDispose {
+            streamEngine.onReconnectNeeded = null
             StreamSessionService.onWifiReconnected = null
             streamEngine.stopStreaming()
         }

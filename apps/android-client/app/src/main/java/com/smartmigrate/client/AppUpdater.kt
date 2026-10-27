@@ -618,7 +618,7 @@ object AppUpdater {
                     connectTimeout = 5000
                     readTimeout = 5000
                     requestMethod = "GET"
-                    setRequestProperty("User-Agent", "SmartMigrate-Android/1.4.2")
+                    setRequestProperty("User-Agent", "SmartMigrate-Android/${BuildConfig.VERSION_NAME}")
                     setRequestProperty("Accept", "application/json")
                 }
                 if (conn.responseCode == 200) {

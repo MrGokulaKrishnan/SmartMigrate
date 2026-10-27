@@ -38,8 +38,7 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.png",
-      "icons/icon.ico",
-      "icons/icon.icns"
+      "icons/icon.ico"
     ],
     "targets": ["nsis", "msi"],
     "shortDescription": "Secure, explicit-consent cross-device connectivity",

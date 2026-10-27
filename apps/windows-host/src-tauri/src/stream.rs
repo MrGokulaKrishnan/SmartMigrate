@@ -1,5 +1,5 @@
-//! Real-time Windows desktop screen capture, hardware/software video encoding,
-//! and secure streaming server implementation for Smart Migrate Protocol (SMP/1).
+//! Windows host display stream session state and authorization tracking
+//! for Smart Migrate Protocol (SMP/1).
 //!
 //! Enforces AGENTS.md rules:
 //! - "Host-side authorization is the source of truth for every requested capability."

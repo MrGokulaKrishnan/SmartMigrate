@@ -72,6 +72,30 @@ class StreamSessionService : Service() {
         /** Callback set by MainActivity/DedicatedRemoteSessionScreen to trigger an immediate reconnect. */
         @Volatile
         var onWifiReconnected: (() -> Unit)? = null
+
+        /**
+         * Actively queries ConnectivityManager for an operational Wi-Fi network and updates
+         * activeWifiNetwork, returning the network if found.
+         */
+        fun refreshWifiNetwork(context: Context): Network? {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val activeNet = cm.activeNetwork
+                val caps = cm.getNetworkCapabilities(activeNet)
+                if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                    activeWifiNetwork = activeNet
+                    return activeNet
+                }
+            }
+            for (net in cm.allNetworks) {
+                val caps = cm.getNetworkCapabilities(net)
+                if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                    activeWifiNetwork = net
+                    return net
+                }
+            }
+            return null
+        }
     }
 
     inner class LocalBinder : Binder() {
