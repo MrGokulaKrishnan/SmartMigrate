@@ -62,6 +62,7 @@ async function main() {
     {
       cwd: siteDir,
       stdio: 'inherit',
+      shell: true,
     }
   );
 
