@@ -736,7 +736,13 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [pairingSession, setPairingSession] = useState<PairingSession | null>(null);
   const [timeLeft, setTimeLeft] = useState(180);
-  const [selectedPerms, setSelectedPerms] = useState<Record<string, boolean>>({});
+  const [selectedPerms, setSelectedPerms] = useState<Record<string, boolean>>({
+    view: true,
+    control_mouse: true,
+    control_keyboard: true,
+    clipboard: true,
+    file_transfer: true,
+  });
   const [notice, setNotice] = useState("Smart Migrate Core online. Privileged adapters gated by host authorization.");
   const [trustedDevices, setTrustedDevices] = useState<TrustedDevice[]>([]);
   const [resilience, setResilience] = useState<ResilienceStatus>({
@@ -1357,6 +1363,8 @@ export function App() {
             <DevicesView
               status={status}
               devices={trustedDevices}
+              selectedPerms={selectedPerms}
+              onUpdatePerms={setSelectedPerms}
               onConnect={openPairing}
               onOpenDeviceDetails={setDeviceDetailsModal}
               onRevoke={async (id) => {
@@ -1414,6 +1422,7 @@ export function App() {
             <DiagnosticsView
               status={status}
               resilience={resilience}
+              primaryHostIp={primaryHostIp}
             />
           )}
 
@@ -2681,6 +2690,8 @@ function FolderMigrationModal({
 function DevicesView({
   status,
   devices,
+  selectedPerms,
+  onUpdatePerms,
   onConnect,
   onOpenDeviceDetails,
   onRevoke,
@@ -2688,62 +2699,196 @@ function DevicesView({
 }: {
   status: HostStatus;
   devices: TrustedDevice[];
+  selectedPerms: Record<string, boolean>;
+  onUpdatePerms: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onConnect: () => void;
   onOpenDeviceDetails: (device: TrustedDevice) => void;
   onRevoke: (id: string) => void;
   onRemove: (id: string) => void;
 }) {
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+
+  const handleRevoke = (id: string) => {
+    if (confirmRevokeId === id) {
+      onRevoke(id);
+      setConfirmRevokeId(null);
+    } else {
+      setConfirmRevokeId(id);
+      setTimeout(() => {
+        setConfirmRevokeId((curr) => (curr === id ? null : curr));
+      }, 2600);
+    }
+  };
+
+  const isControlOn = selectedPerms["control_mouse"] !== false;
+  const isClipboardOn = selectedPerms["clipboard"] !== false;
+  const isFileTransferOn = selectedPerms["file_transfer"] !== false;
+
+  const toggleControl = (checked: boolean) => {
+    onUpdatePerms((prev) => ({
+      ...prev,
+      control_mouse: checked,
+      control_keyboard: checked,
+    }));
+  };
+
+  const toggleClipboard = (checked: boolean) => {
+    onUpdatePerms((prev) => ({
+      ...prev,
+      clipboard: checked,
+    }));
+  };
+
+  const toggleFileTransfer = (checked: boolean) => {
+    onUpdatePerms((prev) => ({
+      ...prev,
+      file_transfer: checked,
+    }));
+  };
+
+  const formatEpoch = (ms?: number) => {
+    if (!ms || ms <= 0) return "recently";
+    const diff = Math.floor((Date.now() - ms) / 1000);
+    if (diff < 60) return "just now";
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div className="workspace-header">
         <div className="workspace-title-group">
-          <h1>Device Management & Trust Store</h1>
-          <p>Authoritative device registry verified against Windows DPAPI identity store.</p>
+          <h1>{i18n.devices.title}</h1>
+          <p>{i18n.devices.subtitle}</p>
         </div>
-        <button className="btn btn-primary" onClick={onConnect}>+ Pair New Device</button>
+        <button className="btn btn-primary" onClick={onConnect}>
+          + Pair New Device
+        </button>
       </div>
 
-      <div className="devices-grid">
-        {devices.map((d) => (
-          <div key={d.id} className="device-card">
-            <div className="device-card-header">
-              <div className="device-identity">
-                <div className="device-avatar">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-                  </svg>
+      {devices.length === 0 ? (
+        <div className="card" style={{ textAlign: "center", padding: "48px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+          <GlossyIcon name="phone" size={56} />
+          <h2 style={{ margin: "8px 0 0", fontSize: "18px", fontWeight: 650 }}>No paired devices</h2>
+          <p style={{ margin: "0", color: "var(--sm-text-2)", fontSize: "13.5px", maxWidth: "420px", lineHeight: 1.5 }}>
+            Pair an Android phone to control this desktop or transfer files.
+          </p>
+          <button className="btn btn-primary" onClick={onConnect} style={{ marginTop: "12px" }}>
+            + Pair New Device
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: "16px" }}>
+          {devices.map((d) => {
+            const isOnline = !d.is_revoked && (Date.now() - (d.last_seen_epoch_ms || 0) < 60000);
+            const isConfirming = confirmRevokeId === d.id;
+
+            return (
+              <div key={d.id} className="card" style={{ padding: "18px", display: "flex", flexDirection: "column", gap: "14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <GlossyIcon name="phone" size={32} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "15px", fontWeight: 600, color: "var(--sm-text-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {d.name || "Android Phone"}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "var(--sm-text-3)", marginTop: "2px" }}>
+                      Paired {formatEpoch(d.paired_at_epoch_ms)} · last seen {formatEpoch(d.last_seen_epoch_ms)}
+                    </div>
+                  </div>
+                  <span
+                    className={`device-status-badge ${d.is_revoked ? "badge-danger" : isOnline ? "badge-connected" : "badge-idle"}`}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+                  >
+                    <StatusDot status={d.is_revoked ? "revoked" : isOnline ? "connected" : "standby"} />
+                    {d.is_revoked ? "Revoked" : isOnline ? i18n.devices.online : i18n.devices.offline}
+                  </span>
                 </div>
-                <div>
-                  <div className="device-name">{d.name}</div>
-                  <div className="device-platform">{d.platform.toUpperCase()} • {d.fingerprint}</div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", borderTop: "1px solid var(--sm-glass-border)", paddingTop: "12px" }}>
+                  {/* View screen */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontSize: "13px", fontWeight: 550, color: "var(--sm-text-1)" }}>{i18n.devices.permViewScreen}</div>
+                      <div style={{ fontSize: "11.5px", color: "var(--sm-text-3)" }}>{i18n.devices.permViewScreenDesc}</div>
+                    </div>
+                    <label className="switch">
+                      <input type="checkbox" checked disabled />
+                      <span className="slider" style={{ opacity: 0.7, cursor: "not-allowed" }}></span>
+                    </label>
+                  </div>
+
+                  {/* Control mouse and keyboard */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontSize: "13px", fontWeight: 550, color: "var(--sm-text-1)" }}>{i18n.devices.permControlInput}</div>
+                      <div style={{ fontSize: "11.5px", color: "var(--sm-text-3)" }}>{i18n.devices.permControlInputDesc}</div>
+                    </div>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={isControlOn}
+                        onChange={(e) => toggleControl(e.target.checked)}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+
+                  {/* Clipboard */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontSize: "13px", fontWeight: 550, color: "var(--sm-text-1)" }}>{i18n.devices.permClipboard}</div>
+                      <div style={{ fontSize: "11.5px", color: "var(--sm-text-3)" }}>{i18n.devices.permClipboardDesc}</div>
+                    </div>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={isClipboardOn}
+                        onChange={(e) => toggleClipboard(e.target.checked)}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+
+                  {/* File transfer */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontSize: "13px", fontWeight: 550, color: "var(--sm-text-1)" }}>{i18n.devices.permFileTransfer}</div>
+                      <div style={{ fontSize: "11.5px", color: "var(--sm-text-3)" }}>{i18n.devices.permFileTransferDesc}</div>
+                    </div>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={isFileTransferOn}
+                        onChange={(e) => toggleFileTransfer(e.target.checked)}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: "8px", marginTop: "4px", borderTop: "1px solid var(--sm-glass-border)", paddingTop: "12px" }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => onOpenDeviceDetails(d)}>
+                    Details
+                  </button>
+                  {!d.is_revoked && (
+                    <button
+                      className={`btn btn-sm ${isConfirming ? "btn-danger" : "btn-secondary"}`}
+                      onClick={() => handleRevoke(d.id)}
+                      style={isConfirming ? { background: "#dc2626", borderColor: "#ef4444", color: "#fff" } : { color: "#fca5a5" }}
+                    >
+                      {isConfirming ? i18n.devices.confirmRevoke : i18n.devices.revoke}
+                    </button>
+                  )}
+                  <button className="btn btn-secondary btn-sm" onClick={() => onRemove(d.id)} style={{ marginLeft: "auto" }}>
+                    Remove
+                  </button>
                 </div>
               </div>
-              <span className={`device-status-badge ${d.is_revoked ? "badge-idle" : "badge-connected"}`} style={{ display: "inline-flex", alignItems: "center" }}>
-                <StatusDot status={d.is_revoked ? "revoked" : "connected"} />
-                {d.is_revoked ? "Revoked" : "Trusted"}
-              </span>
-            </div>
-
-            <div style={{ fontSize: "0.76rem", color: "var(--sm-text-3)" }}>
-              Permissions: {d.granted_permissions.join(", ")}
-            </div>
-
-            <div className="device-actions-row">
-              <button className="btn btn-secondary btn-sm" onClick={() => onOpenDeviceDetails(d)}>
-                Details
-              </button>
-              {!d.is_revoked && (
-                <button className="btn btn-danger btn-sm" onClick={() => onRevoke(d.id)}>
-                  Revoke
-                </button>
-              )}
-              <button className="btn btn-secondary btn-sm" onClick={() => onRemove(d.id)}>
-                Remove
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -3375,126 +3520,151 @@ function SecurityCenterView({
 function DiagnosticsView({
   status,
   resilience,
+  primaryHostIp,
 }: {
   status: HostStatus;
   resilience: ResilienceStatus;
+  primaryHostIp?: string;
 }) {
-  const [testing, setTesting] = useState(false);
-  const [testResults, setTestResults] = useState<{
-    discovery: boolean;
-    auth: boolean;
-    protocol: boolean;
-    lan: boolean;
-    turn: boolean;
-    encoder: boolean;
-  } | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [activeStep, setActiveStep] = useState<number>(-1);
+  const [results, setResults] = useState<DiagnosticCheckResult[]>([]);
 
-  const runDiagnostics = () => {
-    setTesting(true);
-    setTimeout(() => {
-      setTestResults({
-        discovery: true,
-        auth: true,
-        protocol: true,
-        lan: true,
-        turn: true,
-        encoder: true,
-      });
-      setTesting(false);
-    }, 1200);
+  const handleRunChecks = async () => {
+    setIsRunning(true);
+    setResults([]);
+    const allChecks = await runDiagnosticChecks(primaryHostIp || "192.168.31.33");
+
+    for (let i = 0; i < allChecks.length; i++) {
+      setActiveStep(i);
+      await new Promise((res) => setTimeout(res, 500));
+      setResults((prev) => [...prev, allChecks[i]]);
+    }
+    setActiveStep(-1);
+    setIsRunning(false);
   };
+
+  const handleExportReport = () => {
+    const report = {
+      timestamp: new Date().toISOString(),
+      host: {
+        engine: status.engine,
+        version: status.version,
+        platform: status.platform,
+        lanIp: primaryHostIp || "192.168.31.33",
+      },
+      resilience,
+      checks: results.length > 0 ? results : [],
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `smart-migrate-diagnostics-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const checkDefinitions = [
+    { title: i18n.diagnostics.check1Title, desc: i18n.diagnostics.check1Desc },
+    { title: i18n.diagnostics.check2Title, desc: i18n.diagnostics.check2Desc },
+    { title: i18n.diagnostics.check3Title, desc: i18n.diagnostics.check3Desc },
+    { title: i18n.diagnostics.check4Title, desc: i18n.diagnostics.check4Desc },
+    { title: i18n.diagnostics.check5Title, desc: i18n.diagnostics.check5Desc },
+    { title: i18n.diagnostics.check6Title, desc: i18n.diagnostics.check6Desc },
+  ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div className="workspace-header">
         <div className="workspace-title-group">
-          <h1>Smart Diagnostics & Network Health</h1>
-          <p>Real-time telemetry and automated connection bottleneck analysis.</p>
+          <h1>{i18n.diagnostics.title}</h1>
+          <p>{i18n.diagnostics.subtitle}</p>
         </div>
-        <button className="btn btn-primary" onClick={runDiagnostics} disabled={testing}>
-          {testing ? "Running Diagnostic Test..." : "Run Connection Test"}
-        </button>
-      </div>
-
-      <div className="hero-stats-row">
-        <div className="stat-card">
-          <span className="stat-label">Round Trip Time</span>
-          <span className="stat-value" style={{ color: "var(--sm-brand-300)" }}>{resilience.rttMs} ms</span>
-          <span className="stat-sub">Jitter: ~2 ms</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Packet Loss</span>
-          <span className="stat-value" style={{ color: "var(--sm-success)" }}>{resilience.packetLossPercent}%</span>
-          <span className="stat-sub">0 Dropped Chunks</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Transport Route</span>
-          <span className="stat-value" style={{ fontSize: "1.05rem" }}>{resilience.transportState}</span>
-          <span className="stat-sub">Direct P2P LAN</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Heartbeats</span>
-          <span className="stat-value">{resilience.heartbeatsReceived} / {resilience.heartbeatsSent}</span>
-          <span className="stat-sub">100% Health</span>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button className="btn btn-secondary" onClick={handleExportReport} disabled={isRunning || results.length === 0}>
+            {i18n.diagnostics.exportReport}
+          </button>
+          <button className="btn btn-primary" onClick={handleRunChecks} disabled={isRunning}>
+            {isRunning ? "Running Checks..." : i18n.diagnostics.runChecks}
+          </button>
         </div>
       </div>
 
-      {testResults && (
-        <div className="card" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Automated Diagnostic Results</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-            <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </span>
-              <span>UDP 7889 Discovery Protocol — Responsive</span>
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        {checkDefinitions.map((def, idx) => {
+          const result = results[idx];
+          const isCurrent = activeStep === idx;
+
+          return (
+            <div
+              key={idx}
+              className="card"
+              style={{
+                padding: "16px 20px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "16px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                <GlossyIcon name="pulse" size={28} />
+                <div>
+                  <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--sm-text-1)" }}>
+                    {def.title}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "var(--sm-text-3)", marginTop: "2px" }}>
+                    {result ? result.message : def.desc}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                {isCurrent ? (
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", fontSize: "12.5px", color: "var(--sm-brand-300)" }}>
+                    <div className="diagnostic-spinner-orb" />
+                    <span>Probing...</span>
+                  </div>
+                ) : result ? (
+                  result.status === "pass" ? (
+                    <span className="device-status-badge badge-connected" style={{ padding: "4px 10px" }}>
+                      ✓ {i18n.diagnostics.pass}
+                    </span>
+                  ) : result.status === "warn" ? (
+                    <span
+                      className="device-status-badge"
+                      style={{
+                        padding: "4px 10px",
+                        background: "rgba(245, 158, 11, 0.15)",
+                        color: "#fbbf24",
+                        border: "1px solid rgba(245, 158, 11, 0.3)",
+                      }}
+                    >
+                      ⚠ {i18n.diagnostics.notEnabled}
+                    </span>
+                  ) : (
+                    <span className="device-status-badge badge-danger" style={{ padding: "4px 10px" }}>
+                      ✕ {i18n.diagnostics.fail}
+                    </span>
+                  )
+                ) : (
+                  <span style={{ fontSize: "12px", color: "var(--sm-text-3)" }}>
+                    {i18n.diagnostics.notRun}
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </span>
-              <span>DPAPI Hardware Fingerprint — Verified</span>
-            </div>
-            <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </span>
-              <span>SMP/1 Wire Framing & Replay Defense — Passed</span>
-            </div>
-            <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </span>
-              <span>Direct LAN P2P Socket (Port 7890) — Reachable (0.4 ms)</span>
-            </div>
-            <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </span>
-              <span>TURN Relayed Fallback Gateway — Standby Ready</span>
-            </div>
-            <div className="step-item completed">
-              <span style={{ color: "var(--sm-success)", display: "inline-flex", alignItems: "center" }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </span>
-              <span>Hardware Video Encoder (NVENC) — Available</span>
-            </div>
-          </div>
-          <div style={{ padding: "10px 14px", background: "var(--sm-surface-2)", borderRadius: "8px", fontSize: "0.78rem" }}>
-            <strong>Recommendation:</strong> Network conditions are optimal for 1080p 60 FPS remote desktop and full-bandwidth chunked migration.
-          </div>
+          );
+        })}
+      </div>
+
+      {results.length > 0 && !isRunning && (
+        <div className="card" style={{ padding: "14px 18px", background: "var(--sm-surface-2)", display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ color: "#fbbf24", fontSize: "16px" }}>⚠</span>
+          <span style={{ fontSize: "12.5px", color: "var(--sm-text-2)" }}>
+            <b>Security Note:</b> 5 core checks passed. Transport encryption is not enabled yet — traffic is readable on this local network until TLS certificate pinning ships.
+          </span>
         </div>
       )}
     </div>
@@ -3511,92 +3681,193 @@ function SettingsView({
   onCheckForUpdates: () => void;
   isCheckingUpdates: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState("General");
+  const [settings, setSettings] = useState<AppSettings>({
+    startWithWindows: false,
+    minimizeToTray: true,
+    defaultQuality: "auto",
+    liveSessionIndicatorLocked: true,
+    updateChannel: "stable",
+  });
+  const [updateChecked, setUpdateChecked] = useState(false);
+
+  useEffect(() => {
+    getAppSettings().then(setSettings);
+  }, []);
+
+  const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+    setSettings((prev) => {
+      const next = { ...prev, [key]: value };
+      saveAppSettings(next);
+      return next;
+    });
+  };
+
+  const handleUpdateClick = () => {
+    onCheckForUpdates();
+    setUpdateChecked(true);
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px", maxWidth: "800px" }}>
       <div className="workspace-header">
         <div className="workspace-title-group">
-          <h1>Settings & Preferences</h1>
-          <p>Configure transport, video encoder, security locks, and Windows integration.</p>
+          <h1>{i18n.settings.title}</h1>
+          <p>{i18n.settings.subtitle}</p>
         </div>
       </div>
 
-      <div className="settings-layout">
-        <div className="settings-nav">
-          {["General", "Appearance", "Connection", "Transfers", "Remote Control", "Security", "Notifications", "Storage", "Advanced"].map((tab) => (
-            <button
-              key={tab}
-              className={`settings-nav-btn ${activeTab === tab ? "active" : ""}`}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab}
-            </button>
-          ))}
+      {/* ─── Startup Section ─── */}
+      <div className="card" style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "20px" }}>
+        <h3 style={{ margin: "0 0 4px", fontSize: "15px", fontWeight: 650, color: "var(--sm-text-1)" }}>
+          {i18n.settings.sectionStartup}
+        </h3>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: "13.5px", fontWeight: 550, color: "var(--sm-text-1)" }}>{i18n.settings.startWithWindows}</div>
+            <div style={{ fontSize: "12px", color: "var(--sm-text-3)" }}>{i18n.settings.startWithWindowsDesc}</div>
+          </div>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={settings.startWithWindows}
+              onChange={(e) => updateSetting("startWithWindows", e.target.checked)}
+            />
+            <span className="slider"></span>
+          </label>
         </div>
 
-        <div className="settings-content-panel">
-          <div className="setting-row">
-            <div className="setting-info">
-              <h4>Smart Migrate In-App Updates</h4>
-              <p>Check the official Smart Migrate CDN manifest for cryptographic releases.</p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--sm-glass-border)", paddingTop: "14px" }}>
+          <div>
+            <div style={{ fontSize: "13.5px", fontWeight: 550, color: "var(--sm-text-1)" }}>{i18n.settings.minimizeToTray}</div>
+            <div style={{ fontSize: "12px", color: "var(--sm-text-3)" }}>{i18n.settings.minimizeToTrayDesc}</div>
+          </div>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={settings.minimizeToTray}
+              onChange={(e) => updateSetting("minimizeToTray", e.target.checked)}
+            />
+            <span className="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      {/* ─── Streaming Section ─── */}
+      <div className="card" style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "20px" }}>
+        <h3 style={{ margin: "0 0 4px", fontSize: "15px", fontWeight: 650, color: "var(--sm-text-1)" }}>
+          {i18n.settings.sectionStreaming}
+        </h3>
+
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+            <div>
+              <div style={{ fontSize: "13.5px", fontWeight: 550, color: "var(--sm-text-1)" }}>{i18n.settings.defaultQuality}</div>
             </div>
+            <div className="segmented-control" role="group" aria-label="Default Streaming Quality">
+              <button
+                type="button"
+                aria-pressed={settings.defaultQuality === "auto"}
+                onClick={() => updateSetting("defaultQuality", "auto")}
+              >
+                Auto
+              </button>
+              <button
+                type="button"
+                aria-pressed={settings.defaultQuality === "60"}
+                onClick={() => updateSetting("defaultQuality", "60")}
+              >
+                60 FPS
+              </button>
+              <button
+                type="button"
+                aria-pressed={settings.defaultQuality === "120"}
+                onClick={() => updateSetting("defaultQuality", "120")}
+              >
+                120 FPS
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--sm-text-3)", lineHeight: 1.5, background: "var(--sm-surface-2)", padding: "10px 12px", borderRadius: "8px" }}>
+            {settings.defaultQuality === "120"
+              ? i18n.settings.qualityCaption120
+              : settings.defaultQuality === "60"
+              ? i18n.settings.qualityCaption60
+              : i18n.settings.qualityCaptionAuto}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--sm-glass-border)", paddingTop: "14px" }}>
+          <div>
+            <div style={{ fontSize: "13.5px", fontWeight: 550, color: "var(--sm-text-1)" }}>{i18n.settings.liveIndicator}</div>
+            <div style={{ fontSize: "12px", color: "var(--sm-text-3)" }}>{i18n.settings.liveIndicatorDesc}</div>
+          </div>
+          <label className="switch">
+            <input type="checkbox" checked disabled />
+            <span className="slider" style={{ opacity: 0.7, cursor: "not-allowed" }}></span>
+          </label>
+        </div>
+      </div>
+
+      {/* ─── Updates Section ─── */}
+      <div className="card" style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "20px" }}>
+        <h3 style={{ margin: "0 0 4px", fontSize: "15px", fontWeight: 650, color: "var(--sm-text-1)" }}>
+          {i18n.settings.sectionUpdates}
+        </h3>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: "13.5px", fontWeight: 550, color: "var(--sm-text-1)" }}>{i18n.settings.updateChannel}</div>
+            <div style={{ fontSize: "12px", color: "var(--sm-text-3)" }}>{i18n.settings.updateChannelDesc}</div>
+          </div>
+          <div className="segmented-control" role="group" aria-label="Update Channel">
             <button
-              className="btn btn-secondary btn-sm"
-              onClick={onCheckForUpdates}
-              disabled={isCheckingUpdates}
-              style={{ display: "flex", alignItems: "center", gap: "6px" }}
+              type="button"
+              aria-pressed={settings.updateChannel === "stable"}
+              onClick={() => updateSetting("updateChannel", "stable")}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-              </svg>
-              <span>{isCheckingUpdates ? "Checking..." : "Check for Updates"}</span>
+              {i18n.settings.channelStable}
+            </button>
+            <button
+              type="button"
+              aria-pressed={settings.updateChannel === "beta"}
+              onClick={() => updateSetting("updateChannel", "beta")}
+            >
+              {i18n.settings.channelBeta}
             </button>
           </div>
+        </div>
 
-          <div className="setting-row">
-            <div className="setting-info">
-              <h4>Start with Windows</h4>
-              <p>Automatically launch Smart Migrate in background system tray upon startup.</p>
-            </div>
-            <label className="switch">
-              <input type="checkbox" defaultChecked />
-              <span className="slider"></span>
-            </label>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--sm-glass-border)", paddingTop: "14px" }}>
+          <div>
+            <div style={{ fontSize: "13.5px", fontWeight: 550, color: "var(--sm-text-1)" }}>{i18n.settings.installedVersion}</div>
+            <div style={{ fontSize: "12px", color: "var(--sm-text-3)" }}>{i18n.settings.installedVersionDesc}</div>
           </div>
+          <span style={{ fontFamily: "JetBrains Mono", fontSize: "12.5px", color: "var(--sm-brand-300)", background: "var(--sm-surface-2)", padding: "4px 10px", borderRadius: "6px" }}>
+            v{status?.version || "1.4.4"}
+          </span>
+        </div>
 
-          <div className="setting-row">
-            <div className="setting-info">
-              <h4>Prefer Direct LAN Transport</h4>
-              <p>Prioritize local subnet P2P sockets before attempting cloud TURN relays.</p>
-            </div>
-            <label className="switch">
-              <input type="checkbox" defaultChecked />
-              <span className="slider"></span>
-            </label>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--sm-glass-border)", paddingTop: "14px" }}>
+          <div>
+            {updateChecked && !isCheckingUpdates ? (
+              <span style={{ color: "var(--sm-success)", fontSize: "12.5px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                ✓ {i18n.settings.upToDate}
+              </span>
+            ) : (
+              <span style={{ color: "var(--sm-text-3)", fontSize: "12px" }}>
+                Releases are cryptographically signed before staging.
+              </span>
+            )}
           </div>
-
-          <div className="setting-row">
-            <div className="setting-info">
-              <h4>Automatic SHA-256 Checksum Verification</h4>
-              <p>Validate cryptographic digest before saving incoming chunks to Downloads.</p>
-            </div>
-            <label className="switch">
-              <input type="checkbox" defaultChecked />
-              <span className="slider"></span>
-            </label>
-          </div>
-
-          <div className="setting-row">
-            <div className="setting-info">
-              <h4>Remote Desktop 60 FPS Streaming</h4>
-              <p>Allow authorized devices to stream host display at up to 60 frames per second.</p>
-            </div>
-            <label className="switch">
-              <input type="checkbox" defaultChecked />
-              <span className="slider"></span>
-            </label>
-          </div>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={handleUpdateClick}
+            disabled={isCheckingUpdates}
+            style={{ display: "flex", alignItems: "center", gap: "6px" }}
+          >
+            <span>{isCheckingUpdates ? "Checking..." : i18n.settings.checkForUpdates}</span>
+          </button>
         </div>
       </div>
     </div>
