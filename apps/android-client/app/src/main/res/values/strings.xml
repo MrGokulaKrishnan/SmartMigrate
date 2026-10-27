@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Smart Migrate</string>
+    <string name="app_engine">MigRoute</string>
+    <string name="app_protocol">SMP/1</string>
+    <string name="app_subtitle">Your Windows PC is on this network.</string>
+
+    <!-- Navigation Tabs -->
+    <string name="tab_home">Home</string>
+    <string name="tab_devices">Devices</string>
+    <string name="tab_stream">Stream</string>
+    <string name="tab_security">Security</string>
+    <string name="tab_about">About</string>
+
+    <!-- Home Screen -->
+    <string name="home_hero_title">DESKTOP-PC is online</string>
+    <string name="home_hero_body">Last session 2 hours ago. Pairing is trusted.</string>
+    <string name="home_connect_pc">Connect to DESKTOP-PC</string>
+    <string name="home_quick_pair">Pair new</string>
+    <string name="home_quick_security">Security</string>
+    <string name="home_quick_diagnostics">Diagnostics</string>
+    <string name="home_section_recent">RECENT</string>
+    <string name="home_recent_pc">DESKTOP-PC</string>
+    <string name="home_recent_pc_sub">Trusted · online</string>
+    <string name="home_recent_laptop">Office laptop</string>
+    <string name="home_recent_laptop_sub">Not paired</string>
+    <string name="pill_online">Online</string>
+    <string name="pill_pair">Pair</string>
+
+    <!-- Pair Sheet -->
+    <string name="pair_step1_looking_title">Looking for your PC</string>
+    <string name="pair_step1_looking_body">Keep both devices on the same Wi-Fi network.</string>
+    <string name="pair_step1_found_title">Found 1 PC</string>
+    <string name="pair_step1_found_sub">192.168.31.33 · port 7890</string>
+    <string name="pair_step1_manual_ip">Enter IP address manually</string>
+    <string name="pair_step2_pin_title">Enter the code</string>
+    <string name="pair_step2_pin_body">Type the 6-digit code shown on DESKTOP-PC.</string>
+    <string name="pair_step2_error_attempts">Wrong code. %1$d attempts left.</string>
+    <string name="pair_step2_locked">Too many wrong codes. Wait %1$d s.</string>
+    <string name="pair_step3_verify_title">Verifying</string>
+    <string name="pair_step3_verify_body">Checking the code with DESKTOP-PC.</string>
+    <string name="pair_step4_done_title">Paired with DESKTOP-PC</string>
+    <string name="pair_step4_done_body">You can start a session now. The PC shows a live-session indicator while you view it.</string>
+    <string name="pair_start_session">Start session</string>
+    <string name="pair_button_pair">Pair</string>
+
+    <!-- Stream Screen -->
+    <string name="stream_empty_title">No live session</string>
+    <string name="stream_empty_body">Connect to your PC from Home to view and control its desktop.</string>
+    <string name="stream_go_home">Go to Home</string>
+    <string name="stream_preparing_view">Preparing desktop view…</string>
+    <string name="stream_connected_format">Connected to DESKTOP-PC · %1$s</string>
+    <string name="stream_connecting">Establishing connection…</string>
+    <string name="stream_reconnecting">Connection interrupted; reconnecting…</string>
+    <string name="stream_retry_format">retry %1$d of 15</string>
+    <string name="stream_failed">Couldn\'t connect: PC not reachable</string>
+    <string name="stream_retry">Retry</string>
+    <string name="stream_hold_to_end">Hold to end</string>
+    <string name="stream_ended">Session ended</string>
+
+    <!-- Stream Quality & Settings -->
+    <string name="quality_auto">Auto</string>
+    <string name="quality_1080p60">1080p 60</string>
+    <string name="quality_1080p120">1080p 120</string>
+    <string name="quality_caption_auto">Adapts to your Wi-Fi and the PC. Recommended.</string>
+    <string name="quality_caption_60">1080p at 60 FPS. Needs a hardware encoder on the PC and a 5 GHz or Wi-Fi 6 link for smooth motion.</string>
+    <string name="quality_caption_120">120 FPS needs a 120 Hz phone screen, a hardware encoder on the PC, and a strong link. Falls back to 60 FPS automatically.</string>
+    <string name="toggle_fit_screen">Fit to screen</string>
+    <string name="toggle_lightweight">Lightweight mode</string>
+
+    <!-- Devices Screen -->
+    <string name="devices_title">Devices</string>
+    <string name="devices_sub">Trusted computers. Connect or forget a device.</string>
+    <string name="devices_paired_format">Paired %1$s</string>
+    <string name="devices_pair_new">Pair a new PC</string>
+    <string name="devices_pair_new_sub">Enter the code shown on the PC</string>
+    <string name="devices_connect">Connect</string>
+    <string name="devices_forget">Forget this device</string>
+    <string name="devices_tap_again_forget">Tap again to forget</string>
+    <string name="devices_forgotten">Device forgotten. Pair again to connect.</string>
+
+    <!-- Security Screen -->
+    <string name="security_title">Security</string>
+    <string name="security_sub">What protects your sessions right now.</string>
+    <string name="security_transport_title">Transport</string>
+    <string name="security_transport_sub">Plain LAN. Encryption ships in a later build.</string>
+    <string name="security_not_encrypted">Not encrypted yet</string>
+    <string name="security_trusted_devices">Trusted devices</string>
+    <string name="security_devices_count_format">%1$d devices</string>
+    <string name="security_options">Options</string>
+    <string name="security_require_unlock">Require device unlock</string>
+    <string name="security_require_unlock_sub">Ask before a session starts</string>
+    <string name="security_lock_screen_off">Lock when screen turns off</string>
+    <string name="security_revoke_all">Revoke all devices</string>
+    <string name="security_revoke_caption">Revoking ends any live session and requires a new pairing code on each device.</string>
+    <string name="security_all_revoked">All devices revoked. Pair again to connect.</string>
+
+    <!-- About Screen -->
+    <string name="about_title">About</string>
+    <string name="about_hero_title">Direct LAN remote desktop</string>
+    <string name="about_hero_sub">Stream your Windows desktop to your phone and control it with touch.</string>
+    <string name="about_support">Support</string>
+    <string name="about_release_notes">Release notes</string>
+    <string name="about_diagnostics_export">Diagnostics export</string>
+</resources>

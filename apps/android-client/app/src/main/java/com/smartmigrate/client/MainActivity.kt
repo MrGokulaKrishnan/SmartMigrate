@@ -139,25 +139,28 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 
-// ─── Professional Dark Design Tokens ──────────────────────────────────────────
-private val Black = Color(0xFF050505)
-private val Surface0 = Color(0xFF080808)
-private val Surface1 = Color(0xFF111114)
-private val Surface2 = Color(0xFF151519)
-private val Surface3 = Color(0xFF1A1A1F)
-private val Elevated1 = Color(0xFF202027)
+// ─── Professional Dark Design Tokens (Logo Palette) ──────────────────────────
+private val Black = Color(0xFF000000)
+private val Surface0 = Color(0xFF05040B)
+private val Surface1 = Color(0xFF100D22)
+private val Surface2 = Color(0xFF161230)
+private val Surface3 = Color(0xFF1C1740)
+private val Elevated1 = Color(0xFF1C1740)
+private val Elevated2 = Color(0xFF221C4C)
 private val Line = Color(0x1FFFFFFF)
 private val LineSubtle = Color(0x0EFFFFFF)
-private val LineStrong = Color(0x557C4DFF)
+private val LineStrong = Color(0x554D33C4)
 
 private val TextPrimary = Color(0xFFF3F3F7)
 private val TextSecondary = Color(0xFFB5B5C3)
 private val TextMuted = Color(0xFF757588)
 
-private val Brand300 = Color(0xFFA78BFA)
-private val Brand400 = Color(0xFF8B5CF6)
-private val Brand500 = Color(0xFF7C4DFF)
-private val Brand600 = Color(0xFF6D3DF5)
+private val Brand300 = Color(0xFF7C64E6)
+private val Brand400 = Color(0xFF4D33C4)
+private val Brand500 = Color(0xFF4D33C4)
+private val Brand600 = Color(0xFF382098)
+private val BrandLight = Color(0xFFB9AEFF)
+private val BrandPale = Color(0xFFD2CCFF)
 
 private val Success = Color(0xFF10B981)
 private val Warning = Color(0xFFF59E0B)
@@ -165,23 +168,71 @@ private val Danger = Color(0xFFEF4444)
 private val Info = Color(0xFF60A5FA)
 
 // ─── Liquid Glass UI Tokens & Brushes ─────────────────────────────────────────
-private val GlassFillTop = Color(0x29FFFFFF) // 16% white
-private val GlassFillBottom = Color(0x0DFFFFFF) // 5% white
-private val GlassBorder = Color(0x29FFFFFF) // 16% white border
-private val GlassSpecular = Color(0x59FFFFFF) // 35% specular highlight
+private val GlassFillTop = Color(0x2BFFFFFF) // 17% white
+private val GlassFillBottom = Color(0x0FFFFFFF) // 6% white
+private val GlassBorder = Color(0x24FFFFFF) // 14% white border
+private val GlassSpecular = Color(0x42FFFFFF) // 26% specular highlight
 private val GlassFillBrush = Brush.verticalGradient(listOf(GlassFillTop, GlassFillBottom))
 private val BrandGradient = Brush.linearGradient(
-    colors = listOf(Brand300, Brand500, Brand600),
+    colors = listOf(BrandLight, Brand500, Color(0xFF1F1266)),
     start = Offset.Zero,
     end = Offset.Infinite
 )
 
 private enum class AppDestination(val label: String, val symbol: String) {
     Home("Home", "⌂"),
-    Remote("Stream", "⌁"),
     Devices("Devices", "◇"),
+    Remote("Stream", "⌁"),
     Security("Security", "⛊"),
     About("About", "ⓘ")
+}
+
+@Composable
+private fun ProfessionalCheckIcon(
+    modifier: Modifier = Modifier,
+    color: Color = Success,
+    strokeWidth: Dp = 1.8.dp
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val p = Path().apply {
+            moveTo(w * 0.20f, h * 0.52f)
+            lineTo(w * 0.42f, h * 0.74f)
+            lineTo(w * 0.82f, h * 0.28f)
+        }
+        drawPath(
+            path = p,
+            color = color,
+            style = Stroke(width = strokeWidth.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
+@Composable
+private fun ProfessionalCloseIcon(
+    modifier: Modifier = Modifier,
+    color: Color = TextMuted,
+    strokeWidth: Dp = 1.8.dp
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        drawLine(
+            color = color,
+            start = Offset(w * 0.25f, h * 0.25f),
+            end = Offset(w * 0.75f, h * 0.75f),
+            strokeWidth = strokeWidth.toPx(),
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.75f, h * 0.25f),
+            end = Offset(w * 0.25f, h * 0.75f),
+            strokeWidth = strokeWidth.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -1635,21 +1686,28 @@ private fun DedicatedRemoteSessionScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF050505))
+            .background(Black)
             .drawBehind {
                 // Stage violet ambient light behind chrome for liquid glass refraction
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x4D7C4DFF), Color.Transparent),
-                        center = Offset(size.width * 0.15f, size.height * 0.08f),
-                        radius = size.width * 0.95f
+                        colors = listOf(Color(0x574D33C4), Color.Transparent),
+                        center = Offset(size.width * 0.10f, size.height * 0.05f),
+                        radius = size.width * 1.1f
                     )
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x33A78BFA), Color.Transparent),
-                        center = Offset(size.width * 0.85f, size.height * 0.92f),
-                        radius = size.width * 0.85f
+                        colors = listOf(Color(0x33B9AEFF), Color.Transparent),
+                        center = Offset(size.width * 0.95f, size.height * 0.90f),
+                        radius = size.width * 0.9f
+                    )
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0x177C64E6), Color.Transparent),
+                        center = Offset(size.width * 0.60f, size.height * 0.40f),
+                        radius = size.width * 0.7f
                     )
                 )
             }
@@ -1843,7 +1901,7 @@ private fun DedicatedRemoteSessionScreen(
                                 .border(1.dp, Danger.copy(alpha = 0.5f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("✕", color = Danger, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                            ProfessionalCloseIcon(modifier = Modifier.size(28.dp), color = Danger, strokeWidth = 2.4.dp)
                         }
                         Spacer(Modifier.height(16.dp))
                         Text("CONNECTION FAILED", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -2321,15 +2379,14 @@ private fun DedicatedRemoteSessionScreen(
                     ) {
                         Text("Enable Now", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
-                    Text(
-                        "✕",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
+                    ProfessionalCloseIcon(
                         modifier = Modifier
+                            .size(20.dp)
                             .clip(CircleShape)
                             .clickable { showClipboardBanner = false }
-                            .padding(4.dp)
+                            .padding(4.dp),
+                        color = Color(0xFF94A3B8),
+                        strokeWidth = 1.6.dp
                     )
                 }
             }
@@ -2442,15 +2499,14 @@ private fun DedicatedRemoteSessionScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("REMOTE KEYBOARD INPUT", color = Brand300, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            "✕",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
+                        ProfessionalCloseIcon(
                             modifier = Modifier
+                                .size(22.dp)
                                 .clip(CircleShape)
                                 .clickable { isKeyboardOpen = false }
-                                .padding(4.dp)
+                                .padding(4.dp),
+                            color = Color(0xFF94A3B8),
+                            strokeWidth = 1.6.dp
                         )
                     }
 
@@ -3248,7 +3304,7 @@ private fun QrScannerModal(
                             .padding(6.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("✕", color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        ProfessionalCloseIcon(modifier = Modifier.size(16.dp), color = TextMuted)
                     }
                 }
 
@@ -3779,11 +3835,11 @@ private fun UpdateAvailableModal(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("✓", color = Success, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    ProfessionalCheckIcon(modifier = Modifier.size(13.dp), color = Success)
                     Text(
                         "SHA-256 Digest: ${if (updateInfo.sha256.length > 16) updateInfo.sha256.take(16) + "..." else "Enforced"}",
                         color = TextMuted,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace
                     )
                 }

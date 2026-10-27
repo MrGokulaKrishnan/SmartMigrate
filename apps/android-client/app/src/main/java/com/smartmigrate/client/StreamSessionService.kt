@@ -142,10 +142,11 @@ class StreamSessionService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Smart Migrate Remote Session",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "Keeps your remote desktop session active"
-                setShowBadge(false)
+                setShowBadge(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
@@ -170,10 +171,12 @@ class StreamSessionService : Service() {
 
         val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("Smart Migrate — Session Active")
                 .setContentText("Streaming from $hostAddress")
                 .setOngoing(true)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setCategory(Notification.CATEGORY_SERVICE)
                 .setContentIntent(openPending)
                 .addAction(
                     Notification.Action.Builder(
@@ -184,7 +187,7 @@ class StreamSessionService : Service() {
         } else {
             @Suppress("DEPRECATION")
             android.app.Notification.Builder(this)
-                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("Smart Migrate — Session Active")
                 .setContentText("Streaming from $hostAddress")
                 .setOngoing(true)

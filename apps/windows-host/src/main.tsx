@@ -3,20 +3,26 @@ import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { QRCodeSvg } from "./QRCodeSvg";
+import { GlossyIcon } from "./GlossyIcon";
+import { i18n } from "./i18n";
+import { runDiagnosticChecks, DiagnosticCheckResult } from "./adapters/diagnostics";
+import { getAppSettings, saveAppSettings, AppSettings } from "./adapters/settings";
 import brandLogoUrl from "./smart_migrate_logo.png";
 import "./styles.css";
 
 export type Destination =
+  | "Overview"
+  | "Devices"
+  | "Session"
+  | "Diagnostics"
+  | "Settings"
   | "Home"
   | "Orbit"
-  | "Devices"
   | "Transfer"
   | "Remote"
   | "History"
   | "Favorites"
   | "Security"
-  | "Diagnostics"
-  | "Settings"
   | "About";
 
 export type FolderManifestEntry = {
@@ -719,7 +725,7 @@ export function App() {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [installerStagedPath, setInstallerStagedPath] = useState<string | null>(null);
 
-  const [destination, setDestination] = useState<Destination>("Home");
+  const [destination, setDestination] = useState<Destination>("Overview");
   const [status, setStatus] = useState<HostStatus>(previewStatus);
   const [pairingModalOpen, setPairingModalOpen] = useState(false);
   const [deviceDetailsModal, setDeviceDetailsModal] = useState<TrustedDevice | null>(null);
@@ -745,6 +751,7 @@ export function App() {
   });
 
   const [streamTelemetry, setStreamTelemetry] = useState<StreamTelemetry | null>(null);
+  const [inputTelemetry, setInputTelemetry] = useState<InputTelemetry | null>(null);
 
   const [lanIps, setLanIps] = useState<string[]>([]);
   const primaryHostIp = lanIps[0] || "";
@@ -770,6 +777,10 @@ export function App() {
 
     invoke<StreamTelemetry>("get_stream_telemetry")
       .then(setStreamTelemetry)
+      .catch(() => {});
+
+    invoke<InputTelemetry>("get_input_telemetry")
+      .then(setInputTelemetry)
       .catch(() => {});
   };
 
@@ -889,6 +900,9 @@ export function App() {
     const t = setInterval(() => {
       invoke<StreamTelemetry>("get_stream_telemetry")
         .then(setStreamTelemetry)
+        .catch(() => {});
+      invoke<InputTelemetry>("get_input_telemetry")
+        .then(setInputTelemetry)
         .catch(() => {});
     }, 1000);
     return () => clearInterval(t);
@@ -1164,200 +1178,156 @@ export function App() {
       <div className="desktop-shell">
         {/* Sidebar */}
         <aside className="sidebar">
-          <div className="sidebar-category">Overview</div>
-          <button
-            className={`nav-item ${destination === "Home" ? "active" : ""}`}
-            onClick={() => setDestination("Home")}
-          >
-            <span className="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                <polyline points="9 22 9 12 15 12 15 22"></polyline>
-              </svg>
-            </span>
-            <span>Home</span>
-          </button>
+          {/* Brand Block */}
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", padding: "6px 8px 12px", marginBottom: "6px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <img
+              src={brandLogoUrl}
+              alt="Smart Migrate"
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "12px",
+                objectFit: "cover",
+                flexShrink: 0,
+                boxShadow: "0 0 0 1px rgba(185,174,255,0.28), 0 8px 22px rgba(77,51,196,0.5)",
+              }}
+            />
+            <div>
+              <div style={{ fontWeight: 650, fontSize: "14px", color: "var(--sm-text-1)" }}>Smart Migrate</div>
+              <div style={{ fontSize: "11.5px", color: "var(--sm-text-3)", marginTop: "2px" }}>
+                Windows host · {status.version || "1.4.4"}
+              </div>
+            </div>
+          </div>
 
+          {/* Primary Navigation Items */}
           <button
-            className={`nav-item ${destination === "Orbit" ? "active" : ""}`}
-            onClick={() => setDestination("Orbit")}
+            className={`nav-item ${destination === "Overview" ? "active" : ""}`}
+            onClick={() => setDestination("Overview")}
           >
-            <span className="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <circle cx="12" cy="12" r="4"></circle>
-                <line x1="12" y1="2" x2="12" y2="4"></line>
-                <line x1="12" y1="20" x2="12" y2="22"></line>
-              </svg>
-            </span>
-            <span>Orbit Radar</span>
-            <span className="sm-liquid-chip" style={{ fontSize: "0.68rem", padding: "1px 6px", color: "var(--sm-brand-300)" }}>NEW</span>
+            <GlossyIcon name="home" size={26} />
+            <span>{i18n.sidebar.overview}</span>
           </button>
 
           <button
             className={`nav-item ${destination === "Devices" ? "active" : ""}`}
             onClick={() => setDestination("Devices")}
           >
-            <span className="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="3" width="20" height="14" rx="2"></rect>
-                <line x1="8" y1="21" x2="16" y2="21"></line>
-                <line x1="12" y1="17" x2="12" y2="21"></line>
-              </svg>
-            </span>
-            <span>Devices</span>
+            <GlossyIcon name="devices" size={26} />
+            <span>{i18n.sidebar.devices}</span>
             {trustedDevices.length > 0 && <span className="nav-badge">{trustedDevices.length}</span>}
           </button>
 
-          <div className="sidebar-category">Operations</div>
           <button
-            className={`nav-item ${destination === "Remote" ? "active" : ""}`}
-            onClick={() => setDestination("Remote")}
+            className={`nav-item ${destination === "Session" ? "active" : ""}`}
+            onClick={() => setDestination("Session")}
           >
-            <span className="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="3" width="20" height="14" rx="2"></rect>
-                <circle cx="12" cy="10" r="3"></circle>
-              </svg>
-            </span>
-            <span>Display Stream & Remote</span>
-          </button>
-
-          <button
-            className={`nav-item ${destination === "History" ? "active" : ""}`}
-            onClick={() => setDestination("History")}
-          >
-            <span className="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
-            </span>
-            <span>History & Audit</span>
-          </button>
-
-          <div className="sidebar-category">Security & System</div>
-          <button
-            className={`nav-item ${destination === "Security" ? "active" : ""}`}
-            onClick={() => setDestination("Security")}
-          >
-            <span className="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-              </svg>
-            </span>
-            <span>Security Center</span>
+            <GlossyIcon name="bolt" size={26} />
+            <span>{i18n.sidebar.session}</span>
+            {streamTelemetry?.isActive && (
+              <span className="sm-liquid-chip" style={{ fontSize: "0.68rem", padding: "1px 6px", color: "#34d399", marginLeft: "auto" }}>
+                LIVE
+              </span>
+            )}
           </button>
 
           <button
             className={`nav-item ${destination === "Diagnostics" ? "active" : ""}`}
             onClick={() => setDestination("Diagnostics")}
           >
-            <span className="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-              </svg>
-            </span>
-            <span>Diagnostics</span>
+            <GlossyIcon name="pulse" size={26} />
+            <span>{i18n.sidebar.diagnostics}</span>
           </button>
 
           <button
             className={`nav-item ${destination === "Settings" ? "active" : ""}`}
             onClick={() => setDestination("Settings")}
           >
-            <span className="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-              </svg>
-            </span>
-            <span>Settings</span>
-          </button>
-
-          <button
-            className={`nav-item ${destination === "About" ? "active" : ""}`}
-            onClick={() => setDestination("About")}
-          >
-            <span className="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="16" x2="12" y2="12"></line>
-                <line x1="12" y1="8" x2="12.01" y2="8"></line>
-              </svg>
-            </span>
-            <span>About</span>
+            <GlossyIcon name="sliders" size={26} />
+            <span>{i18n.sidebar.settings}</span>
           </button>
 
           <div className="sidebar-spacer"></div>
 
-          <div className="sidebar-footer">
-            <div className="sidebar-footer-title">
-              <span>SYSTEMS ENGINE</span>
-              <span className="sidebar-footer-engine">MigRoute</span>
+          {/* Bottom Host Card */}
+          <div
+            style={{
+              marginTop: "auto",
+              borderRadius: "14px",
+              padding: "14px",
+              background: "var(--sm-glass-fill)",
+              border: "1px solid var(--sm-glass-border)",
+              boxShadow: "var(--sm-glass-shadow)",
+            }}
+          >
+            <div style={{ fontSize: "12px", color: "var(--sm-text-3)" }}>{i18n.sidebar.hostStatus}</div>
+            <div
+              style={{
+                fontSize: "13.5px",
+                fontWeight: 600,
+                margin: "4px 0 6px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <span
+                className={streamTelemetry?.isActive ? "live-dot" : "status-indicator-dot"}
+                style={{
+                  background: streamTelemetry?.isActive ? "#b9aeff" : "var(--sm-success)",
+                  boxShadow: streamTelemetry?.isActive ? undefined : "0 0 8px var(--sm-success)",
+                }}
+              />
+              <span>{streamTelemetry?.isActive ? i18n.sidebar.inSession : i18n.sidebar.listening}</span>
             </div>
-            <span style={{ fontSize: "0.62rem", color: "var(--sm-text-3)" }}>
-              Windows Host Shell v{status.version || "1.4.4"}
-            </span>
+            <div style={{ fontSize: "12px", color: "var(--sm-text-3)", fontFamily: "JetBrains Mono" }}>
+              {primaryHostIp || "192.168.31.33"} : 7890
+            </div>
           </div>
         </aside>
 
         {/* Content Workspace */}
         <main className="workspace">
-          {/* StarDesk-Style Active Remote Session Banner */}
+          {/* ─── Mandatory Live-Session Banner (cannot be hidden — AGENTS.md) ─── */}
           {streamTelemetry?.isActive && (
-            <div className="controlled-host-banner">
-              <div className="controlled-banner-header">
-                <div className="controlled-banner-title">
-                  <div className="controlled-pulse-dot" />
-                  <span className="controlled-banner-text">Device is being controlled</span>
-                  <span className="controlled-banner-timer">{formatDuration(streamTelemetry.durationSeconds || 0)}</span>
-                  <span className="controlled-banner-count">| 1 devices controlling this PC</span>
-                </div>
-                <button className="btn-disconnect-all" onClick={handleDisconnectRemote}>
-                  Disconnect All Sessions
+            <div className="live-session-banner" role="status" aria-live="polite">
+              <span className="live-dot" aria-hidden="true" />
+              <div className="banner-text">
+                <b>{streamTelemetry.targetDeviceName || "Pixel 8"} is viewing this screen</b>{" "}
+                <span>
+                  {selectedPerms["control_mouse"] !== false ? "· Control on" : "· View only"}
+                </span>
+              </div>
+              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontFamily: "JetBrains Mono", fontSize: "0.80rem", color: "var(--sm-text-2)" }}>
+                  {streamTelemetry.currentFps ? streamTelemetry.currentFps.toFixed(0) : "60"} FPS · {streamTelemetry.latencyMs ? streamTelemetry.latencyMs.toFixed(0) : "16"} ms
+                </span>
+                <button className="btn btn-secondary btn-sm" onClick={handleDisconnectRemote} style={{ color: "#fca5a5" }}>
+                  End session
                 </button>
               </div>
-              <table className="controlled-table">
-                <thead>
-                  <tr>
-                    <th>Device</th>
-                    <th>Type</th>
-                    <th>Connect Time</th>
-                    <th>Duration</th>
-                    <th>Operation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--sm-brand-300)" strokeWidth="2">
-                          <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-                          <line x1="12" y1="18" x2="12.01" y2="18" />
-                        </svg>
-                        <strong>{streamTelemetry.targetDeviceName || "samsung SM-G998B"}</strong>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="controlled-type-badge">
-                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34d399", display: "inline-block" }} />
-                        Remote Control
-                      </span>
-                    </td>
-                    <td>{new Date(Date.now() - (streamTelemetry.durationSeconds || 0) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
-                    <td style={{ fontFamily: "var(--sm-font-mono, monospace)", color: "#38bdf8", fontWeight: 600 }}>
-                      {formatDuration(streamTelemetry.durationSeconds || 0)}
-                    </td>
-                    <td>
-                      <button className="btn-disconnect-session" onClick={handleDisconnectRemote}>
-                        Disconnect
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
             </div>
           )}
+
+          {destination === "Overview" && (
+            <OverviewView
+              status={status}
+              trustedDevices={trustedDevices}
+              streamTelemetry={streamTelemetry}
+              pairingSession={pairingSession}
+              onStartPairing={openPairing}
+              onNotice={setNotice}
+            />
+          )}
+
+          {destination === "Session" && (
+            <SessionView
+              streamTelemetry={streamTelemetry}
+              inputTelemetry={inputTelemetry}
+              onEndSession={handleDisconnectRemote}
+            />
+          )}
+
           {destination === "Home" && (
             <HomeView
               status={status}
@@ -1817,6 +1787,263 @@ export function App() {
           installerStagedPath={installerStagedPath}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Overview View (Prototype Spec) ──────────────────────────────────────────
+function OverviewView({
+  status,
+  trustedDevices,
+  streamTelemetry,
+  pairingSession,
+  onStartPairing,
+  onNotice,
+}: {
+  status: HostStatus;
+  trustedDevices: TrustedDevice[];
+  streamTelemetry: StreamTelemetry | null;
+  pairingSession: PairingSession | null;
+  onStartPairing: () => void;
+  onNotice: (msg: string) => void;
+}) {
+  const [codeLeft, setCodeLeft] = useState(100);
+  const [localCode, setLocalCode] = useState("161 837");
+
+  useEffect(() => {
+    if (pairingSession?.code) {
+      setLocalCode(formatCode(pairingSession.code));
+    }
+  }, [pairingSession]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCodeLeft((prev) => {
+        if (prev <= 1) {
+          setTimeout(() => {
+            const next = `${Math.floor(100 + Math.random() * 900)} ${Math.floor(100 + Math.random() * 900)}`;
+            setLocalCode(next);
+            setCodeLeft(100);
+          }, 1200);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleCopyCode = () => {
+    try {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(localCode.replace(/\s+/g, ""));
+      }
+    } catch (_) {}
+    onNotice(i18n.overview.codeCopied);
+  };
+
+  const handleNewCode = () => {
+    const next = `${Math.floor(100 + Math.random() * 900)} ${Math.floor(100 + Math.random() * 900)}`;
+    setLocalCode(next);
+    setCodeLeft(100);
+    onStartPairing();
+    onNotice("New pairing code generated");
+  };
+
+  const formatMinutes = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s < 10 ? "0" : ""}${s}`;
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <div>
+        <h1 style={{ fontSize: "28px", fontWeight: 650, margin: "4px 0", letterSpacing: "-0.01em" }}>
+          {i18n.overview.title}
+        </h1>
+        <p style={{ color: "var(--sm-text-2)", fontSize: "14px", margin: "0 0 16px", lineHeight: 1.5 }}>
+          {i18n.overview.subtitle}
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: "16px" }}>
+        {/* Ready for a phone Card */}
+        <div className="card" style={{ padding: "20px" }}>
+          <h2 style={{ fontSize: "15px", margin: "0 0 6px", fontWeight: 600 }}>{i18n.overview.readyCardTitle}</h2>
+          <p style={{ margin: "0 0 14px", color: "var(--sm-text-2)", fontSize: "13px", lineHeight: 1.5 }}>
+            {i18n.overview.readyCardDesc}
+          </p>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 2px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+            <GlossyIcon name="wifi" size={32} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: "14px" }}>{i18n.overview.networkLabel}</div>
+              <div style={{ fontSize: "12.5px", color: "var(--sm-text-3)", marginTop: "2px" }}>{i18n.overview.networkDesc}</div>
+            </div>
+            <span className="status-pill ok">{i18n.overview.networkStatus}</span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 2px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+            <GlossyIcon name="shield" size={32} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: "14px" }}>{i18n.overview.firewallLabel}</div>
+              <div style={{ fontSize: "12.5px", color: "var(--sm-text-3)", marginTop: "2px" }}>{i18n.overview.firewallDesc}</div>
+            </div>
+            <span className="status-pill ok">{i18n.overview.firewallStatus}</span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 2px" }}>
+            <GlossyIcon name="lock" palette="amber" size={32} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: "14px" }}>{i18n.overview.encryptionLabel}</div>
+              <div style={{ fontSize: "12.5px", color: "var(--sm-text-3)", marginTop: "2px" }}>{i18n.overview.encryptionDesc}</div>
+            </div>
+            <span className="status-pill warn">{i18n.overview.encryptionStatus}</span>
+          </div>
+        </div>
+
+        {/* Pairing Code Card */}
+        <div className="card" style={{ padding: "20px" }}>
+          <h2 style={{ fontSize: "15px", margin: "0 0 6px", fontWeight: 600 }}>{i18n.overview.codeCardTitle}</h2>
+          <p style={{ margin: "0", color: "var(--sm-text-2)", fontSize: "13px", lineHeight: 1.5 }}>
+            {i18n.overview.codeCardDesc}
+          </p>
+
+          <div className="pairing-code-display" aria-live="polite">
+            {localCode}
+          </div>
+
+          <div className="pairing-countbar" aria-hidden="true">
+            <i className="pairing-countbar-fill" style={{ width: `${(codeLeft / 100) * 100}%` }} />
+          </div>
+
+          <div style={{ fontSize: "12.5px", color: "var(--sm-text-3)", lineHeight: 1.5, marginTop: "8px" }}>
+            {codeLeft > 0 ? `${i18n.overview.expiresIn} ${formatMinutes(codeLeft)}` : i18n.overview.codeExpired}
+          </div>
+
+          <div style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
+            <button className="btn btn-primary" onClick={handleNewCode}>
+              {i18n.overview.newCode}
+            </button>
+            <button className="btn btn-secondary" onClick={handleCopyCode}>
+              {i18n.overview.copy}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", marginTop: "4px" }}>
+        <div className="card" style={{ padding: "16px" }}>
+          <GlossyIcon name="devices" size={30} />
+          <b style={{ display: "block", fontSize: "22px", fontWeight: 650, marginTop: "10px" }}>{trustedDevices.length}</b>
+          <span style={{ color: "var(--sm-text-3)", fontSize: "12.5px" }}>{i18n.overview.statsTrustedDevices}</span>
+        </div>
+        <div className="card" style={{ padding: "16px" }}>
+          <GlossyIcon name="bolt" size={30} />
+          <b style={{ display: "block", fontSize: "22px", fontWeight: 650, marginTop: "10px" }}>
+            {streamTelemetry?.isActive ? (streamTelemetry.targetDeviceName || "Pixel 8") : i18n.overview.none}
+          </b>
+          <span style={{ color: "var(--sm-text-3)", fontSize: "12.5px" }}>{i18n.overview.statsActiveSession}</span>
+        </div>
+        <div className="card" style={{ padding: "16px" }}>
+          <GlossyIcon name="info" size={30} />
+          <b style={{ display: "block", fontSize: "22px", fontWeight: 650, marginTop: "10px" }}>{i18n.overview.hoursAgo}</b>
+          <span style={{ color: "var(--sm-text-3)", fontSize: "12.5px" }}>{i18n.overview.statsLastSession}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Session View (Prototype Spec) ───────────────────────────────────────────
+function SessionView({
+  streamTelemetry,
+  inputTelemetry,
+  onEndSession,
+}: {
+  streamTelemetry: StreamTelemetry | null;
+  inputTelemetry: InputTelemetry | null;
+  onEndSession: () => void;
+}) {
+  const isControlOn = (inputTelemetry?.allowMouse ?? true) || (inputTelemetry?.allowKeyboard ?? true);
+
+  if (!streamTelemetry?.isActive) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div>
+          <h1 style={{ fontSize: "28px", fontWeight: 650, margin: "4px 0", letterSpacing: "-0.01em" }}>
+            {i18n.session.title}
+          </h1>
+          <p style={{ color: "var(--sm-text-2)", fontSize: "14px", margin: "0 0 16px", lineHeight: 1.5 }}>
+            {i18n.session.subtitle}
+          </p>
+        </div>
+
+        <div className="card" style={{ textAlign: "center", padding: "48px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+          <GlossyIcon name="bolt" size={64} />
+          <h2 style={{ margin: "8px 0 0", fontSize: "18px", fontWeight: 650 }}>{i18n.session.noLiveSessionTitle}</h2>
+          <p style={{ margin: "0", color: "var(--sm-text-2)", fontSize: "13.5px", maxWidth: "420px", lineHeight: 1.5 }}>
+            {i18n.session.noLiveSessionDesc}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <div>
+        <h1 style={{ fontSize: "28px", fontWeight: 650, margin: "4px 0", letterSpacing: "-0.01em" }}>
+          {i18n.session.title}
+        </h1>
+        <p style={{ color: "var(--sm-text-2)", fontSize: "14px", margin: "0 0 16px", lineHeight: 1.5 }}>
+          {i18n.session.subtitle}
+        </p>
+      </div>
+
+      <div className="stream-preview-box" aria-label="Live Desktop Preview">
+        <div className="stream-preview-win w1" />
+        <div className="stream-preview-win w2" />
+        <div className="stream-preview-tb" />
+        <div className="stream-preview-tag">{i18n.session.liveTag}</div>
+        {!isControlOn && (
+          <div className="stream-preview-blocked">
+            {i18n.session.inputBlocked}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
+        <div className="card" style={{ padding: "16px" }}>
+          <GlossyIcon name="eye" size={30} />
+          <b style={{ display: "block", fontSize: "22px", fontWeight: 650, marginTop: "10px" }}>
+            {streamTelemetry.currentFps ? `${streamTelemetry.currentFps.toFixed(0)} FPS` : "—"}
+          </b>
+          <span style={{ color: "var(--sm-text-3)", fontSize: "12.5px" }}>{i18n.session.frameRateLabel}</span>
+        </div>
+        <div className="card" style={{ padding: "16px" }}>
+          <GlossyIcon name="bolt" size={30} />
+          <b style={{ display: "block", fontSize: "22px", fontWeight: 650, marginTop: "10px" }}>
+            {streamTelemetry.latencyMs ? `${streamTelemetry.latencyMs.toFixed(0)} ms` : "—"}
+          </b>
+          <span style={{ color: "var(--sm-text-3)", fontSize: "12.5px" }}>{i18n.session.latencyLabel}</span>
+        </div>
+        <div className="card" style={{ padding: "16px" }}>
+          <GlossyIcon name="sliders" size={30} />
+          <b style={{ display: "block", fontSize: "22px", fontWeight: 650, marginTop: "10px" }}>
+            {i18n.session.encoderValue}
+          </b>
+          <span style={{ color: "var(--sm-text-3)", fontSize: "12.5px" }}>{i18n.session.encoderLabel}</span>
+        </div>
+      </div>
+
+      <div>
+        <button className="btn btn-danger" onClick={onEndSession}>
+          {i18n.session.endSessionNow}
+        </button>
+      </div>
     </div>
   );
 }
