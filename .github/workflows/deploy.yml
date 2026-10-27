@@ -1,0 +1,68 @@
+name: Smart Migrate Automated Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/website/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      target_mode:
+        description: 'Deploy mode (website-only or release)'
+        required: true
+        default: 'website-only'
+        type: choice
+        options:
+          - website-only
+          - release
+
+jobs:
+  deploy-website:
+    name: Build Bundle and Deploy to Firebase Hosting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.15.4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install Node Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Pre-Deploy Gates
+        run: |
+          pnpm brand:check
+          pnpm test:release-notes
+          pnpm test:bundle
+          pnpm test:dashboard
+
+      - name: Build Site Bundle
+        run: |
+          MODE="${{ github.event.inputs.target_mode || 'website-only' }}"
+          if [ "$MODE" = "release" ]; then
+            node scripts/build-site-bundle.mjs --release
+          else
+            node scripts/build-site-bundle.mjs
+          fi
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_SMARTMIGRATED }}'
+          channelId: live
+          projectId: smartmigrated
+        env:
+          FIREBASE_CLI_EXPERIMENTS: webframeworks

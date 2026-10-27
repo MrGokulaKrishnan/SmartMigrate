@@ -6,17 +6,41 @@
 # 4. Staging to website downloads and public mirrors
 # 5. Checksum calculation and manifest updating
 
+[CmdletBinding()]
+param(
+    [string]$KeystorePath = $env:SM_KEYSTORE_PATH,
+    [string]$KeystorePassword = $env:SM_KEYSTORE_PASSWORD,
+    [string]$KeyAlias = $env:SM_KEY_ALIAS,
+    [string]$KeyPassword = $env:SM_KEY_PASSWORD
+)
+
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path "$PSScriptRoot\..").Path
 $androidDir = Join-Path $repoRoot "apps\android-client"
 $releaseApk = Join-Path $androidDir "app\build\outputs\apk\release\app-release.apk"
 $lineageFile = Join-Path $androidDir "app\signing_lineage"
-$releaseKeystore = Join-Path $androidDir "app\release.keystore"
+$releaseKeystore = if ($KeystorePath -and (Test-Path $KeystorePath)) { $KeystorePath } else { Join-Path $androidDir "app\release.keystore" }
 $debugKeystore = Join-Path $env:USERPROFILE ".android\debug.keystore"
-$apksigner = "C:\Users\gokul\android-sdk\build-tools\35.0.0\apksigner.bat"
 
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
-$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+# Resolve apksigner from PATH or ANDROID_HOME / ANDROID_SDK_ROOT
+$apksigner = "apksigner"
+if (Get-Command apksigner -ErrorAction SilentlyContinue) {
+    $apksigner = "apksigner"
+} else {
+    $sdkRoot = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } elseif ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } else { Join-Path $env:LOCALAPPDATA "Android\Sdk" }
+    $buildTools = Join-Path $sdkRoot "build-tools"
+    if (Test-Path $buildTools) {
+        $latest = Get-ChildItem -Directory $buildTools | Sort-Object Name -Descending | Select-Object -First 1
+        if ($latest) {
+            $apksignerBat = Join-Path $latest.FullName "apksigner.bat"
+            if (Test-Path $apksignerBat) { $apksigner = $apksignerBat }
+        }
+    }
+}
+
+$ksPass = if ($KeystorePassword) { $KeystorePassword } else { "smartmigrate_keystore_pass" }
+$alias = if ($KeyAlias) { $KeyAlias } else { "smartmigrate_release" }
+$kPass = if ($KeyPassword) { $KeyPassword } else { $ksPass }
 
 Write-Host "=== 1. Building Android Release APK ===" -ForegroundColor Cyan
 Set-Location $androidDir
@@ -32,12 +56,18 @@ if (-not (Test-Path $lineageFile)) {
     exit 1
 }
 
-& $apksigner sign `
-  --ks $debugKeystore --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android `
-  --next-signer `
-  --ks $releaseKeystore --ks-pass pass:smartmigrate_keystore_pass --ks-key-alias smartmigrate_release --key-pass pass:smartmigrate_keystore_pass `
-  --lineage $lineageFile `
-  $releaseApk
+if (Test-Path $debugKeystore) {
+    & $apksigner sign `
+      --ks $debugKeystore --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android `
+      --next-signer `
+      --ks $releaseKeystore --ks-pass "pass:$ksPass" --ks-key-alias $alias --key-pass "pass:$kPass" `
+      --lineage $lineageFile `
+      $releaseApk
+} else {
+    & $apksigner sign `
+      --ks $releaseKeystore --ks-pass "pass:$ksPass" --ks-key-alias $alias --key-pass "pass:$kPass" `
+      $releaseApk
+}
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "apksigner sign failed with code $LASTEXITCODE"

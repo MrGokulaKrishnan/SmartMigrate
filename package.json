@@ -8,7 +8,13 @@
     "brand:check": "node scripts/check-brand.mjs",
     "test:release-notes": "node tests/release_notes_test.mjs",
     "test:windows-icon": "node tests/windows_icon_test.mjs",
+    "test:bundle": "node tests/bundle_builder_test.mjs",
+    "test:dashboard": "node tests/dashboard_test.mjs",
+    "test:smoke": "node scripts/smoke-test.mjs",
     "test:engine": "cargo test -p migroute",
-    "verify": "pnpm brand:check && node tests/release_notes_test.mjs && node tests/windows_icon_test.mjs && cargo test -p migroute"
+    "dashboard": "node scripts/local-dashboard.mjs",
+    "build:bundle": "node scripts/build-site-bundle.mjs",
+    "deploy:website": "node scripts/deploy-website.mjs",
+    "verify": "pnpm brand:check && node tests/release_notes_test.mjs && node tests/windows_icon_test.mjs && node tests/bundle_builder_test.mjs && node tests/dashboard_test.mjs && cargo test -p migroute"
   }
 }
