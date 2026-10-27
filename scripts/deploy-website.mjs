@@ -11,7 +11,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { resolve, join } from 'node:path';
-import { resolveSiteDir, resolveRepoRoot, verifyAllSiteManifests } from './site-helpers.mjs';
+import { resolveSiteDir, resolveRepoRoot, verifyAllSiteManifests, updateReleaseTimestamps } from './site-helpers.mjs';
 import { buildSiteBundle } from './build-site-bundle.mjs';
 import { runSmokeTest } from './smoke-test.mjs';
 
@@ -23,6 +23,12 @@ async function main() {
   const siteDir = resolveSiteDir();
 
   console.log('=== Smart Migrate Website Deployment Pipeline ===\n');
+
+  // 0. Update release timestamps to current deploy time
+  if (!dryRun) {
+    const timeRes = updateReleaseTimestamps(siteDir);
+    console.log(`0. Synchronized release timestamps to current deploy time (${timeRes.timestamp}).`);
+  }
 
   // 1. Run Pre-Deploy Verification
   console.log('1. Running Pre-Deploy Integrity Gates...');

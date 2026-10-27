@@ -381,3 +381,42 @@ export function readProjectVersions(repoRoot = resolveRepoRoot()) {
 
   return { android, windows, repoRoot };
 }
+
+/**
+ * Updates releaseDate, updated_at, and date across all manifest copies in siteDir.
+ */
+export function updateReleaseTimestamps(siteDir = resolveSiteDir(), timestamp = new Date().toISOString()) {
+  const dateOnly = timestamp.split('T')[0];
+  const updatedFiles = [];
+
+  // Schema 1 paths
+  const schema1Paths = [
+    join(siteDir, 'releases', 'manifest.json'),
+    join(siteDir, 'public', 'releases', 'manifest.json'),
+  ];
+  for (const p of schema1Paths) {
+    if (existsSync(p)) {
+      const raw = JSON.parse(readFileSync(p, 'utf8'));
+      raw.releaseDate = timestamp;
+      writeFileSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf8');
+      updatedFiles.push(p);
+    }
+  }
+
+  // Schema 2 paths
+  const schema2Paths = [
+    join(siteDir, 'release.json'),
+    join(siteDir, 'public', 'release.json'),
+  ];
+  for (const p of schema2Paths) {
+    if (existsSync(p)) {
+      const raw = JSON.parse(readFileSync(p, 'utf8'));
+      raw.date = dateOnly;
+      raw.updated_at = timestamp;
+      writeFileSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf8');
+      updatedFiles.push(p);
+    }
+  }
+
+  return { success: true, timestamp, dateOnly, updatedFiles };
+}

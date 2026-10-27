@@ -184,23 +184,55 @@ function setupHiddenHashComponents() {
 setupHiddenHashComponents();
 
 // ─── 05 Dynamic Release Metadata & Relative Time Hydration ───────────────────
+let cachedReleaseData = null;
+
 function formatRelativeTime(dateInput) {
+  if (!dateInput) return "just now";
   const date = new Date(dateInput);
   const now = new Date();
-  const diffMs = now - date;
-  if (isNaN(diffMs) || diffMs < 0) return "just now";
+  const diffMs = now.getTime() - date.getTime();
+  if (isNaN(diffMs) || diffMs < 45000) return "just now";
   const diffSec = Math.floor(diffMs / 1000);
   const diffMin = Math.floor(diffSec / 60);
   const diffHours = Math.floor(diffMin / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  if (diffMin < 1) return "just now";
-  if (diffMin === 1) return "1 minute ago";
+  if (diffMin <= 1) return "1 minute ago";
   if (diffMin < 60) return `${diffMin} minutes ago`;
   if (diffHours === 1) return "1 hour ago";
   if (diffHours < 24) return `${diffHours} hours ago`;
   if (diffDays === 1) return "yesterday";
   return `${diffDays} days ago`;
+}
+
+function updateRelativeTimeDisplay() {
+  if (!cachedReleaseData) return;
+  const timestamp = cachedReleaseData.updated_at || cachedReleaseData.date;
+  if (!timestamp) return;
+
+  const relTime = formatRelativeTime(timestamp);
+  const exactDate = formatExactDate(timestamp);
+
+  const bannerTag = document.querySelector("#banner-update-tag");
+  if (bannerTag) bannerTag.textContent = `Updated recently: ${relTime}`;
+
+  const heroUpdated = document.querySelector("#hero-updated-time");
+  if (heroUpdated) heroUpdated.textContent = `Updated recently (${relTime})`;
+
+  const dlUpdated = document.querySelector("#downloads-last-updated");
+  if (dlUpdated) dlUpdated.textContent = `Updated recently: ${relTime}`;
+
+  const dlExact = document.querySelector("#downloads-exact-date");
+  if (dlExact) dlExact.textContent = exactDate;
+
+  const winExeDate = document.querySelector("#win-exe-date");
+  if (winExeDate) winExeDate.textContent = exactDate;
+
+  const winMsiDate = document.querySelector("#win-msi-date");
+  if (winMsiDate) winMsiDate.textContent = exactDate;
+
+  const androidDate = document.querySelector("#android-release-date");
+  if (androidDate) androidDate.textContent = `${exactDate} (Updated recently: ${relTime})`;
 }
 
 function formatExactDate(dateInput) {
@@ -262,33 +294,8 @@ async function hydrateReleaseData() {
 
     if (!data) return;
 
-    // Dynamic Version and Relative Timing Badges
-    if (data.updated_at || data.date) {
-      const timestamp = data.updated_at || data.date;
-      const relTime = formatRelativeTime(timestamp);
-      const exactDate = formatExactDate(timestamp);
-
-      const bannerTag = document.querySelector("#banner-update-tag");
-      if (bannerTag) bannerTag.textContent = `Updated recently: ${relTime}`;
-
-      const heroUpdated = document.querySelector("#hero-updated-time");
-      if (heroUpdated) heroUpdated.textContent = `Updated recently (${relTime})`;
-
-      const dlUpdated = document.querySelector("#downloads-last-updated");
-      if (dlUpdated) dlUpdated.textContent = `Updated recently: ${relTime}`;
-
-      const dlExact = document.querySelector("#downloads-exact-date");
-      if (dlExact) dlExact.textContent = exactDate;
-
-      const winExeDate = document.querySelector("#win-exe-date");
-      if (winExeDate) winExeDate.textContent = exactDate;
-
-      const winMsiDate = document.querySelector("#win-msi-date");
-      if (winMsiDate) winMsiDate.textContent = exactDate;
-
-      const androidDate = document.querySelector("#android-release-date");
-      if (androidDate) androidDate.textContent = `${exactDate} (Updated recently: ${relTime})`;
-    }
+    cachedReleaseData = data;
+    updateRelativeTimeDisplay();
 
     if (data.version) {
       const buildStr = data.versionCode ? ` (Build ${data.versionCode})` : "";
@@ -367,6 +374,7 @@ async function hydrateReleaseData() {
 }
 
 hydrateReleaseData();
+setInterval(updateRelativeTimeDisplay, 20000);
 setInterval(hydrateReleaseData, 60000);
 
 // ─── 06 Particle Background Canvas (KnowToMigrate Pattern, Purple/Violet) ────

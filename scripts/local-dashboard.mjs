@@ -22,6 +22,7 @@ import {
   verifyAllSiteManifests,
   readProjectVersions,
   computeFileMetadata,
+  updateReleaseTimestamps,
 } from './site-helpers.mjs';
 import { runSmokeTest } from './smoke-test.mjs';
 
@@ -208,6 +209,16 @@ export class LocalDashboardServer extends EventEmitter {
         }
 
         this.log(`File change detected: ${normalized} (${eventType})`);
+
+        if (
+          !normalized.includes('manifest.json') &&
+          !normalized.includes('release.json')
+        ) {
+          try {
+            updateReleaseTimestamps(this.siteDir);
+            this.log('Updated release timestamps to match current file modification.');
+          } catch (_) {}
+        }
 
         // Debounce to batch rapid successive saves
         clearTimeout(this.debounceTimer);

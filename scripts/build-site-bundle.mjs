@@ -34,6 +34,7 @@ import {
   matchesGlob,
   verifyAllSiteManifests,
   readProjectVersions,
+  updateReleaseTimestamps,
 } from './site-helpers.mjs';
 
 /**
@@ -50,6 +51,7 @@ function parseArgs(args) {
     apkPath: null,
     exePath: null,
     msiPath: null,
+    updateTimestamp: true,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -58,6 +60,10 @@ function parseArgs(args) {
       options.verifyOnly = true;
     } else if (a === '--dry-run') {
       options.dryRun = true;
+    } else if (a === '--no-update-timestamp') {
+      options.updateTimestamp = false;
+    } else if (a === '--update-timestamp') {
+      options.updateTimestamp = true;
     } else if (a === '--release') {
       options.mode = 'release';
     } else if (a === '--site-dir' && args[i + 1]) {
@@ -286,6 +292,12 @@ export async function buildSiteBundle(options = {}) {
       console.log('[build-site-bundle] Verifying committed download integrity for website-only deploy...');
       const verifyResult = verifyAllSiteManifests(siteDir);
       console.log(`[build-site-bundle] ✓ Integrity confirmed across ${verifyResult.verified.length} manifests.`);
+
+      // Automatically align release timestamps to current deploy time
+      if (options.updateTimestamp !== false && !options.dryRun) {
+        updateReleaseTimestamps(siteDir);
+        console.log('[build-site-bundle] ✓ Updated release timestamps across all manifests to current deploy time.');
+      }
 
       // Assemble bundle
       if (outDir) {
