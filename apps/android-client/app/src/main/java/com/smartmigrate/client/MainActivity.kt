@@ -1812,8 +1812,13 @@ private fun DedicatedRemoteSessionScreen(
                                             .clip(CircleShape)
                                             .background(Warning)
                                     )
+                                    val attemptMsg = if (streamDiag.reconnectAttempt > 0) {
+                                        "Network interrupted. Reconnecting (attempt ${streamDiag.reconnectAttempt} of ${streamDiag.maxReconnectAttempts})…"
+                                    } else {
+                                        "Network interrupted. Reconnecting to Windows host…"
+                                    }
                                     Text(
-                                        "Network interrupted. Reconnecting to Windows host...",
+                                        attemptMsg,
                                         color = Color.White,
                                         fontSize = 11.sp
                                     )
@@ -1971,6 +1976,8 @@ private fun DedicatedRemoteSessionScreen(
 
                 // Copy bound to real connection stages
                 val statusText = when (connState) {
+                    StreamConnectionState.STREAMING -> if (streamDiag.currentFps > 0f) "Live • ${streamDiag.currentFps.toInt()} FPS" else "Live Desktop"
+                    StreamConnectionState.CONNECTED -> "Ready (Awaiting Frames)"
                     StreamConnectionState.CONNECTING, StreamConnectionState.AUTHENTICATING -> "Establishing connection…"
                     StreamConnectionState.RECONNECTING -> "Connection interrupted; reconnecting…"
                     StreamConnectionState.FAILED -> "Couldn't connect: PC not reachable"
@@ -1989,7 +1996,7 @@ private fun DedicatedRemoteSessionScreen(
                 // Meta text / Latency
                 val metaText = when (connState) {
                     StreamConnectionState.STREAMING -> if (streamDiag.latencyMs > 0f) "${streamDiag.latencyMs.toInt()} ms" else "18 ms"
-                    StreamConnectionState.RECONNECTING -> "retry 2 of 5"
+                    StreamConnectionState.RECONNECTING -> "retry ${streamDiag.reconnectAttempt} of ${streamDiag.maxReconnectAttempts}"
                     else -> ""
                 }
                 if (metaText.isNotEmpty()) {
@@ -2970,7 +2977,7 @@ private fun AboutScreen(
 
                 listOf(
                     "Host Authority" to "Windows DPAPI Host Authorization Source of Truth",
-                    "Transport Encryption" to "AES-256-GCM Hardware-Accelerated",
+                    "Transport Protection" to "SMP/1 Token Authorization & Replay Defense",
                     "Anti-Replay Defense" to "Strict Monotonic Sequence Protection",
                     "Zero Credential Leakage" to "Keys and tokens excluded from persistent logs"
                 ).forEach { (title, detail) ->

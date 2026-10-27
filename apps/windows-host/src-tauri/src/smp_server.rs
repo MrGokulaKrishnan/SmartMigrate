@@ -312,6 +312,29 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|window| window == needle)
 }
 
+/// Ultra-fast 64-bit frame change detector using strided sampling.
+/// Samples every 4KB across the frame buffer (~2,000 samples for 1080p BGRA)
+/// executing in ~1 microsecond to prevent wasteful re-encoding of static desktop frames.
+fn fast_frame_checksum(data: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325; // FNV-1a 64-bit offset basis
+    let stride = 4096;
+    let mut i = 0;
+    while i < data.len() {
+        hash ^= data[i] as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+        i += stride;
+    }
+    let len = data.len();
+    if len >= 16 {
+        for &idx in &[0, len / 4, len / 2, 3 * len / 4, len - 4] {
+            let chunk = [data[idx], data[idx + 1], data[idx + 2], data[idx + 3]];
+            hash ^= u32::from_le_bytes(chunk) as u64;
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    hash
+}
+
 /// Reads a complete HTTP request, buffering headers until delimiter and reading full body based on Content-Length.
 fn read_http_request(socket: &mut TcpStream) -> Option<(String, String)> {
     let _ = socket.set_read_timeout(Some(Duration::from_millis(1500)));
@@ -1216,24 +1239,34 @@ fn handle_client_connection(mut socket: TcpStream, state: AppState, stop_signal:
                     };
                     // Quality 75 with 4:2:0 subsampling delivers crisp text and sub-15ms encoding latency
                     let mut encoder = SoftwareJpegEncoder::new(75);
+                    let mut last_frame_checksum: u64 = 0;
+                    let mut last_sent_time = Instant::now();
 
                     while !worker_stop.load(Ordering::Relaxed) {
                         let loop_start = Instant::now();
                         let now_ms = now_ms();
 
                         if let Ok((bgra_data, width, height, cap_duration_ms)) = capture_session.capture_frame() {
-                            if let Ok((encoded_slice, enc_duration_ms)) = encoder.encode_slice(bgra_data, width, height, 75) {
-                                let frame = EncodedStreamFrame {
-                                    payload: encoded_slice.to_vec(),
-                                    width,
-                                    height,
-                                    timestamp_ms: now_ms,
-                                    capture_latency_ms: cap_duration_ms + enc_duration_ms,
-                                };
-                                let (lock, cvar) = &*worker_slot;
-                                if let Ok(mut guard) = lock.lock() {
-                                    *guard = Some(frame);
-                                    cvar.notify_one();
+                            let checksum = fast_frame_checksum(bgra_data);
+                            let screen_changed = checksum != last_frame_checksum;
+                            let keepalive_due = last_sent_time.elapsed() >= Duration::from_millis(350);
+
+                            if screen_changed || keepalive_due {
+                                if let Ok((encoded_slice, enc_duration_ms)) = encoder.encode_slice(bgra_data, width, height, 75) {
+                                    let frame = EncodedStreamFrame {
+                                        payload: encoded_slice.to_vec(),
+                                        width,
+                                        height,
+                                        timestamp_ms: now_ms,
+                                        capture_latency_ms: cap_duration_ms + enc_duration_ms,
+                                    };
+                                    let (lock, cvar) = &*worker_slot;
+                                    if let Ok(mut guard) = lock.lock() {
+                                        *guard = Some(frame);
+                                        cvar.notify_one();
+                                    }
+                                    last_frame_checksum = checksum;
+                                    last_sent_time = Instant::now();
                                 }
                             }
                         }

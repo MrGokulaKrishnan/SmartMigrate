@@ -9,10 +9,20 @@ and Web SVG/ICO favicons.
 
 import os
 import sys
+import json
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont
 
-SOURCE_IMAGE = r"C:\Users\gokul\.gemini\antigravity\brain\6d9de22b-0130-49b7-80f3-9c8a3e7009af\.user_uploaded\media_1791438687860_43db8c08.jpg"
-ROOT_DIR = r"C:\Smart Migrate"
+ROOT_DIR = os.environ.get("SM_ROOT_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+SOURCE_IMAGE = os.environ.get("SM_LOGO_SOURCE", os.path.join(ROOT_DIR, "assets", "media", "smart-migrate-logo.jpg"))
+
+def get_app_version() -> str:
+    tauri_conf = os.path.join(ROOT_DIR, "apps", "windows-host", "src-tauri", "tauri.conf.json")
+    try:
+        with open(tauri_conf, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("version", "1.4.4")
+    except Exception:
+        return "1.4.4"
 
 def get_emblem_master(source_path: str, target_occupancy: float = 0.82) -> Image.Image:
     """
@@ -42,8 +52,8 @@ def get_emblem_master(source_path: str, target_occupancy: float = 0.82) -> Image
     x2 = x1 + canvas_side
     y2 = y1 + canvas_side
 
-    # Create canvas with AMOLED black #040308
-    canvas = Image.new("RGBA", (canvas_side, canvas_side), (4, 3, 8, 255))
+    # Create canvas with True AMOLED black #000000
+    canvas = Image.new("RGBA", (canvas_side, canvas_side), (0, 0, 0, 255))
     src_x1 = max(0, x1)
     src_y1 = max(0, y1)
     src_x2 = min(img.width, x2)
@@ -82,7 +92,7 @@ def create_squircle_icon(master: Image.Image, size: int, corner_ratio: float = 0
     draw_border.rounded_rectangle(
         (border_width // 2, border_width // 2, high_res_size - border_width // 2, high_res_size - border_width // 2),
         radius=radius,
-        outline=(55, 40, 106, 200),
+        outline=(77, 51, 196, 200),
         width=border_width
     )
 
@@ -120,12 +130,12 @@ def create_android_adaptive_foreground(emblem: Image.Image, canvas_size: int, oc
 def create_android_legacy_round(emblem: Image.Image, size: int, occupancy: float = 0.65) -> Image.Image:
     """
     Creates a circular icon for legacy Android launchers.
-    Background is AMOLED black (#040308). The emblem occupies 65% of the circle,
+    Background is True AMOLED black (#000000). The emblem occupies 65% of the circle,
     ensuring circular mask never cuts off the emblem corners.
     """
     scale = 4
     high_size = size * scale
-    canvas = Image.new("RGBA", (high_size, high_size), (4, 3, 8, 255))
+    canvas = Image.new("RGBA", (high_size, high_size), (0, 0, 0, 255))
     target_size = int(high_size * occupancy)
     emblem_resized = emblem.resize((target_size, target_size), Image.Resampling.LANCZOS)
     offset = (high_size - target_size) // 2
@@ -139,17 +149,17 @@ def create_android_legacy_round(emblem: Image.Image, size: int, occupancy: float
     out.paste(canvas, (0, 0), mask=mask)
     
     draw_border = ImageDraw.Draw(out)
-    draw_border.ellipse((scale, scale, high_size - scale, high_size - scale), outline=(55, 40, 106, 220), width=scale)
+    draw_border.ellipse((scale, scale, high_size - scale, high_size - scale), outline=(77, 51, 196, 220), width=scale)
     return out.resize((size, size), Image.Resampling.LANCZOS)
 
 def create_android_legacy_squircle(emblem: Image.Image, size: int, occupancy: float = 0.68) -> Image.Image:
     """
     Creates a rounded rectangle icon for legacy Android launchers.
-    Background is AMOLED black (#040308). The emblem occupies 68% of the squircle.
+    Background is True AMOLED black (#000000). The emblem occupies 68% of the squircle.
     """
     scale = 4
     high_size = size * scale
-    canvas = Image.new("RGBA", (high_size, high_size), (4, 3, 8, 255))
+    canvas = Image.new("RGBA", (high_size, high_size), (0, 0, 0, 255))
     target_size = int(high_size * occupancy)
     emblem_resized = emblem.resize((target_size, target_size), Image.Resampling.LANCZOS)
     offset = (high_size - target_size) // 2
@@ -164,7 +174,7 @@ def create_android_legacy_squircle(emblem: Image.Image, size: int, occupancy: fl
     out.paste(canvas, (0, 0), mask=mask)
     
     draw_border = ImageDraw.Draw(out)
-    draw_border.rounded_rectangle((scale, scale, high_size - scale, high_size - scale), radius=radius, outline=(55, 40, 106, 220), width=scale)
+    draw_border.rounded_rectangle((scale, scale, high_size - scale, high_size - scale), radius=radius, outline=(77, 51, 196, 220), width=scale)
     return out.resize((size, size), Image.Resampling.LANCZOS)
 
 def create_android_drawable_logo(emblem: Image.Image, size: int = 512, occupancy: float = 0.70) -> Image.Image:
@@ -172,7 +182,7 @@ def create_android_drawable_logo(emblem: Image.Image, size: int = 512, occupancy
     Creates the in-app drawable logo with 15% breathing padding around the emblem,
     so Compose modifiers (.clip(RoundedCornerShape(...))) never cut the emblem.
     """
-    canvas = Image.new("RGBA", (size, size), (4, 3, 8, 255))
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 255))
     target_size = int(size * occupancy)
     emblem_resized = emblem.resize((target_size, target_size), Image.Resampling.LANCZOS)
     offset = (size - target_size) // 2
@@ -186,31 +196,31 @@ def create_installer_sidebar(master: Image.Image) -> Image.Image:
     and crisp Segoe UI branding typography.
     """
     width, height = 164, 314
-    sidebar = Image.new("RGB", (width, height), (4, 3, 8))
+    sidebar = Image.new("RGB", (width, height), (0, 0, 0))
     draw = ImageDraw.Draw(sidebar)
 
-    # Vertical gradient from top #040308 -> #160D2D -> #080512
+    # Vertical gradient from top #000000 -> #161230 -> #0B0918
     for y in range(height):
         t = y / float(height)
         if t < 0.4:
             f = t / 0.4
-            r = int(4 + (24 - 4) * f)
-            g = int(3 + (14 - 3) * f)
-            b = int(8 + (50 - 8) * f)
+            r = int(0 + (22 - 0) * f)
+            g = int(0 + (18 - 0) * f)
+            b = int(0 + (48 - 0) * f)
         elif t < 0.75:
             f = (t - 0.4) / 0.35
-            r = int(24 + (10 - 24) * f)
-            g = int(14 + (6 - 14) * f)
-            b = int(50 + (24 - 50) * f)
+            r = int(22 + (11 - 22) * f)
+            g = int(18 + (9 - 18) * f)
+            b = int(48 + (24 - 48) * f)
         else:
             f = (t - 0.75) / 0.25
-            r = int(10 + (4 - 10) * f)
-            g = int(6 + (3 - 6) * f)
-            b = int(24 + (8 - 24) * f)
+            r = int(11 + (0 - 11) * f)
+            g = int(9 + (0 - 9) * f)
+            b = int(24 + (0 - 24) * f)
         draw.line([(0, y), (width, y)], fill=(r, g, b))
 
     # Vertical divider accent line on the right edge
-    draw.line([(width - 1, 0), (width - 1, height)], fill=(43, 33, 78))
+    draw.line([(width - 1, 0), (width - 1, height)], fill=(77, 51, 196))
 
     # Centered glowing emblem
     emblem_size = 96
@@ -227,16 +237,18 @@ def create_installer_sidebar(master: Image.Image) -> Image.Image:
     except Exception:
         f_title = f_sub = f_tag = None
 
+    app_version = get_app_version()
+
     if f_title:
-        draw.text((width // 2, 154), "SMART MIGRATE", fill=(255, 255, 255), font=f_title, anchor="mm")
-        draw.text((width // 2, 172), "Connect • Transfer • Control", fill=(179, 157, 255), font=f_sub, anchor="mm")
+        draw.text((width // 2, 154), "SMART MIGRATE", fill=(243, 243, 247), font=f_title, anchor="mm")
+        draw.text((width // 2, 172), "Connect - Transfer - Control", fill=(185, 174, 255), font=f_sub, anchor="mm")
 
         # Subtle separator line
-        draw.line([(24, 220), (width - 24, 220)], fill=(40, 30, 70))
+        draw.line([(24, 220), (width - 24, 220)], fill=(77, 51, 196))
 
-        draw.text((width // 2, 240), "MigRoute Core Engine", fill=(160, 150, 200), font=f_tag, anchor="mm")
-        draw.text((width // 2, 256), "Smart Migrate Protocol (SMP/1)", fill=(120, 110, 160), font=f_tag, anchor="mm")
-        draw.text((width // 2, 284), "v1.4.0 High-Speed Host", fill=(138, 107, 255), font=f_tag, anchor="mm")
+        draw.text((width // 2, 240), "MigRoute Core Engine", fill=(185, 174, 255), font=f_tag, anchor="mm")
+        draw.text((width // 2, 256), "Smart Migrate Protocol (SMP/1)", fill=(117, 117, 136), font=f_tag, anchor="mm")
+        draw.text((width // 2, 284), f"v{app_version} High-Speed Host", fill=(185, 174, 255), font=f_tag, anchor="mm")
 
     return sidebar
 
@@ -342,7 +354,7 @@ def main():
     with open(os.path.join(android_brand_dir, "ic_launcher_background.xml"), "w", encoding="utf-8") as f:
         f.write('''<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#040308</color>
+    <color name="ic_launcher_background">#000000</color>
 </resources>
 ''')
     print("Generated Android branding assets (adaptive-icon.png, ic_launcher_foreground.png, background.xml)")
@@ -358,21 +370,21 @@ def main():
     svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
   <defs>
     <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#8A6BFF"/>
-      <stop offset="50%" stop-color="#5E3BEE"/>
-      <stop offset="100%" stop-color="#3C1A9E"/>
+      <stop offset="0%" stop-color="#B9AEFF"/>
+      <stop offset="55%" stop-color="#4D33C4"/>
+      <stop offset="100%" stop-color="#1F1266"/>
     </linearGradient>
     <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#B39DFF"/>
-      <stop offset="100%" stop-color="#6F4DFC"/>
+      <stop offset="0%" stop-color="#D2CCFF"/>
+      <stop offset="100%" stop-color="#7C64E6"/>
     </linearGradient>
     <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="6" stdDeviation="14" flood-color="#6442FA" flood-opacity="0.55"/>
+      <feDropShadow dx="0" dy="6" stdDeviation="14" flood-color="#4D33C4" flood-opacity="0.55"/>
     </filter>
   </defs>
   <!-- Pure AMOLED Black Background -->
-  <rect width="512" height="512" rx="102" fill="#040308"/>
-  <rect width="510" height="510" x="1" y="1" rx="101" fill="none" stroke="#2B214E" stroke-width="2.5"/>
+  <rect width="512" height="512" rx="102" fill="#000000"/>
+  <rect width="510" height="510" x="1" y="1" rx="101" fill="none" stroke="#382098" stroke-width="2.5"/>
   
   <!-- Outer Glow Group with 1.34x scale to fill viewport crisply (82% occupancy) -->
   <g filter="url(#glow)" transform="translate(-89, -84) scale(1.34)">

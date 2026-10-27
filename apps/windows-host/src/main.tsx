@@ -1628,9 +1628,9 @@ export function App() {
                 {[
                   { n: 1, title: "Discovering device…", desc: "Broadcasting on UDP 7889 for nearby Smart Migrate nodes" },
                   { n: 2, title: "Verifying device identity…", desc: "Checking hardware fingerprint and DPAPI trust anchor" },
-                  { n: 3, title: "Establishing secure channel…", desc: "Executing ECDHE handshake and AES-GCM session key agreement" },
-                  { n: 4, title: "Selecting optimal transport…", desc: "Testing Direct LAN (TCP 7890) → P2P hole-punching → TURN fallback" },
-                  { n: 5, title: "Connected — Direct LAN • 14 ms", desc: "Host authorization approved. High-speed services running." },
+                  { n: 3, title: "Authenticating channel…", desc: "Verifying session credentials and cryptographic token hash" },
+                  { n: 4, title: "Connecting transport…", desc: "Binding high-speed Direct LAN connection on TCP 7890" },
+                  { n: 5, title: "Connected — Direct LAN", desc: "Host authorization approved. High-speed services running." },
                 ].map((item) => (
                   <div
                     key={item.n}
@@ -1872,7 +1872,7 @@ function HomeView({
           <span style={{ fontSize: "0.76rem", color: "var(--sm-text-3)", textTransform: "uppercase" }}>Transport Status</span>
           <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--sm-brand-300)" }}>{resilience.transportState}</span>
           <span style={{ fontSize: "0.82rem", color: "var(--sm-success)", marginTop: "4px", display: "inline-flex", alignItems: "center" }}>
-            <StatusDot status="connected" /> AES-GCM Encrypted
+            <StatusDot status="connected" /> Token Authorized
           </span>
         </div>
       </div>
@@ -3111,8 +3111,8 @@ function SecurityCenterView({
       <div className="hero-stats-row">
         <div className="stat-card">
           <span className="stat-label">Connection Security</span>
-          <span className="stat-value" style={{ color: "var(--sm-success)" }}>Encrypted</span>
-          <span className="stat-sub">AES-GCM 256-bit</span>
+          <span className="stat-value" style={{ color: "var(--sm-success)" }}>Authorized</span>
+          <span className="stat-sub">SMP/1 Token Protected</span>
         </div>
         <div className="stat-card">
           <span className="stat-label">Device Identity</span>

@@ -68,7 +68,9 @@ data class StreamDiagnostics(
     val framesDecoded: Long = 0L,
     val framesRendered: Long = 0L,
     val droppedFrames: Long = 0L,
-    val packetLossPercent: Float = 0f
+    val packetLossPercent: Float = 0f,
+    val reconnectAttempt: Int = 0,
+    val maxReconnectAttempts: Int = 5
 )
 
 /**
@@ -274,7 +276,9 @@ class StreamEngine {
                         framesDecoded = totalFramesDecoded,
                         framesRendered = totalFramesRendered,
                         droppedFrames = totalDropped,
-                        packetLossPercent = lossPct
+                        packetLossPercent = lossPct,
+                        reconnectAttempt = reconnectAttempts.get(),
+                        maxReconnectAttempts = MAX_RECONNECT_ATTEMPTS
                     )
                     lastFpsTime = now
                 }
@@ -390,10 +394,10 @@ class StreamEngine {
                     _state.value = StreamConnectionState.AUTHENTICATING
                     _diagnostics.value = _diagnostics.value.copy(connectionState = StreamConnectionState.AUTHENTICATING)
 
-                    // Open direct TCP socket with low-latency settings and 4000ms responsive timeout
+                    // Open direct TCP socket with low-latency settings and 6000ms responsive timeout
                     sock = Socket().apply {
                         tcpNoDelay = true
-                        soTimeout = 4000
+                        soTimeout = 6000
                         receiveBufferSize = 262144
                         // Bind directly to active Wi-Fi network if available (avoiding process-wide binding)
                         StreamSessionService.activeWifiNetwork?.let { net ->
@@ -494,7 +498,9 @@ class StreamEngine {
                     _diagnostics.value = _diagnostics.value.copy(
                         connectionState = StreamConnectionState.RECONNECTING,
                         failureReason = reason,
-                        droppedFrames = totalDropped
+                        droppedFrames = totalDropped,
+                        reconnectAttempt = attempt,
+                        maxReconnectAttempts = MAX_RECONNECT_ATTEMPTS
                     )
 
                     // Notify StreamSessionService so it can immediately bind the Wi-Fi network
